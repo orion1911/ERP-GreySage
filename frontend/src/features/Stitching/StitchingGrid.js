@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
+import { useTheme } from '@mui/material/styles';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, Button, IconButton } from '@mui/material';
-import { ExpandMore, ExpandLess } from '@mui/icons-material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, Button, IconButton, Tooltip } from '@mui/material';
+import { LocalLaundryService, ExpandMore, ExpandLess, Edit as EditIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { MorphDateTextField } from '../../components/MuiCustom';
-import WashingTable from '../Washing/WashingTable';
+import WashingGrid from '../Washing/WashingGrid';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/TableSkeletonLoader';
 
-function StitchingTable({
+function StitchingGrid({
   stitchingRecords,
   washingRecords,
   fetchWashingRecords,
@@ -17,8 +18,11 @@ function StitchingTable({
   handleUpdateWashOut,
   setOpenWashingModal,
   setSelectedLot,
-  searchTerm // Receive search term
+  searchTerm,
+  onEditStitching,
+  onEditWashing
 }) {
+  const theme = useTheme();
   const [expandedRows, setExpandedRows] = useState({});
 
   const toggleRowExpansion = (rowId) => {
@@ -97,24 +101,34 @@ function StitchingTable({
       header: 'Actions',
       cell: ({ row }) => (
         <Box>
-          <Button
-            variant="contained"
-            size="small"
-            onClick={() => {
-              setSelectedLot({
-                lotNumber: row.original.lotId?.lotNumber || '',
-                lotId: row.original.lotId?._id || '',
-                invoiceNumber: row.original.lotId?.invoiceNumber || ''
-              });
-              setOpenWashingModal(true);
-            }}
-            sx={{ mr: 1 }}
-          >
-            Add Washing
-          </Button>
-          <IconButton onClick={() => toggleRowExpansion(row.original._id)}>
-            {expandedRows[row.original._id] ? <ExpandLess /> : <ExpandMore />}
-          </IconButton>
+          <Tooltip title="Edit" placement='bottom' arrow>
+            <IconButton onClick={() => onEditStitching(row.original)}>
+              <EditIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Show Washing" placement='bottom' arrow>
+            <IconButton size="small" onClick={() => toggleRowExpansion(row.original._id)}>
+              {expandedRows[row.original._id] ? <><LocalLaundryService /><ExpandLess /></> : <><LocalLaundryService /><ExpandMore /></>}
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Add Washing" placement='bottom' arrow>
+            <Button
+              variant="contained"
+              size="small"
+              endIcon={<LocalLaundryService />}
+              onClick={() => {
+                setSelectedLot({
+                  lotNumber: row.original.lotId?.lotNumber || '',
+                  lotId: row.original.lotId?._id || '',
+                  invoiceNumber: row.original.lotId?.invoiceNumber || ''
+                });
+                setOpenWashingModal(true);
+              }}
+              sx={{ mr: 1 }}
+            >
+              Add
+            </Button>
+          </Tooltip>
         </Box>
       )
     }
@@ -127,10 +141,9 @@ function StitchingTable({
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     state: {
-      globalFilter: searchTerm // Use searchTerm as the global filter
+      globalFilter: searchTerm
     },
     globalFilterFn: (row, columnId, filterValue) => {
-      // Custom global filter function to search across multiple fields
       const lotNumber = row.original.lotId?.lotNumber?.toString().toLowerCase() || '';
       const invoiceNumber = row.original.lotId?.invoiceNumber?.toString().toLowerCase() || '';
       const vendorName = row.original.vendorId?.name?.toLowerCase() || '';
@@ -188,10 +201,11 @@ function StitchingTable({
                 {expandedRows[row.original._id] && (
                   <TableRow>
                     <TableCell colSpan={9}>
-                      <WashingTable
+                      <WashingGrid
                         washingRecords={washingRecords[row.original.lotId?._id] || []}
                         lotId={row.original.lotId?._id}
                         handleUpdateWashOut={handleUpdateWashOut}
+                        onEditWashing={onEditWashing}
                       />
                     </TableCell>
                   </TableRow>
@@ -204,4 +218,4 @@ function StitchingTable({
   );
 }
 
-export default StitchingTable;
+export default StitchingGrid;

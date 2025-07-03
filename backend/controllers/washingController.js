@@ -26,13 +26,19 @@ const createWashing = async (req, res) => {
       return res.status(400).json({ error: 'Invalid invoiceNumber or orderId' });
     }
 
+    // Validate existing washing entry against each lot
+    const existingWashing = await Washing.findOne({ lotId: lot._id });
+    if (existingWashing) {
+      return res.status(404).json({ error: 'Washing record already exists for this lot' });
+    }
+
     // Validate washDetails quantities against StitchingSchema quantity
     const stitching = await Stitching.findOne({ lotId: lot._id });
     if (!stitching) {
       return res.status(404).json({ error: 'Stitching record not found for this lot' });
     }
 
-    const totalWashQuantity = washDetails.reduce((sum, detail) => sum + parseInt(detail.quantity || 0), 0);
+    const totalWashQuantity = washDetails.reduce((sum, item) => sum + parseInt(item.quantity || 0), 0);
     if (totalWashQuantity !== stitching.quantity) {
       return res.status(400).json({ error: `Total quantity in washDetails (${totalWashQuantity}) must equal the stitching quantity (${stitching.quantity})` });
     }
@@ -71,6 +77,51 @@ const createWashing = async (req, res) => {
 };
 
 const updateWashing = async (req, res) => {
+  const { id } = req.params;
+  const { vendorId, quantityShort, rate, date, washOutDate, description, washDetails } = req.body;
+
+  // Find the washing record
+  const washing = await Washing.findById(id).populate('lotId orderId vendorId');
+  if (!washing) return res.status(404).json({ error: 'Washing record not found' });
+
+  // Validate references
+  const stitching = await Stitching.findOne({ lotId: washing.lotId._id });
+  if (!stitching) return res.status(404).json({ error: 'Stitching record not found' });
+
+  if (vendorId) {
+    // Assuming vendorId is a valid reference; add validation if needed
+    // const vendor = await Vendor.findById(vendorId); // Uncomment and implement if Vendor schema exists
+    // if (!vendor) return res.status(404).json({ error: 'Vendor not found' });
+  }
+
+  // Validate washDetails quantities
+  if (washDetails) {
+    const totalWashQuantity = washDetails.reduce((sum, detail) => sum + parseInt(detail.quantity || 0), 0);
+    if (totalWashQuantity !== stitching.quantity) {
+      return res.status(400).json({ error: `Total quantity in washDetails (${totalWashQuantity}) must equal the stitching quantity (${stitching.quantity})` });
+    }
+  }
+
+  // Update fields
+  if (vendorId) washing.vendorId = vendorId;
+  if (quantityShort !== undefined) washing.quantityShort = quantityShort;
+  if (rate !== undefined) washing.rate = rate;
+  if (date) washing.date = date;
+  if (washOutDate) washing.washOutDate = washOutDate;
+  if (description) washing.description = description;
+  if (washDetails) washing.washDetails = washDetails;
+
+  try {
+    const updatedWashing = await washing.save();
+    const populatedWashing = await Washing.findById(id).populate('lotId orderId vendorId');
+    // await logAction(req.user.userId, 'update_washing', 'Washing', updatedWashing._id, 'Washing record updated');
+    res.json(populatedWashing);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+const updateWashingStatus = async (req, res) => {
   const { washOutDate } = req.body;
   try {
     const washing = await Washing.findByIdAndUpdate(req.params.id, { washOutDate }, { new: true });
@@ -104,4 +155,4 @@ const getWashing = async (req, res) => {
   }
 };
 
-module.exports = { createWashing, updateWashing, getWashing };
+module.exports = { createWashing, updateWashing, updateWashingStatus, getWashing };

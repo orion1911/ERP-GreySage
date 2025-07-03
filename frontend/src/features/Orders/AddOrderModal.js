@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Chip } from '@mui/material';
 import { Close as CloseIcon, AttachFile as AttachFileIcon, Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -10,8 +11,7 @@ import apiService from '../../services/apiService';
 
 function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdateOrder, order }) {
   const isEditMode = !!order;
-
-  const [form, setForm] = useState({
+  const defaultValues = {
     date: dayjs(new Date()),
     clientId: '',
     fabric: '',
@@ -21,111 +21,49 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
     threadColors: [{ color: '', quantity: '' }],
     description: '',
     attachments: []
+  };
+
+  const { control, handleSubmit, reset, setValue, getValues, formState: { errors } } = useForm({
+    defaultValues,
+    mode: 'onChange',
   });
-  const [fileInput, setFileInput] = useState(null);
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: 'threadColors',
+  });
 
   useEffect(() => {
     if (isEditMode && order) {
-      setForm({
-        date: order.date ? dayjs(order.date) : dayjs(new Date()),
-        clientId: order.clientId?._id || '',
-        fabric: order.fabric || '',
-        fitStyleId: order.fitStyleId?._id || '',
-        waistSize: order.waistSize || '',
-        totalQuantity: order.totalQuantity || '',
-        threadColors: order.threadColors?.length > 0 ? order.threadColors : [{ color: '', quantity: '' }],
-        description: order.description || '',
-        attachments: order.attachments || []
-      });
+      setValue('date', order.date ? dayjs(order.date) : dayjs(new Date()));
+      setValue('clientId', order.clientId?._id || '');
+      setValue('fabric', order.fabric || '');
+      setValue('fitStyleId', order.fitStyleId?._id || '');
+      setValue('waistSize', order.waistSize || '');
+      setValue('totalQuantity', order.totalQuantity || '');
+      setValue('threadColors', order.threadColors?.length > 0 ? order.threadColors : [{ color: '', quantity: '' }]);
+      setValue('description', order.description || '');
+      setValue('attachments', order.attachments || []);
     } else {
-      setForm({
-        date: dayjs(new Date()),
-        clientId: '',
-        fabric: '',
-        fitStyleId: '',
-        waistSize: '',
-        totalQuantity: '',
-        threadColors: [{ color: '', quantity: '' }],
-        description: '',
-        attachments: []
-      });
-      setFileInput(null);
+      reset(defaultValues);
     }
-  }, [order, isEditMode]);
+  }, [order, isEditMode, reset, setValue]);
 
-  const handleChange = (e) => {
-    let { name, value } = e.target;
-    if (name === 'totalQuantity') {
-      value = parseInt(value);
-    }
-    setForm(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleDateChange = (e) => {
-    setForm(prev => ({ ...prev, date: dayjs(e) }));
-  };
-
-  const handleSelectChange = (name, value) => {
-    setForm(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleThreadColorChange = (index, field, value) => {
-    if (field === 'quantity') value = parseInt(value);
-    setForm(prev => {
-      const newThreadColors = [...prev.threadColors];
-      newThreadColors[index] = { ...newThreadColors[index], [field]: value };
-      return { ...prev, threadColors: newThreadColors };
-    });
-  };
-
-  const addThreadColor = () => {
-    setForm(prev => ({
-      ...prev,
-      threadColors: [...prev.threadColors, { color: '', quantity: '' }]
-    }));
-  };
-
-  const removeThreadColor = (index) => {
-    setForm(prev => ({
-      ...prev,
-      threadColors: prev.threadColors.filter((_, i) => i !== index)
-    }));
-  };
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const fileName = file.name;
-      const url = URL.createObjectURL(file);
-      setForm(prev => ({
-        ...prev,
-        attachments: [...prev.attachments, { fileName, url }]
-      }));
-    }
-  };
-
-  const handleDeleteAttachment = (index) => {
-    setForm(prev => ({
-      ...prev,
-      attachments: prev.attachments.filter((_, i) => i !== index)
-    }));
-  };
-
-  const handleSubmit = () => {
-    const totalThreadQuantity = form.threadColors.reduce((sum, tc) => sum + Number(tc.quantity || 0), 0);
-    if (totalThreadQuantity !== Number(form.totalQuantity)) {
-      alert(`Sum of thread color quantities (${totalThreadQuantity}) must equal total quantity (${form.totalQuantity})`);
+  const onSubmit = (data) => {
+    const totalThreadQuantity = data.threadColors.reduce((sum, tc) => sum + Number(tc.quantity || 0), 0);
+    if (totalThreadQuantity !== Number(data.totalQuantity)) {
+      alert(`Sum of thread color quantities (${totalThreadQuantity}) must equal total quantity (${data.totalQuantity})`);
       return;
     }
 
-    if (isNaN(form.totalQuantity)) {
+    if (isNaN(data.totalQuantity)) {
       alert('Total Quantity is not a number');
       return;
     }
 
     const formData = {
-      ...form,
-      date: form.date.toISOString() // Convert dayjs object to ISO string for API
+      ...data,
+      date: data.date.toISOString(),
     };
 
     const request = isEditMode
@@ -139,23 +77,28 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
         } else {
           onAddOrder(res);
         }
-        setForm({
-          date: dayjs(new Date()),
-          clientId: '',
-          fabric: '',
-          fitStyleId: '',
-          waistSize: '',
-          totalQuantity: '',
-          threadColors: [{ color: '', quantity: '' }],
-          description: '',
-          attachments: []
-        });
-        setFileInput(null);
+        reset(defaultValues);
         onClose();
       })
       .catch(err => {
-        alert(err.response?.data?.error || 'An error occurred');
+        alert(err.response?.error || 'An error occurred');
       });
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const fileName = file.name;
+      const url = URL.createObjectURL(file);
+      const currentAttachments = getValues('attachments') || [];
+      setValue('attachments', [...currentAttachments, { fileName, url }]);
+    }
+  };
+
+  const handleDeleteAttachment = (index) => {
+    const currentAttachments = getValues('attachments') || [];
+    const updatedAttachments = currentAttachments.filter((_, i) => i !== index);
+    setValue('attachments', updatedAttachments);
   };
 
   return (
@@ -189,170 +132,253 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
             <CloseIcon />
           </IconButton>
         </Box>
-        <Grid container spacing={2}>
-          <Grid size={{ xs: 6, md: 4 }} sx={{ alignContent: 'center' }}>
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <DatePicker
-                name="date"
-                label="Date"
-                value={form.date}
-                onChange={handleDateChange}
-                format="DD-MMM-YYYY"
-                slots={{ textField: MorphDateTextField }}
-                sx={{ width: '-webkit-fill-available', marginTop: '8px' }}
-              />
-            </LocalizationProvider>
-          </Grid>
-          <Grid size={{ xs: 6, md: 4 }}>
-            <FormControl fullWidth margin="normal">
-              <InputLabel>Client</InputLabel>
-              <Select
-                name="clientId"
-                value={form.clientId}
-                onChange={(e) => handleSelectChange('clientId', e.target.value)}
-                label="Client"
-              >
-                {clients.map(client => (
-                  <MenuItem key={client._id} value={client._id}>{client.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 6, md: 4 }}>
-            <TextField
-              name="fabric"
-              label="Fabric"
-              value={form.fabric}
-              onChange={handleChange}
-              fullWidth
-              margin="normal"
-              variant="outlined"
-            />
-          </Grid>
-          <Grid size={{ xs: 6, md: 4 }}>
-            <FormControl margin="normal" variant="outlined" fullWidth>
-              <InputLabel>Fit Style</InputLabel>
-              <Select
-                name="fitStyleId"
-                value={form.fitStyleId}
-                onChange={(e) => handleSelectChange('fitStyleId', e.target.value)}
-                label="Fit Style"
-              >
-                {fitStyles.map(fitStyle => (
-                  <MenuItem key={fitStyle._id} value={fitStyle._id}>{fitStyle.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 6, md: 4 }}>
-            <TextField
-              name="waistSize"
-              label="Waist Size"
-              value={form.waistSize}
-              onChange={handleChange}
-              fullWidth
-              margin="normal"
-              variant="outlined"
-            />
-          </Grid>
-          <Grid size={{ xs: 6, md: 4 }}>
-            <TextField
-              name="totalQuantity"
-              label="Total Quantity"
-              type="number"
-              value={form.totalQuantity}
-              onChange={handleChange}
-              fullWidth
-              margin="normal"
-              variant="outlined"
-            />
-          </Grid>
-          {form.threadColors.map((tc, index) => (
-            <React.Fragment key={index}>
-              <Grid size={{ xs: 6, md: 4 }}>
-                <TextField
-                  label="Thread Color"
-                  value={tc.color}
-                  onChange={(e) => handleThreadColorChange(index, 'color', e.target.value)}
-                  fullWidth
-                  margin="normal"
-                  variant="outlined"
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 6, md: 4 }} sx={{ alignContent: 'center' }}>
+              <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <Controller
+                  name="date"
+                  control={control}
+                  rules={{ required: 'Date is required' }}
+                  render={({ field }) => (
+                    <DatePicker
+                      {...field}
+                      label="Date"
+                      format="DD-MMM-YYYY"
+                      slots={{ textField: MorphDateTextField }}
+                      sx={{ width: '-webkit-fill-available', marginTop: '8px' }}
+                      onChange={(value) => field.onChange(value)}
+                      slotProps={{
+                        textField: {
+                          error: !!errors.date,
+                          helperText: errors.date?.message,
+                        },
+                      }}
+                    />
+                  )}
                 />
-              </Grid>
-              <Grid size={{ xs: 6, md: 4 }}>
-                <TextField
-                  label="Quantity"
-                  type="number"
-                  value={tc.quantity}
-                  onChange={(e) => handleThreadColorChange(index, 'quantity', parseInt(e.target.value))}
-                  fullWidth
-                  margin="normal"
-                  variant="outlined"
-                />
-              </Grid>
-              <Grid spacing={1} size={{ xs: 6, md: 4 }} sx={{ alignContent: 'center' }}>
-                {index > 0 && (
-                  <IconButton sx={{ verticalAlign: 'middle' }} onClick={() => removeThreadColor(index)} color="error">
-                    <DeleteIcon />
-                  </IconButton>
-                )}
-                {index === form.threadColors.length - 1 && (
-                  <IconButton sx={{ verticalAlign: 'middle' }} onClick={addThreadColor}>
-                    <AddIcon />
-                  </IconButton>
-                )}
-              </Grid>
-            </React.Fragment>
-          ))}
-          <Grid size={{ xs: 12 }}>
-            <TextField
-              name="description"
-              label="Description"
-              value={form.description}
-              onChange={handleChange}
-              fullWidth
-              margin="normal"
-              variant="outlined"
-              multiline
-              rows={1}
-            />
-          </Grid>
-          {form.attachments.length > 0 && (
-            <Grid size={{ xs: 12, md: 12 }} sx={{ border: '1px solid #4741f6', borderRadius: '8px' }}>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, maxHeight: 80, m: 1, overflowY: 'auto' }}>
-                {form.attachments.map((attachment, index) => (
-                  <Chip
-                    key={index}
-                    label={attachment.fileName}
-                    onDelete={() => handleDeleteAttachment(index)}
-                    deleteIcon={<DeleteIcon />}
-                  />
-                ))}
-              </Box>
+              </LocalizationProvider>
             </Grid>
-          )}
-          <Grid size={{ xs: 12, md: 4 }} sx={{ alignContent: 'center' }} fullWidth>
-            <Button
-              variant="contained"
-              component="label"
-              fullWidth
-              startIcon={<AttachFileIcon />}
-            >
-              Upload Attachment
-              <input
-                type="file"
-                hidden
-                onChange={handleFileChange}
-                ref={(input) => setFileInput(input)}
+            <Grid size={{ xs: 6, md: 4 }}>
+              <Controller
+                name="clientId"
+                control={control}
+                rules={{ required: 'Client is required' }}
+                render={({ field }) => (
+                  <FormControl fullWidth margin="normal" error={!!errors.clientId}>
+                    <InputLabel>Client</InputLabel>
+                    <Select
+                      {...field}
+                      label="Client"
+                    >
+                      {clients.map(client => (
+                        <MenuItem key={client._id} value={client._id}>{client.name}</MenuItem>
+                      ))}
+                    </Select>
+                    {errors.clientId && <Typography color="error" variant="caption">{errors.clientId.message}</Typography>}
+                  </FormControl>
+                )}
               />
-            </Button>
+            </Grid>
+            <Grid size={{ xs: 6, md: 4 }}>
+              <Controller
+                name="fabric"
+                control={control}
+                rules={{ required: 'Fabric is required' }}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    label="Fabric"
+                    fullWidth
+                    margin="normal"
+                    variant="outlined"
+                    error={!!errors.fabric}
+                    helperText={errors.fabric?.message}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 4 }}>
+              <Controller
+                name="fitStyleId"
+                control={control}
+                rules={{ required: 'Fit Style is required' }}
+                render={({ field }) => (
+                  <FormControl margin="normal" variant="outlined" fullWidth error={!!errors.fitStyleId}>
+                    <InputLabel>Fit Style</InputLabel>
+                    <Select
+                      {...field}
+                      label="Fit Style"
+                    >
+                      {fitStyles.map(fitStyle => (
+                        <MenuItem key={fitStyle._id} value={fitStyle._id}>{fitStyle.name}</MenuItem>
+                      ))}
+                    </Select>
+                    {errors.fitStyleId && <Typography color="error" variant="caption">{errors.fitStyleId.message}</Typography>}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 4 }}>
+              <Controller
+                name="waistSize"
+                control={control}
+                rules={{ required: 'Waist Size is required' }}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    label="Waist Size"
+                    fullWidth
+                    margin="normal"
+                    variant="outlined"
+                    error={!!errors.waistSize}
+                    helperText={errors.waistSize?.message}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 4 }}>
+              <Controller
+                name="totalQuantity"
+                control={control}
+                rules={{
+                  required: 'Total Quantity is required',
+                  pattern: {
+                    value: /^\d+$/,
+                    message: 'Only numbers allowed',
+                  },
+                }}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    label="Total Quantity"
+                    type="number"
+                    fullWidth
+                    margin="normal"
+                    variant="outlined"
+                    error={!!errors.totalQuantity}
+                    helperText={errors.totalQuantity?.message}
+                  />
+                )}
+              />
+            </Grid>
+            {fields.map((tc, index) => (
+              <React.Fragment key={tc.id}>
+                <Grid size={{ xs: 6, md: 4 }}>
+                  <Controller
+                    name={`threadColors[${index}].color`}
+                    control={control}
+                    rules={{ required: 'Thread Color is required' }}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        label="Thread Color"
+                        fullWidth
+                        margin="normal"
+                        variant="outlined"
+                        error={!!errors.threadColors?.[index]?.color}
+                        helperText={errors.threadColors?.[index]?.color?.message}
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid size={{ xs: 6, md: 4 }}>
+                  <Controller
+                    name={`threadColors[${index}].quantity`}
+                    control={control}
+                    rules={{
+                      required: 'Quantity is required',
+                      pattern: {
+                        value: /^\d+$/,
+                        message: 'Only numbers allowed',
+                      },
+                    }}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        label="Quantity"
+                        type="number"
+                        fullWidth
+                        margin="normal"
+                        variant="outlined"
+                        error={!!errors.threadColors?.[index]?.quantity}
+                        helperText={errors.threadColors?.[index]?.quantity?.message}
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid size={{ xs: 6, md: 4 }} sx={{ alignContent: 'center' }}>
+                  {index > 0 && (
+                    <IconButton sx={{ mt: 2 }} onClick={() => remove(index)} color="error">
+                      <DeleteIcon />
+                    </IconButton>
+                  )}
+                  {index === fields.length - 1 && (
+                    <IconButton sx={{ mt: 2 }} onClick={() => append({ color: '', quantity: '' })}>
+                      <AddIcon />
+                    </IconButton>
+                  )}
+                </Grid>
+              </React.Fragment>
+            ))}
+            <Grid size={{ xs: 12 }}>
+              <Controller
+                name="description"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    label="Description"
+                    fullWidth
+                    margin="normal"
+                    variant="outlined"
+                    multiline
+                    rows={1}
+                  />
+                )}
+              />
+            </Grid>
+            {getValues('attachments').length > 0 && (
+              <Grid size={{ xs: 12, md: 12 }} sx={{ border: '1px solid #4741f6', borderRadius: '8px' }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, maxHeight: 80, m: 1, overflowY: 'auto' }}>
+                  {getValues('attachments').map((attachment, index) => (
+                    <Chip
+                      key={index}
+                      label={attachment.fileName}
+                      onDelete={() => handleDeleteAttachment(index)}
+                      deleteIcon={<DeleteIcon />}
+                    />
+                  ))}
+                </Box>
+              </Grid>
+            )}
+            <Grid size={{ xs: 12, md: 4 }} sx={{ alignContent: 'center' }} fullWidth>
+              <Button
+                variant="contained"
+                component="label"
+                fullWidth
+                startIcon={<AttachFileIcon />}
+              >
+                Upload Attachment
+                <input
+                  type="file"
+                  hidden
+                  onChange={handleFileChange}
+                />
+              </Button>
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }} fullWidth>
+              <Button
+                type="submit"
+                variant="contained"
+                fullWidth
+                sx={{ mt: 2 }}
+              >
+                {isEditMode ? 'UPDATE' : 'SAVE'}
+              </Button>
+            </Grid>
           </Grid>
-          <Grid size={{ xs: 12, md: 4 }} fullWidth>
-            <Button variant="contained" fullWidth onClick={handleSubmit}>
-              {isEditMode ? 'UPDATE' : 'SAVE'}
-            </Button>
-          </Grid>
-        </Grid>
+        </form>
       </Box>
     </Modal>
   );

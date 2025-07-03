@@ -108,6 +108,79 @@ const createStitching = async (req, res) => {
 };
 
 const updateStitching = async (req, res) => {
+  const { id } = req.params;
+  const { lotNumber, orderId, invoiceNumber, vendorId, quantity, quantityShort, rate, date, stitchOutDate, description } = req.body;
+
+  // Find the stitching record
+  const stitching = await Stitching.findById(id).populate('lotId orderId vendorId');
+  if (!stitching) return res.status(404).json({ error: 'Stitching record not found' });
+
+  // Validate references
+  const order = await Order.findById(orderId || stitching.orderId);
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+
+  // if (vendorId) {
+    // Assuming vendorId is a valid reference; add validation if needed
+    // const vendor = await Vendor.findById(vendorId); // Uncomment and implement if Vendor schema exists
+    // if (!vendor) return res.status(404).json({ error: 'Vendor not found' });
+  // }
+
+  // Validate quantity consistency
+  if (quantity && quantity !== stitching.quantity) {
+    const existingStitchings = await Stitching.find({ orderId: orderId || stitching.orderId });
+    const currentTotal = existingStitchings.reduce((sum, s) => sum + s.quantity, 0) - stitching.quantity + quantity;
+    if (currentTotal > order.totalQuantity) {
+      return res.status(400).json({ error: `Total stitched quantity (${currentTotal}) exceeds order's totalQuantity (${order.totalQuantity})` });
+    }
+  }
+
+  // Validate lotNumber and invoiceNumber uniqueness (excluding current record)
+  if (lotNumber || invoiceNumber) {
+    const lotQuery = { _id: { $ne: stitching.lotId._id } };
+    if (lotNumber) lotQuery.lotNumber = lotNumber;
+    if (invoiceNumber) lotQuery.invoiceNumber = invoiceNumber;
+    const existingLot = await Lot.findOne(lotQuery);
+    if (existingLot) {
+      if (lotNumber && existingLot.lotNumber === lotNumber) {
+        return res.status(400).json({ error: 'Lot number already exists' });
+      }
+      if (invoiceNumber && existingLot.invoiceNumber === invoiceNumber) {
+        return res.status(400).json({ error: 'Invoice number already exists' });
+      }
+    }
+  }
+
+  // Update fields
+  if (lotNumber) stitching.lotId.lotNumber = lotNumber;
+  if (invoiceNumber) stitching.lotId.invoiceNumber = invoiceNumber;
+  if (orderId) stitching.orderId = orderId;
+  if (vendorId) stitching.vendorId = vendorId;
+  if (quantity) stitching.quantity = quantity;
+  if (quantityShort !== undefined) stitching.quantityShort = quantityShort;
+  if (rate !== undefined) stitching.rate = rate;
+  if (date) stitching.date = date;
+  if (stitchOutDate) stitching.stitchOutDate = stitchOutDate;
+  if (description) stitching.description = description;
+
+  try {
+    // Update Lot document
+    await Lot.findByIdAndUpdate(stitching.lotId._id, {
+      lotNumber: stitching.lotId.lotNumber,
+      invoiceNumber: stitching.lotId.invoiceNumber,
+      date: stitching.date,
+      description: stitching.description
+    });
+
+    const updatedStitching = await stitching.save();
+    const populatedStitching = await Stitching.findById(id).populate('lotId orderId vendorId');
+    // await logAction(req.user.userId, 'update_stitching', 'Stitching', updatedStitching._id, `Stitching record ${id} updated`);
+    res.json(populatedStitching);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+const updateStitchingStatus = async (req, res) => {
   const { id, lotNumber, orderId, invoiceNumber, vendorId, quantity, quantityShort, rate, date, stitchOutDate, description } = req.body;
   
   try {
@@ -166,4 +239,4 @@ const getStitching = async (req, res) => {
   }
 };
 
-module.exports = { createStitching, updateStitching, getStitching };
+module.exports = { createStitching, updateStitching, updateStitchingStatus, getStitching };

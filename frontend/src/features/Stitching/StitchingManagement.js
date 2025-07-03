@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Container, Paper, Typography, Box, Button, TextField, Skeleton } from '@mui/material';
+import { ContentCut } from '@mui/icons-material';
 import apiService from '../../services/apiService';
-import StitchingTable from './StitchingTable';
+import StitchingGrid from './StitchingGrid';
 import AddStitchingModal from './AddStitchingModal';
 import AddWashingModal from '../Washing/AddWashingModal';
 
-// not being used as of now, might come handy later on
 function StitchingManagement() {
   const { orderId } = useParams();
   const [stitchingRecords, setStitchingRecords] = useState();
@@ -17,8 +17,10 @@ function StitchingManagement() {
   const [openStitchingModal, setOpenStitchingModal] = useState(false);
   const [openWashingModal, setOpenWashingModal] = useState(false);
   const [selectedLot, setSelectedLot] = useState(null);
+  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [selectedWashingRecord, setSelectedWashingRecord] = useState(null);
   const [totalStitchedQuantity, setTotalStitchedQuantity] = useState(0);
-  const [searchTerm, setSearchTerm] = useState(''); // Add search term state
+  const [searchTerm, setSearchTerm] = useState('');
   const token = localStorage.getItem('token');
 
   const fetchData = async () => {
@@ -59,26 +61,58 @@ function StitchingManagement() {
   };
 
   const handleAddStitching = (newStitching) => {
-    setStitchingRecords([...stitchingRecords, newStitching]);
-    setTotalStitchedQuantity(prev => prev + Number(newStitching.quantity));
+    if (selectedRecord && selectedRecord._id === newStitching._id) {
+      // Update existing record
+      setStitchingRecords(stitchingRecords.map(record => 
+        record._id === newStitching._id ? newStitching : record
+      ));
+      setTotalStitchedQuantity(stitchingRecords.reduce((sum, record) => 
+        record._id === newStitching._id ? sum + Number(newStitching.quantity) : sum + Number(record.quantity), 
+        0
+      ));
+    } else {
+      // Add new record
+      setStitchingRecords([...stitchingRecords, newStitching]);
+      setTotalStitchedQuantity(prev => prev + Number(newStitching.quantity));
+    }
+    setSelectedRecord(null);
+    setOpenStitchingModal(false);
   };
 
   const handleUpdateStitchOut = (id, stitchOutDate) => {
-    apiService.stitching.updateStitching(id, stitchOutDate)
+    apiService.stitching.updateStitchingStatus(id, { stitchOutDate })
       .then(res => {
         setStitchingRecords(stitchingRecords.map(record => record._id === id ? res : record));
       });
   };
 
+  const handleEditStitching = (record) => {
+    setSelectedRecord(record);
+    setOpenStitchingModal(true);
+  };
+
   const handleAddWashing = (lotId, newWashing) => {
-    setWashingRecords(prev => ({
-      ...prev,
-      [lotId]: [...(prev[lotId] || []), newWashing]
-    }));
+    if (selectedWashingRecord && selectedWashingRecord._id === newWashing._id) {
+      // Update existing washing record
+      setWashingRecords(prev => ({
+        ...prev,
+        [lotId]: prev[lotId].map(record => 
+          record._id === newWashing._id ? newWashing : record
+        )
+      }));
+    } else {
+      // Add new washing record
+      setWashingRecords(prev => ({
+        ...prev,
+        [lotId]: [...(prev[lotId] || []), newWashing]
+      }));
+    }
+    setSelectedWashingRecord(null);
+    setOpenWashingModal(false);
   };
 
   const handleUpdateWashOut = (lotId, id, washOutDate) => {
-    apiService.washing.updateWashing(id, { washOutDate })
+    apiService.washing.updateWashingStatus(id, { washOutDate })
       .then(res => {
         setWashingRecords(prev => ({
           ...prev,
@@ -87,11 +121,16 @@ function StitchingManagement() {
       });
   };
 
+  const handleEditWashing = (record) => {
+    setSelectedWashingRecord(record);
+    setOpenWashingModal(true);
+  };
+
   return (
     <Container sx={{ mt: 4 }}>
       <Paper sx={{ p: 3 }}>
         <Typography variant="h4">Stitching Management</Typography>
-        {!order ? (<Skeleton animation="wave" variant="text" sx={{marginBottom: 2, width: '60%'}} />) : (
+        {!order ? (<Skeleton animation="wave" variant="text" sx={{ marginBottom: 2, width: '60%' }} />) : (
           <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
             <Typography>Order ID: <b>{order.orderId}</b></Typography>
             <Typography>Total Quantity: <b>{order.totalQuantity}</b></Typography>
@@ -107,11 +146,11 @@ function StitchingManagement() {
             sx={{ width: '300px' }}
             variant="outlined"
           />
-          <Button variant="contained" onClick={() => setOpenStitchingModal(true)} sx={{ mt: 2 }}>
-            Add Stitching
+          <Button variant="contained" endIcon={<ContentCut />} onClick={() => { setSelectedRecord(null); setOpenStitchingModal(true); }} sx={{ mt: 2 }}>
+            Add
           </Button>
         </Box>
-        <StitchingTable
+        <StitchingGrid
           stitchingRecords={stitchingRecords}
           washingRecords={washingRecords}
           fetchWashingRecords={fetchWashingRecords}
@@ -119,24 +158,28 @@ function StitchingManagement() {
           handleUpdateWashOut={handleUpdateWashOut}
           setOpenWashingModal={setOpenWashingModal}
           setSelectedLot={setSelectedLot}
-          searchTerm={searchTerm} // Pass search term to StitchingTable
+          searchTerm={searchTerm}
+          onEditStitching={handleEditStitching}
+          onEditWashing={handleEditWashing}
         />
         <AddStitchingModal
           open={openStitchingModal}
-          onClose={() => setOpenStitchingModal(false)}
+          onClose={() => { setOpenStitchingModal(false); setSelectedRecord(null); }}
           orderId={orderId}
           vendors={stitchingVendors}
           onAddStitching={handleAddStitching}
+          editRecord={selectedRecord}
         />
         <AddWashingModal
           open={openWashingModal}
-          onClose={() => setOpenWashingModal(false)}
+          onClose={() => { setOpenWashingModal(false); setSelectedWashingRecord(null); }}
           orderId={orderId}
-          lotNumber={selectedLot?.lotNumber || ''}
-          lotId={selectedLot?.lotId || ''}
-          invoiceNumber={selectedLot?.invoiceNumber || ''}
+          lotNumber={selectedWashingRecord?.lotId?.lotNumber || selectedLot?.lotNumber || ''}
+          lotId={selectedWashingRecord?.lotId?._id || selectedLot?.lotId || ''}
+          invoiceNumber={selectedWashingRecord?.lotId?.invoiceNumber || selectedLot?.invoiceNumber || ''}
           vendors={washingVendors}
           onAddWashing={handleAddWashing}
+          editRecord={selectedWashingRecord}
         />
       </Paper>
     </Container>

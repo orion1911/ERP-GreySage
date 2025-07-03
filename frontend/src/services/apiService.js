@@ -113,7 +113,16 @@ const apiService = {
       }
     },
 
-    updateStitching: async (stitchingData) => {
+    updateStitching: async (id, stitchingData) => {
+      try {
+        const response = await axiosInstance.post(`api/stitching-update/${id}`, stitchingData);
+        return response.data;
+      } catch (error) {
+        throw error
+      }
+    },
+
+    updateStitchingStatus: async (stitchingData) => {
       try {
         const response = await axiosInstance.put('api/stitching', stitchingData);
         return response.data;
@@ -146,7 +155,16 @@ const apiService = {
       }
     },
 
-    updateWashing: async (id, washOutDate) => {
+    updateWashing: async (id, washingData) => {
+      try {
+        const response = await axiosInstance.post(`api/washing-update/${id}`, washingData);
+        return response.data;
+      } catch (error) {
+        throw error
+      }
+    },
+
+    updateWashingStatus: async (id, washOutDate) => {
       try {
         const response = await axiosInstance.put(`api/washing/${id}`, { washOutDate });
         return response.data;

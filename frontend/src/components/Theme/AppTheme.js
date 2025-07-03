@@ -24,7 +24,8 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
   }, [darkMode, setDarkModeProp]);
 
   const theme = React.useMemo(() => {
-    const mode = darkMode ? 'dark' : 'light';
+    // const mode = darkMode ? 'dark' : 'light';
+    const mode = 'dark';
     const designTokens = getDesignTokens(mode, variant);
     return createTheme({
       cssVariables: { colorSchemeSelector: 'data-mui-color-scheme', cssVarPrefix: 'template' },

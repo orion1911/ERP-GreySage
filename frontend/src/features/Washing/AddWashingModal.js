@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import { Close as CloseIcon, Add as AddIcon, Delete as DeleteIcon, Save as SaveIcon } from '@mui/icons-material';
@@ -9,9 +9,10 @@ import { MorphDateTextField } from '../../components/MuiCustom';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 
-function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumber, vendors, onAddWashing, isEditMode = false }) {
-
+function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumber, vendors, onAddWashing, editRecord }) {
+  const isEditMode = !!editRecord;
   const [loading, setLoading] = React.useState(false);
+
   const defaultValues = {
     orderId,
     lotNumber: lotNumber || '',
@@ -34,9 +35,25 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
   });
 
   useEffect(() => {
-    setValue('lotNumber', lotNumber || '');
-    setValue('invoiceNumber', invoiceNumber || '');
-  }, [lotNumber, invoiceNumber, setValue]);
+    if (isEditMode && editRecord) {
+      setValue('orderId', editRecord.orderId || orderId);
+      setValue('lotNumber', editRecord.lotNumber || lotNumber || '');
+      setValue('invoiceNumber', editRecord.invoiceNumber || invoiceNumber || '');
+      setValue('vendorId', editRecord.vendorId?._id || '');
+      setValue('date', editRecord.date ? dayjs(editRecord.date) : dayjs(new Date()));
+      setValue('washOutDate', editRecord.washOutDate ? dayjs(editRecord.washOutDate) : null);
+      setValue('description', editRecord.description || '');
+      setValue('washDetails', editRecord.washDetails || [{ washColor: '', washCreation: '', quantity: '', rate: '', quantityShort: '' }]);
+    } else {
+      setValue('lotNumber', lotNumber || '');
+      setValue('invoiceNumber', invoiceNumber || '');
+      setValue('vendorId', '');
+      setValue('date', dayjs(new Date()));
+      setValue('washOutDate', null);
+      setValue('description', '');
+      setValue('washDetails', [{ washColor: '', washCreation: '', quantity: '', rate: '', quantityShort: '' }]);
+    }
+  }, [editRecord, isEditMode, lotNumber, invoiceNumber, orderId, setValue]);
 
   const onSubmit = (data) => {
     const formattedData = {
@@ -46,14 +63,21 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
     };
 
     setLoading(true);
-    apiService.washing.createWashing(formattedData)
+    const request = isEditMode
+      ? apiService.washing.updateWashing(editRecord._id, formattedData)
+      : apiService.washing.createWashing(formattedData);
+
+    request
       .then(res => {
-        setLoading(true);
-        onAddWashing(lotId, res.data);
+        onAddWashing(lotId, res);
         reset(defaultValues);
         onClose();
       })
-      .catch(errors => {alert(errors.response?.error || 'Failed'); setLoading(false)});
+      .catch(err => {
+        alert(err.response?.error || 'Failed');
+        setLoading(false);
+      })
+      .finally(() => setLoading(false));
   };
 
   return (
@@ -80,7 +104,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
         }}
       >
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" id="add-washing-modal">Add Washing</Typography>
+          <Typography variant="h6" id="add-washing-modal">{isEditMode ? 'Edit Washing' : 'Add Washing'}</Typography>
           <IconButton id="close-wash-modal" onClick={onClose}>
             <CloseIcon />
           </IconButton>
@@ -123,7 +147,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
               <Controller
                 name="vendorId"
                 control={control}
-                rules={{ required: 'Required' }}
+                rules={{ required: 'Vendor is required' }}
                 render={({ field }) => (
                   <FormControl fullWidth margin="normal" error={!!errors.vendorId}>
                     <InputLabel>Vendor</InputLabel>
@@ -145,7 +169,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                 <Controller
                   name="date"
                   control={control}
-                  rules={{ required: 'Required' }}
+                  rules={{ required: 'Date is required' }}
                   render={({ field }) => (
                     <DatePicker
                       {...field}
@@ -165,31 +189,13 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                 />
               </LocalizationProvider>
             </Grid>
-            {/* <Grid size={{ xs: 6, md: 6 }} sx={{ alignContent: 'center' }}>
-              <LocalizationProvider dateAdapter={AdapterDayjs}>
-                <Controller
-                  name="washOutDate"
-                  control={control}
-                  render={({ field }) => (
-                    <DatePicker
-                      {...field}
-                      label="Wash Out Date"
-                      format="DD-MMM-YYYY"
-                      slots={{ textField: MorphDateTextField }}
-                      sx={{ width: '-webkit-fill-available', marginTop: '8px' }}
-                      onChange={(value) => field.onChange(value)}
-                    />
-                  )}
-                />
-              </LocalizationProvider>
-            </Grid> */}
             {fields.map((wd, index) => (
               <Grid container spacing={1} key={wd.id} sx={{ alignItems: 'flex-start', mt: 1 }}>
                 <Grid size={{ xs: 6, md: 2 }}>
                   <Controller
                     name={`washDetails[${index}].washColor`}
                     control={control}
-                    rules={{ required: 'Required' }}
+                    rules={{ required: 'Wash Color is required' }}
                     render={({ field }) => (
                       <TextField
                         {...field}
@@ -208,7 +214,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                   <Controller
                     name={`washDetails[${index}].washCreation`}
                     control={control}
-                    rules={{ required: 'Required' }}
+                    rules={{ required: 'Wash Creation is required' }}
                     render={({ field }) => (
                       <TextField
                         {...field}
@@ -228,10 +234,10 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     name={`washDetails[${index}].rate`}
                     control={control}
                     rules={{
-                      required: 'Required',
+                      required: 'Rate is required',
                       pattern: {
                         value: /^\d+(\.\d+)?$/,
-                        message: 'Only Number',
+                        message: 'Only numbers allowed',
                       },
                     }}
                     render={({ field }) => (
@@ -253,10 +259,10 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     name={`washDetails[${index}].quantity`}
                     control={control}
                     rules={{
-                      required: 'Required',
+                      required: 'Quantity is required',
                       pattern: {
                         value: /^\d+$/,
-                        message: 'Only Number',
+                        message: 'Only numbers allowed',
                       },
                     }}
                     render={({ field }) => (
@@ -281,7 +287,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                       rules={{
                         pattern: {
                           value: /^\d+$/,
-                          message: 'Only Number',
+                          message: 'Only numbers allowed',
                         },
                       }}
                       render={({ field }) => (
@@ -300,7 +306,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                   </Grid>
                 )}
                 <Grid size={{ xs: 6, md: 2 }} sx={{ alignContent: 'center' }}>
-                  {index > 0 && <IconButton sx={{ mt: 2  }} onClick={() => remove(index)} color="error">
+                  {index > 0 && <IconButton sx={{ mt: 2 }} onClick={() => remove(index)} color="error">
                     <DeleteIcon />
                   </IconButton>}
                   {index === fields.length - 1 && <IconButton sx={{ mt: 2 }}
@@ -328,22 +334,20 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                 )}
               />
             </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid size={{ xs: 12, md: 2 }}>
               <Button
-                size='large'
                 type="submit"
                 fullWidth
                 endIcon={<SaveIcon />}
                 loading={loading}
                 loadingPosition="end"
                 variant="contained"
-                sx={{ mt: 2 }}
+                // sx={{ mt: 2 }}
               >
-                SAVE
+                {isEditMode ? 'UPDATE' : 'SAVE'}
               </Button>
             </Grid>
           </Grid>
-          
         </form>
       </Box>
     </Modal>

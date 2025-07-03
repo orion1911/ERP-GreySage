@@ -1,30 +1,31 @@
 import React from 'react';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Typography, Box } from '@mui/material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Typography, Box, IconButton } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { MorphDateTextField } from '../../components/MuiCustom';
+import { Edit as EditIcon } from '@mui/icons-material';
 
-function WashingTable({ washingRecords, lotId, handleUpdateWashOut }) {
+function WashingGrid({ washingRecords, lotId, handleUpdateWashOut, onEditWashing }) {
   return (
     <Box sx={{ p: 0, pl: 0 }}>
-      {/* <Typography variant="subtitle1">Washing Records</Typography> */}
       {washingRecords.length > 0 ? (
         <TableContainer>
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>Invoice #</TableCell>
+                {/* <TableCell>Invoice #</TableCell> */}
                 <TableCell>Date</TableCell>
                 <TableCell>Vendor</TableCell>
                 <TableCell>Wash Details</TableCell>
                 <TableCell>Wash Out Date</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {washingRecords.map((wr) => (
                 <TableRow key={wr._id}>
-                  <TableCell>{wr.lotId.invoiceNumber}</TableCell>
+                  {/* <TableCell>{wr.lotId.invoiceNumber}</TableCell> */}
                   <TableCell>{new Date(wr.date).toLocaleDateString()}</TableCell>
                   <TableCell>{wr.vendorId?.name || 'N/A'}</TableCell>
                   <TableCell>
@@ -49,6 +50,11 @@ function WashingTable({ washingRecords, lotId, handleUpdateWashOut }) {
                       </LocalizationProvider>
                     )}
                   </TableCell>
+                  <TableCell>
+                    <IconButton onClick={() => onEditWashing(wr)}>
+                      <EditIcon />
+                    </IconButton>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -61,4 +67,4 @@ function WashingTable({ washingRecords, lotId, handleUpdateWashOut }) {
   );
 }
 
-export default WashingTable;
+export default WashingGrid;

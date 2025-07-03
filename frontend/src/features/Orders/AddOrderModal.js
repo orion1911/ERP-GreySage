@@ -54,6 +54,8 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
   }, [order, isEditMode, reset, setValue]);
 
   const onSubmit = (data) => {
+    if (!data.date || !data.clientId || !data.fabric || !data.fitStyleId || !data.waistSize || !data.totalQuantity)
+      return;
     const totalThreadQuantity = data.threadColors.reduce((sum, tc) => sum + Number(tc.quantity || 0), 0);
     if (totalThreadQuantity !== Number(data.totalQuantity)) {
       alert(`Sum of thread color quantities (${totalThreadQuantity}) must equal total quantity (${data.totalQuantity})`);
@@ -67,6 +69,8 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
 
     const formData = {
       ...data,
+      totalQuantity: Number(data.totalQuantity),
+      threadColors: data.threadColors.map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity.trim())})),
       date: data.date.toISOString(),
     };
 
@@ -192,6 +196,9 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                 render={({ field }) => (
                   <TextField
                     {...field}
+                    onChange={(e) => {
+                      field.onChange(e.target.value.toUpperCase());
+                    }}
                     label="Fabric"
                     fullWidth
                     margin="normal"
@@ -231,6 +238,9 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                 render={({ field }) => (
                   <TextField
                     {...field}
+                    onChange={(e) => {
+                      field.onChange(e.target.value.toUpperCase());
+                    }}
                     label="Waist Size"
                     fullWidth
                     margin="normal"
@@ -256,7 +266,6 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                   <TextField
                     {...field}
                     label="Total Quantity"
-                    type="number"
                     fullWidth
                     margin="normal"
                     variant="outlined"
@@ -276,6 +285,9 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                     render={({ field }) => (
                       <TextField
                         {...field}
+                        onChange={(e) => {
+                          field.onChange(e.target.value.toUpperCase());
+                        }}
                         label="Thread Color"
                         fullWidth
                         margin="normal"
@@ -301,7 +313,6 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                       <TextField
                         {...field}
                         label="Quantity"
-                        type="number"
                         fullWidth
                         margin="normal"
                         variant="outlined"

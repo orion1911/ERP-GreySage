@@ -76,12 +76,13 @@ function Navbar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTogg
         )}
         <IconButton
           onClick={collapsed ? handleDrawerToggle : () => setCollapsed(!collapsed)}
-          sx={{ color: theme.palette.primary.contrastText }}
+          sx={{ color: 'inherit' }}
+          // sx={{ color: theme.palette.primary.contrastText }}
         >
           {collapsed ? <MenuIcon /> : <ChevronLeftIcon />}
         </IconButton>
       </Box>
-      <Divider sx={{ backgroundColor: theme.palette.primary.contrastText, opacity: 0.2 }} />
+      <Divider sx={{ backgroundColor: 'inherit', opacity: 1 }} />
       <List sx={{ flexGrow: 1, overflow: 'auto' }}>
         {navItems.map((item, index) => (
           <ListItem key={index} disablePadding>
@@ -111,7 +112,7 @@ function Navbar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTogg
           </ListItem>
         ))}
       </List>
-      <Box sx={{ p: 1, display: 'flex', justifyContent: collapsed ? 'center' : 'flex-start', gap: 1 }}>
+      <Box sx={{ p: 1, display: 'flex', justifyContent: collapsed ? 'center' : 'flex-end', gap: 1 }}>
         {/* <FormControl size="small" sx={{ minWidth: collapsed ? 40 : 85 }}>
           <Select
             value={variant}

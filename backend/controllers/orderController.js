@@ -2,7 +2,10 @@ const { Order, Counter, Client, FitStyle } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
 
 const createOrder = async (req, res) => {
-  const { date, clientId, fabric, fitStyleId, waistSize, totalQuantity, threadColors, description, attachments } = req.body;
+  let { date, clientId, fabric, fitStyleId, waistSize, totalQuantity, threadColors, description, attachments } = req.body;
+
+  totalQuantity = parseInt(totalQuantity);
+  threadColors = threadColors.map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity)}))
 
   // Validate threadColors quantities
   const totalThreadQuantity = threadColors.reduce((sum, tc) => sum + parseInt(tc.quantity), 0);

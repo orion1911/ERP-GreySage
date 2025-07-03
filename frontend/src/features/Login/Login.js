@@ -58,8 +58,8 @@ export default function Login({ variant, setVariant }) {
   const [loading, setLoading] = React.useState(false);
 
   useEffect(() => {
-    const computedStyle = window.getComputedStyle(document.documentElement);
-    const textPrimaryColor = computedStyle.getPropertyValue('--template-palette-text-primary').trim();
+    // const computedStyle = window.getComputedStyle(document.documentElement);
+    // const textPrimaryColor = computedStyle.getPropertyValue('--template-palette-text-primary').trim();
     const colorScheme = document.documentElement.getAttribute('data-mui-color-scheme');
     console.log('Login theme:', {
       primary: theme.palette.primary.main,
@@ -68,7 +68,7 @@ export default function Login({ variant, setVariant }) {
       mode: theme.palette.mode,
       background: theme.palette.background.default,
       text: theme.palette.text.primary,
-      computedTextPrimary: textPrimaryColor,
+      // computedTextPrimary: textPrimaryColor,
       colorScheme,
     });
   }, [theme]);
@@ -148,21 +148,18 @@ export default function Login({ variant, setVariant }) {
             zIndex: 1200,
           }}
         >
-          <FormControl size="small" sx={{ minWidth: 60 }}>
-            {/* <InputLabel id="theme-variant-label">Theme</InputLabel> */}
+          {/* <FormControl size="small" sx={{ minWidth: 60 }}>
             <Select
               backgroundColor="inherit"
               labelId="theme-variant-label"
               value={variant}
               onChange={handleVariantChange}
-            // label="Theme"
-            // sx={{ width: 90 }}
             >
               <MenuItem value="purple">Purple</MenuItem>
               <MenuItem value="earthy">Earthy</MenuItem>
               <MenuItem value="monochrome">Mono</MenuItem>
             </Select>
-          </FormControl>
+          </FormControl> */}
           <ThemeToggle />
         </Box>
         <Card variant="outlined" data-signin="true">

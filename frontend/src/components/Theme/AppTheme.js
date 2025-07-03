@@ -1,6 +1,7 @@
 import * as React from 'react';
 import PropTypes from 'prop-types';
 import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
+import { typographyClasses } from '@mui/material/Typography';
 import { inputsCustomizations } from './customizations/inputs';
 import { dataDisplayCustomizations } from './customizations/dataDisplay';
 import { feedbackCustomizations } from './customizations/feedback';
@@ -10,22 +11,23 @@ import { getDesignTokens, typography, shadows, shape } from './themePrimitives';
 import { ThemeProvider as CustomThemeProvider } from './ThemeContext';
 
 function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDarkModeProp }) {
-  const [darkMode, setDarkMode] = React.useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const [darkMode, setDarkMode] = React.useState(true);
+  // const [darkMode, setDarkMode] = React.useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
 
-  React.useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e) => {
-      setDarkMode(e.matches);
-      if (setDarkModeProp) setDarkModeProp(e.matches);
-    };
-    mediaQuery.addEventListener('change', handleChange);
-    document.documentElement.setAttribute('data-mui-color-scheme', darkMode ? 'dark' : 'light');
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [darkMode, setDarkModeProp]);
+  // React.useEffect(() => {
+  //   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  //   const handleChange = (e) => {
+  //     setDarkMode(e.matches);
+  //     if (setDarkModeProp) setDarkModeProp(e.matches);
+  //   };
+  //   mediaQuery.addEventListener('change', handleChange);
+  //   document.documentElement.setAttribute('data-mui-color-scheme', darkMode ? 'dark' : 'light');
+  //   return () => mediaQuery.removeEventListener('change', handleChange);
+  // }, [darkMode, setDarkModeProp]);
 
   const theme = React.useMemo(() => {
-    // const mode = darkMode ? 'dark' : 'light';
-    const mode = 'dark';
+    const mode = darkMode ? 'dark' : 'light';
+    // const mode = 'dark';
     const designTokens = getDesignTokens(mode, variant);
     return createTheme({
       cssVariables: { colorSchemeSelector: 'data-mui-color-scheme', cssVarPrefix: 'template' },
@@ -112,7 +114,18 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
           styleOverrides: {
             root: ({ theme }) => ({
               '&:hover': {
-                backgroundColor: theme.palette.primary.dark,
+                ...(theme.palette.mode === 'light' && {
+                  backgroundColor: theme.palette.primary.dark,
+                  [`& .${typographyClasses.root}`]: {
+                    color: theme.palette.text.primary, // Dark text for contrast in light mode
+                  },
+                }),
+                ...theme.applyStyles('dark', {
+                  backgroundColor: theme.palette.primary.dark,
+                  [`& .${typographyClasses.root}`]: {
+                    color: theme.palette.text.primary, // White text in dark mode
+                  },
+                }),
               },
               '&.Mui-selected': {
                 backgroundColor: theme.palette.primary.dark,
@@ -149,7 +162,7 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
           },
           styleOverrides: {
             root: ({ theme }) => ({
-              backgroundColor: theme.palette.primary.main,
+              // backgroundColor: theme.palette.primary.main,
               color: theme.palette.primary.contrastText,
               ...(mode === 'light' && {
                 color: theme.palette.text.primary, // Reference themePrimitives.js

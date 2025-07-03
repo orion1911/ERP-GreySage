@@ -18,11 +18,10 @@ import LaundryIcon from '@mui/icons-material/LocalLaundryService';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 
-function Navbar({ variant, setVariant }) {
+function Navbar({ variant, setVariant, collapsed, setCollapsed, handleDrawerToggle }) {
   const user = JSON.parse(localStorage.getItem('user'));
   const navigate = useNavigate();
   const theme = useTheme();
-  const [collapsed, setCollapsed] = React.useState(false);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -56,17 +55,17 @@ function Navbar({ variant, setVariant }) {
   ];
 
   return (
-    <Drawer
-      variant="permanent"
+    <Box
       sx={{
         width: drawerWidth,
-        flexShrink: 0,
-        '& .MuiDrawer-paper': {
-          width: drawerWidth,
-          borderRadius: 0,
-          boxSizing: 'border-box',
-          transition: 'width 0.3s',
-        },
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        backgroundColor: theme.palette.background.paper,
+        transition: theme.transitions.create(['width'], {
+          easing: theme.transitions.easing.sharp,
+          duration: theme.transitions.duration.enteringScreen,
+        }),
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', p: 1, justifyContent: collapsed ? 'center' : 'space-between' }}>
@@ -75,18 +74,21 @@ function Navbar({ variant, setVariant }) {
             G R E Y S A G E
           </Typography>
         )}
-        <IconButton onClick={() => setCollapsed(!collapsed)} sx={{ color: theme.palette.primary.contrastText }}>
+        <IconButton
+          onClick={collapsed ? handleDrawerToggle : () => setCollapsed(!collapsed)}
+          sx={{ color: 'inherit' }}
+          // sx={{ color: theme.palette.primary.contrastText }}
+        >
           {collapsed ? <MenuIcon /> : <ChevronLeftIcon />}
         </IconButton>
       </Box>
-      <Divider sx={{ backgroundColor: theme.palette.primary.contrastText, opacity: 0.2 }} />
-      <List>
+      <Divider sx={{ backgroundColor: 'inherit', opacity: 1 }} />
+      <List sx={{ flexGrow: 1, overflow: 'auto' }}>
         {navItems.map((item, index) => (
           <ListItem key={index} disablePadding>
             <ListItemButton
               onClick={() => (item.path ? navigate(item.path) : item.onClick())}
               sx={{
-                width: '50px',
                 justifyContent: collapsed ? 'center' : 'flex-start',
                 px: collapsed ? 1 : 2,
               }}
@@ -94,9 +96,8 @@ function Navbar({ variant, setVariant }) {
             >
               <ListItemIcon
                 sx={{
-                  size: 'large',
-                  color: 'inherit',
                   minWidth: collapsed ? 'auto' : 30,
+                  color: 'inherit',
                 }}
               >
                 {item.icon}
@@ -111,8 +112,8 @@ function Navbar({ variant, setVariant }) {
           </ListItem>
         ))}
       </List>
-      <Box sx={{ mt: 'auto', p: 1, display: 'flex', justifyContent: collapsed ? 'center' : 'flex-start', gap: 1 }}>
-        <FormControl size="small" sx={{ minWidth: collapsed ? 40 : 85 }}>
+      <Box sx={{ p: 1, display: 'flex', justifyContent: collapsed ? 'center' : 'flex-end', gap: 1 }}>
+        {/* <FormControl size="small" sx={{ minWidth: collapsed ? 40 : 85 }}>
           <Select
             value={variant}
             onChange={handleVariantChange}
@@ -124,10 +125,10 @@ function Navbar({ variant, setVariant }) {
             <MenuItem value="earthy">Earthy</MenuItem>
             <MenuItem value="monochrome">Mono</MenuItem>
           </Select>
-        </FormControl>
+        </FormControl> */}
         <ThemeToggle />
       </Box>
-    </Drawer>
+    </Box>
   );
 }
 

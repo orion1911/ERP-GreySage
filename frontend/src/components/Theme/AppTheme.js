@@ -10,22 +10,23 @@ import { getDesignTokens, typography, shadows, shape } from './themePrimitives';
 import { ThemeProvider as CustomThemeProvider } from './ThemeContext';
 
 function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDarkModeProp }) {
-  const [darkMode, setDarkMode] = React.useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const [darkMode, setDarkMode] = React.useState(true);
+  // const [darkMode, setDarkMode] = React.useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
 
-  React.useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e) => {
-      setDarkMode(e.matches);
-      if (setDarkModeProp) setDarkModeProp(e.matches);
-    };
-    mediaQuery.addEventListener('change', handleChange);
-    document.documentElement.setAttribute('data-mui-color-scheme', darkMode ? 'dark' : 'light');
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [darkMode, setDarkModeProp]);
+  // React.useEffect(() => {
+  //   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  //   const handleChange = (e) => {
+  //     setDarkMode(e.matches);
+  //     if (setDarkModeProp) setDarkModeProp(e.matches);
+  //   };
+  //   mediaQuery.addEventListener('change', handleChange);
+  //   document.documentElement.setAttribute('data-mui-color-scheme', darkMode ? 'dark' : 'light');
+  //   return () => mediaQuery.removeEventListener('change', handleChange);
+  // }, [darkMode, setDarkModeProp]);
 
   const theme = React.useMemo(() => {
-    // const mode = darkMode ? 'dark' : 'light';
-    const mode = 'dark';
+    const mode = darkMode ? 'dark' : 'light';
+    // const mode = 'dark';
     const designTokens = getDesignTokens(mode, variant);
     return createTheme({
       cssVariables: { colorSchemeSelector: 'data-mui-color-scheme', cssVarPrefix: 'template' },

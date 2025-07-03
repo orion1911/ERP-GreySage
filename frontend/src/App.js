@@ -112,7 +112,7 @@ const AuthenticatedLayout = ({ variant, setVariant }) => {
             backgroundColor: theme.palette.background.default,
           }}
         >
-          <Outlet />
+          <Outlet context={{ isMobile, drawerWidth }} />
         </Box>
       </Box>
     </ProtectedRoute>

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useTheme } from '@mui/material/styles';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, Button, IconButton, Tooltip } from '@mui/material';
-import { LocalLaundryService, ExpandMore, ExpandLess, Edit as EditIcon } from '@mui/icons-material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, Button, IconButton, Tooltip, Typography } from '@mui/material';
+import { LocalLaundryService, ExpandMore, ExpandLess, ChevronRight, Edit as EditIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -40,65 +40,88 @@ function StitchingGrid({
 
   const columns = [
     {
+      accessorKey: 'toggleWashing',
+      header: ' ',
+      cell: ({ row }) => (
+        <Tooltip title="Show Washing" placement='bottom' arrow>
+          <IconButton
+            size="small"
+            sx={{
+              outline: 'none',
+              "&.MuiButtonBase-root:hover": {
+                bgcolor: "transparent"
+              }
+            }}
+            onClick={() => toggleRowExpansion(row.original._id)}
+          >
+            {expandedRows[row.original._id] ? <><LocalLaundryService fontSize='small' /><ExpandMore /></>
+              : <><LocalLaundryService fontSize='small' /><ChevronRight /></>}
+          </IconButton>
+        </Tooltip>
+      )
+    },
+    {
       accessorKey: 'lotId.lotNumber',
-      header: 'Lot #',
+      header: 'LOT #',
       enableSorting: true
     },
     {
       accessorKey: 'lotId.invoiceNumber',
-      header: 'Invoice #',
+      header: 'INVOICE #',
       enableSorting: true
     },
     {
       accessorKey: 'date',
-      header: 'Date',
+      header: 'DATE',
       enableSorting: true,
       cell: ({ row }) => new Date(row.original.date).toLocaleDateString()
     },
     {
       accessorKey: 'vendorId.name',
-      header: 'Vendor',
+      header: 'VENDOR',
       enableSorting: true,
       cell: ({ row }) => row.original.vendorId?.name || 'N/A'
     },
     {
       accessorKey: 'quantity',
-      header: 'Qty',
+      header: 'QTY',
       enableSorting: true
     },
     {
       accessorKey: 'quantityShort',
-      header: 'Qty Short',
+      header: 'QTY SHORT',
       enableSorting: true
     },
     {
       accessorKey: 'rate',
-      header: 'Rate',
+      header: 'RATE',
       enableSorting: true
     },
     {
       accessorKey: 'stitchOutDate',
-      header: 'Stitch Out Date',
+      header: 'STITCH OUT',
       enableSorting: true,
       cell: ({ row }) => (
         row.original.stitchOutDate ? (
           new Date(row.original.stitchOutDate).toLocaleDateString()
-        ) : (
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
-            <DatePicker
-              value={null}
-              onChange={(e) => handleUpdateStitchOut(row.original._id, e)}
-              format='DD-MMM-YYYY'
-              slots={{ textField: MorphDateTextField }}
-              sx={{ width: 165 }}
-            />
-          </LocalizationProvider>
-        )
+        ) : ''
+        // (
+        //   <LocalizationProvider dateAdapter={AdapterDayjs}>
+        //     <DatePicker
+        //       value={null}
+        //       onChange={(e) => handleUpdateStitchOut(row.original._id, e)}
+        //       format='DD-MMM-YYYY'
+        //       slots={{ textField: MorphDateTextField }}
+        //       sx={{ width: 165 }}
+        //     />
+        //   </LocalizationProvider>
+        // )
       )
     },
     {
       accessorKey: 'actions',
-      header: 'Actions',
+      header: () => (<div style={{ textAlign: 'center' }}>ACTIONS</div>),
+      align: 'center',
       cell: ({ row }) => (
         <Box>
           <Tooltip title="Edit" placement='bottom' arrow>
@@ -106,11 +129,11 @@ function StitchingGrid({
               <EditIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Show Washing" placement='bottom' arrow>
+          {/* <Tooltip title="Show Washing" placement='bottom' arrow>
             <IconButton size="small" onClick={() => toggleRowExpansion(row.original._id)}>
               {expandedRows[row.original._id] ? <><LocalLaundryService /><ExpandLess /></> : <><LocalLaundryService /><ExpandMore /></>}
             </IconButton>
-          </Tooltip>
+          </Tooltip> */}
           <Tooltip title="Add Washing" placement='bottom' arrow>
             <Button
               variant="contained"
@@ -156,7 +179,7 @@ function StitchingGrid({
     }
   });
 
-  const getHeaderContent = (column) => column.columnDef && column.columnDef.header ? column.columnDef.header.toUpperCase() : column.id;
+  const getHeaderContent = (column) => column.columnDef && column.columnDef.header ? column.columnDef.header : column.id;
   const isColumnSortable = (column) => column.columnDef && column.columnDef.enableSorting === true;
 
   return (
@@ -176,7 +199,11 @@ function StitchingGrid({
                       }
                     }
                   }}
-                  style={{ cursor: isColumnSortable(colHeader.column) ? 'pointer' : 'default' }}
+                  style={{
+                    cursor: isColumnSortable(colHeader.column) ? 'pointer' : 'default',
+                    textAlign: 'center',
+                    width: colHeader.column.id === 'toggleWashing' && '20px'
+                  }}
                 >
                   {flexRender(getHeaderContent(colHeader.column), colHeader.getContext())}
                   {isColumnSortable(colHeader.column) && colHeader.column.getIsSorted() ? (colHeader.column.getIsSorted() === 'desc' ? ' 🔽' : ' 🔼') : ''}
@@ -187,20 +214,26 @@ function StitchingGrid({
         </TableHead>
         <TableBody>
           {!stitchingRecords ? (
-            <TableRowsLoader colsNum={9} rowsNum={10} />
+            <TableRowsLoader colsNum={10} rowsNum={10} />
           ) : (stitchingRecords && stitchingRecords.length > 0 ? (
             table.getRowModel().rows.map(row => (
               <React.Fragment key={row.id}>
                 <TableRow>
                   {row.getVisibleCells().map(cell => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      style={{
+                        textAlign: 'center',
+                        width: cell.column.id === 'toggleWashing' && '20px',
+                        padding: cell.column.id === 'toggleWashing' && 0
+                      }}>
                       {flexRender(cell.column.columnDef.cell || cell.getValue(), cell.getContext())}
                     </TableCell>
                   ))}
                 </TableRow>
                 {expandedRows[row.original._id] && (
                   <TableRow>
-                    <TableCell colSpan={9}>
+                    <TableCell colSpan={10}>
                       <WashingGrid
                         washingRecords={washingRecords[row.original.lotId?._id] || []}
                         lotId={row.original.lotId?._id}

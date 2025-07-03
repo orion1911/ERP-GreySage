@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import { Close as CloseIcon, Add as AddIcon, Delete as DeleteIcon, Save as SaveIcon } from '@mui/icons-material';
@@ -10,6 +11,7 @@ import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 
 function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumber, vendors, onAddWashing, editRecord }) {
+  const { isMobile, drawerWidth } = useOutletContext();
   const isEditMode = !!editRecord;
   const [loading, setLoading] = React.useState(false);
 
@@ -90,10 +92,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
     >
       <Box
         sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '58%',
-          transform: 'translate(-50%, -50%)',
+          ml: isMobile ? 0 : drawerWidth + 'px',
           width: '50%',
           maxHeight: '80vh',
           overflowY: 'auto',

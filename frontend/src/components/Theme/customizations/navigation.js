@@ -26,9 +26,10 @@ export const navigationCustomizations = {
     styleOverrides: {
       root: ({ theme }) => ({
         ...(theme.palette.mode === 'light' && {
-          color: gray[50], // Ensure navigation buttons in AppBar are readable
+          color: gray[50], // Default color for light mode
           '&:hover': {
             backgroundColor: alpha(gray[50], 0.1),
+            color: theme.palette.text.primary, // Change to dark text on hover for contrast
           },
         }),
         ...theme.applyStyles('dark', {

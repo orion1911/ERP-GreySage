@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Chip } from '@mui/material';
-import { Close as CloseIcon, AttachFile as AttachFileIcon, Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
+import { Close as CloseIcon, AttachFile as AttachFileIcon, Delete as DeleteIcon, Save as SaveIcon, Add as AddIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -10,7 +11,10 @@ import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 
 function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdateOrder, order }) {
+  const { isMobile, drawerWidth } = useOutletContext();
   const isEditMode = !!order;
+  const [loading, setLoading] = React.useState(false);
+
   const defaultValues = {
     date: dayjs(new Date()),
     clientId: '',
@@ -66,6 +70,7 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
       date: data.date.toISOString(),
     };
 
+    setLoading(true);
     const request = isEditMode
       ? apiService.orders.updateOrder(order._id, formData)
       : apiService.orders.createOrder(formData);
@@ -82,7 +87,9 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
       })
       .catch(err => {
         alert(err.response?.error || 'An error occurred');
-      });
+        setLoading(false);
+      })
+      .finally(() => setLoading(false));
   };
 
   const handleFileChange = (e) => {
@@ -111,10 +118,7 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
     >
       <Box
         sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '58%',
-          transform: 'translate(-50%, -50%)',
+          ml: isMobile ? 0 : drawerWidth + 'px',
           width: '50%',
           maxHeight: '80vh',
           overflowY: 'auto',
@@ -338,7 +342,7 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                 )}
               />
             </Grid>
-            {getValues('attachments').length > 0 && (
+            {/* {getValues('attachments').length > 0 && (
               <Grid size={{ xs: 12, md: 12 }} sx={{ border: '1px solid #4741f6', borderRadius: '8px' }}>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, maxHeight: 80, m: 1, overflowY: 'auto' }}>
                   {getValues('attachments').map((attachment, index) => (
@@ -351,8 +355,8 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                   ))}
                 </Box>
               </Grid>
-            )}
-            <Grid size={{ xs: 12, md: 4 }} sx={{ alignContent: 'center' }} fullWidth>
+            )} */}
+            {/* <Grid size={{ xs: 12, md: 4 }} sx={{ alignContent: 'center' }} fullWidth>
               <Button
                 variant="contained"
                 component="label"
@@ -366,13 +370,15 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                   onChange={handleFileChange}
                 />
               </Button>
-            </Grid>
-            <Grid size={{ xs: 12, md: 4 }} fullWidth>
+            </Grid> */}
+            <Grid size={{ xs: 12, md: 2 }}>
               <Button
                 type="submit"
-                variant="contained"
                 fullWidth
-                sx={{ mt: 2 }}
+                endIcon={<SaveIcon />}
+                loading={loading}
+                loadingPosition="end"
+                variant="contained"
               >
                 {isEditMode ? 'UPDATE' : 'SAVE'}
               </Button>

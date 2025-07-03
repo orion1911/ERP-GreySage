@@ -1,6 +1,7 @@
 import * as React from 'react';
 import PropTypes from 'prop-types';
 import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
+import { typographyClasses } from '@mui/material/Typography';
 import { inputsCustomizations } from './customizations/inputs';
 import { dataDisplayCustomizations } from './customizations/dataDisplay';
 import { feedbackCustomizations } from './customizations/feedback';
@@ -113,7 +114,18 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
           styleOverrides: {
             root: ({ theme }) => ({
               '&:hover': {
-                backgroundColor: theme.palette.primary.dark,
+                ...(theme.palette.mode === 'light' && {
+                  backgroundColor: theme.palette.primary.dark,
+                  [`& .${typographyClasses.root}`]: {
+                    color: theme.palette.text.primary, // Dark text for contrast in light mode
+                  },
+                }),
+                ...theme.applyStyles('dark', {
+                  backgroundColor: theme.palette.primary.dark,
+                  [`& .${typographyClasses.root}`]: {
+                    color: theme.palette.text.primary, // White text in dark mode
+                  },
+                }),
               },
               '&.Mui-selected': {
                 backgroundColor: theme.palette.primary.dark,
@@ -150,7 +162,7 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
           },
           styleOverrides: {
             root: ({ theme }) => ({
-              backgroundColor: theme.palette.primary.main,
+              // backgroundColor: theme.palette.primary.main,
               color: theme.palette.primary.contrastText,
               ...(mode === 'light' && {
                 color: theme.palette.text.primary, // Reference themePrimitives.js

@@ -11,7 +11,7 @@ import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 
 function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, editRecord }) {
-  const { isMobile, drawerWidth } = useOutletContext();
+  const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
   const isEditMode = !!editRecord;
   const [loading, setLoading] = React.useState(false);
 
@@ -50,6 +50,24 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
     }
   }, [editRecord, isEditMode, orderId, reset, setValue]);
 
+  const validateLotNumber = (value) => {
+    if (!value) return 'Lot Number is required';
+    const parts = value.replace(/\s/g, '').toUpperCase().split('/');
+    if (parts.length !== 2 && parts.length !== 3) {
+      return 'SERIES/SUBSERIES/NUM (A/1/3)';
+    }
+    if (!/^[A-Z]$/.test(parts[0])) {
+      return 'Series must be a single uppercase letter';
+    }
+    if (!/^\d+$/.test(parts[1])) {
+      return 'Sub-series must be a number';
+    }
+    if (parts.length === 3 && !/^\d+$/.test(parts[2])) {
+      return 'Lot number must be a number';
+    }
+    return true;
+  };
+
   const onSubmit = (data) => {
     const formattedData = {
       ...data,
@@ -69,15 +87,16 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
 
     request
       .then(res => {
+        setLoading(false);
         onAddStitching(res);
         reset(defaultValues);
         onClose();
       })
       .catch(err => {
-        alert(err.response?.error || 'Failed');
+        console.log(err.response);
+        showSnackbar(err);
         setLoading(false);
       })
-      .finally(() => setLoading(false));
   };
 
   return (
@@ -137,16 +156,18 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
               <Controller
                 name="lotNumber"
                 control={control}
-                rules={{ required: 'Lot Number is required' }}
+                rules={{ required: 'Lot Number is required', validate: validateLotNumber }}
                 render={({ field }) => (
                   <TextField
                     {...field}
+                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                     label="Lot Number"
                     fullWidth
                     margin="normal"
                     variant="outlined"
                     error={!!errors.lotNumber}
                     helperText={errors.lotNumber?.message}
+                    placeholder="e.g., A/2 or A/1/3"
                   />
                 )}
               />
@@ -211,7 +232,6 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                   <TextField
                     {...field}
                     label="Quantity"
-                    type="number"
                     fullWidth
                     margin="normal"
                     variant="outlined"
@@ -236,7 +256,6 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                   <TextField
                     {...field}
                     label="Rate"
-                    type="number"
                     fullWidth
                     margin="normal"
                     variant="outlined"

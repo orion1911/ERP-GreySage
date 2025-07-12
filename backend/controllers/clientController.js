@@ -23,13 +23,9 @@ const createClient = async (req, res) => {
   const number = await getNextClientCodeNumber();
   const clientCode = `${prefix}-${number}`;
   const client = new Client({ name, clientCode, contact, email, address, isActive: true });
-  try {
-    await client.save();
-    //await logAction(req.user.userId, 'create_client', 'Client', client._id, `Created client: ${client.name}`);
-    res.status(201).json(client);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
+  await client.save();
+  //await logAction(req.user.userId, 'create_client', 'Client', client._id, `Created client: ${client.name}`);
+  res.status(201).json(client);
 };
 
 const getClients = async (req, res) => {

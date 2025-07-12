@@ -11,7 +11,8 @@ import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 
 function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumber, vendors, onAddWashing, editRecord }) {
-  const { isMobile, drawerWidth } = useOutletContext();
+  const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
+
   const isEditMode = !!editRecord;
   const [loading, setLoading] = React.useState(false);
 
@@ -71,15 +72,16 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
 
     request
       .then(res => {
+        setLoading(false);
         onAddWashing(lotId, res);
         reset(defaultValues);
         onClose();
       })
       .catch(err => {
-        alert(err.response?.error || 'Failed');
+        console.log(err.response);
+        showSnackbar(err);
         setLoading(false);
       })
-      .finally(() => setLoading(false));
   };
 
   return (
@@ -102,6 +104,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
           p: 4,
         }}
       >
+        
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6" id="add-washing-modal">{isEditMode ? 'Edit Washing' : 'Add Washing'}</Typography>
           <IconButton id="close-wash-modal" onClick={onClose}>
@@ -198,6 +201,9 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     render={({ field }) => (
                       <TextField
                         {...field}
+                        onChange={(e) => {
+                          field.onChange(e.target.value.toUpperCase());
+                        }}
                         label="Wash Color"
                         fullWidth
                         margin="normal"
@@ -217,6 +223,9 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     render={({ field }) => (
                       <TextField
                         {...field}
+                        onChange={(e) => {
+                          field.onChange(e.target.value.toUpperCase());
+                        }}
                         label="Wash Creation"
                         fullWidth
                         margin="normal"

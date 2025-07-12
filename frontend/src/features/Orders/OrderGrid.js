@@ -117,8 +117,8 @@ function OrderGrid({ orders, search, onEditOrder }) {
             accessorKey: 'actions',
             header: 'Actions',
             cell: ({ row }) => (
-                <IconButton onClick={() => onEditOrder(row.original)}>
-                    <EditIcon />
+                <IconButton onClick={() => onEditOrder(row.original)} size='small'>
+                    <EditIcon fontSize='small' />
                 </IconButton>
             )
         }
@@ -168,7 +168,10 @@ function OrderGrid({ orders, search, onEditOrder }) {
                                             }
                                         }
                                     }}
-                                    style={{ cursor: isColumnSortable(colHeader.column) ? 'pointer' : 'default' }}
+                                    style={{
+                                        cursor: isColumnSortable(colHeader.column) ? 'pointer' : 'default',
+                                        textAlign: (colHeader.column.id === 'status' || colHeader.column.id === 'actions') && 'center'
+                                    }}
                                 >
                                     {flexRender(getHeaderContent(colHeader.column), colHeader.getContext())}
                                     {isColumnSortable(colHeader.column) && colHeader.column.getIsSorted() ? (colHeader.column.getIsSorted() === 'desc' ? ' 🔽' : ' 🔼') : ''}
@@ -184,7 +187,14 @@ function OrderGrid({ orders, search, onEditOrder }) {
                         table.getRowModel().rows.map(row => (
                             <TableRow key={row.id}>
                                 {row.getVisibleCells().map(cell => (
-                                    <TableCell key={cell.id}>
+                                    <TableCell
+                                        key={cell.id}
+                                        style={{
+                                            textAlign: (cell.column.id === 'totalQuantity' || cell.column.id === 'finalTotalQuantity'
+                                                || cell.column.id === 'status' || cell.column.id === 'actions'
+                                            ) && 'center'
+                                        }}
+                                    >
                                         {flexRender(cell.column.columnDef.cell || cell.getValue(), cell.getContext())}
                                     </TableCell>
                                 ))}

@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
 import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TextField, Button, Container, Typography, Box, Modal, IconButton, Paper } from '@mui/material';
-import { Close as CloseIcon } from '@mui/icons-material';
-import axios from 'axios';
+import { Close as CloseIcon, Save as SaveIcon, PersonAdd } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 
 function ClientCatalog() {
+  const { showSnackbar } = useOutletContext();
+  const [loading, setLoading] = useState(false);
+
   const [clients, setClients] = useState([]);
   const [form, setForm] = useState({ name: '', clientCodePrefix: '', contact: '', email: '', address: '' });
   const [search, setSearch] = useState('');
@@ -16,12 +19,8 @@ function ClientCatalog() {
     apiService.client.getClients(search)
       .then(res => setClients(res))
       .catch(err => {
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          alert('Session expired. Please log in again.');
-          window.location.href = '/login';
-        } else {
-          alert(err.response?.error || 'An error occurred');
-        }
+        console.log(err.response);
+        showSnackbar(err);
       });
   };
 
@@ -52,36 +51,32 @@ function ClientCatalog() {
   };
 
   const handleAddClient = () => {
+    setLoading(true);
     apiService.client.createClient(form)
       .then(res => {
+        setLoading(false);
+        setOpenModal(false);
         setClients([...clients, res]);
         setForm({ name: '', clientCodePrefix: '', contact: '', email: '', address: '' });
-        setOpenModal(false);
       })
       .catch(err => {
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          alert('Session expired. Please log in again.');
-          window.location.href = '/login';
-        } else {
-          alert(err.response?.error || 'An error occurred');
-        }
+        console.log(err.response);
+        showSnackbar(err);
+        setLoading(false);
       });
   };
 
   const handleToggleActive = (id) => {
+    setLoading(true);
     apiService.client.updateClient(id)
       .then(res => {
+        setLoading(false);
         getClients();
       })
       .catch(err => {
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          alert('Session expired. Please log in again.');
-          window.location.href = '/login';
-        } else if (err.response?.status === 404) {
-          alert('Client not found.');
-        } else {
-          alert(err.response?.error || 'An error occurred');
-        }
+        console.log(err.response);
+        showSnackbar(err);
+        setLoading(false);
       });
   };
 
@@ -116,7 +111,13 @@ function ClientCatalog() {
       header: 'Actions',
       enableSorting: false,
       cell: ({ row }) => (
-        <Button variant="contained" color="error" onClick={() => handleToggleActive(row.original._id)}>
+        <Button
+          variant="contained"
+          color="error"
+          loading={loading}
+          loadingPosition="end"
+          onClick={() => handleToggleActive(row.original._id)}
+        >
           {row.original.isActive ? 'Disable' : 'Enable'}
         </Button>
       )
@@ -155,8 +156,12 @@ function ClientCatalog() {
             variant="standard"
             sx={{ maxWidth: '190px' }}
           />
-          <Button variant="contained" onClick={() => setOpenModal(true)} sx={{ mt: 2 }}>
-            Add Client
+          <Button
+            variant="contained"
+            endIcon={<PersonAdd />}
+            onClick={() => setOpenModal(true)} sx={{ mt: 2 }}
+          >
+            Add
           </Button>
         </Box>
         <TableContainer>
@@ -269,7 +274,14 @@ function ClientCatalog() {
               margin="normal"
               variant="outlined"
             />
-            <Button variant="contained" onClick={handleAddClient} sx={{ mt: 2 }}>
+            <Button
+              endIcon={<SaveIcon />}
+              loading={loading}
+              loadingPosition="end"
+              variant="contained"
+              onClick={handleAddClient}
+              sx={{ mt: 2 }}
+            >
               SAVE
             </Button>
           </Box>

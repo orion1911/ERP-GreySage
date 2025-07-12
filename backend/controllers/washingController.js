@@ -5,7 +5,6 @@ const { updateVendorBalance } = require('../services/vendorBalanceService');
 const createWashing = async (req, res) => {
   const { invoiceNumber, orderId, vendorId, quantityShort, rate, date, washOutDate, description, washDetails } = req.body;
 
-  try {
     // Validate required fields
     if (!invoiceNumber) return res.status(400).json({ error: 'Invoice number is required' });
     if (!orderId) return res.status(400).json({ error: 'Order ID is required' });
@@ -69,11 +68,7 @@ const createWashing = async (req, res) => {
 
     // await updateVendorBalance(vendorId, 'washing', lot._id, orderId, totalWashQuantity, rate);
     // await logAction(req.user.userId, 'create_washing', 'Washing', washing._id, `Lot with invoice ${parsedInvoiceNumber} washed`);
-
     res.status(201).json(washing);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
 };
 
 const updateWashing = async (req, res) => {

@@ -11,7 +11,7 @@ import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 
 function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdateOrder, order }) {
-  const { isMobile, drawerWidth } = useOutletContext();
+  const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
   const isEditMode = !!order;
   const [loading, setLoading] = React.useState(false);
 
@@ -58,12 +58,12 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
       return;
     const totalThreadQuantity = data.threadColors.reduce((sum, tc) => sum + Number(tc.quantity || 0), 0);
     if (totalThreadQuantity !== Number(data.totalQuantity)) {
-      alert(`Sum of thread color quantities (${totalThreadQuantity}) must equal total quantity (${data.totalQuantity})`);
+      showSnackbar(`Sum of thread color quantities (${totalThreadQuantity}) must equal total quantity (${data.totalQuantity})`, 'error');
       return;
     }
 
     if (isNaN(data.totalQuantity)) {
-      alert('Total Quantity is not a number');
+      showSnackbar('Total Quantity is not a number', 'error');
       return;
     }
 
@@ -90,7 +90,8 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
         onClose();
       })
       .catch(err => {
-        alert(err.response?.error || 'An error occurred');
+        console.log(err.response);
+        showSnackbar(err);
         setLoading(false);
       })
       .finally(() => setLoading(false));

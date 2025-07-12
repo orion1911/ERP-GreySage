@@ -382,7 +382,7 @@ const apiService = {
 
     updateClient: async (id) => {
       try {
-        const response = await axiosInstance.put(`api/clients/${id}/toggle-active`, null);
+        const response = await axiosInstance.put(`api/clients/${id}/toggle-active`);
         return response.data;
       } catch (error) {
         throw error

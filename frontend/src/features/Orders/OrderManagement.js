@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { TextField, Button,  Container, Typography, Box, Paper } from '@mui/material';
 import { ShoppingCart } from '@mui/icons-material';
 import apiService from '../../services/apiService';
@@ -6,6 +7,7 @@ import AddOrderModal from './AddOrderModal';
 import OrderGrid from './OrderGrid';
 
 function OrderManagement() {
+  const { showSnackbar } = useOutletContext();
   const [orders, setOrders] = useState();
   const [clients, setClients] = useState([]);
   const [fitStyles, setFitStyles] = useState([]);
@@ -26,10 +28,11 @@ function OrderManagement() {
       setFitStyles(fitStylesRes);
     } catch (err) {
       if (err.response?.status === 401 || err.response?.status === 403) {
-        alert('Session expired. Please log in again.');
-        window.location.href = '/login';
+        showSnackbar('Session expired. Please log in again', 'sessionError');
+        // window.location.href = '/login';
       } else {
-        alert(err.response?.error || 'An error occurred');
+        console.log(err.response);
+        showSnackbar(err.response?.data?.error, 'error');
       }
     }
   };
@@ -60,7 +63,7 @@ function OrderManagement() {
         <Typography variant="h4">Order Management</Typography>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'right', mb: 2 }}>
           <TextField
-            label="Search by Order ID"
+            label="Search Orders"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             fullWidth

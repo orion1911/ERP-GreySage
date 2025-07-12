@@ -140,11 +140,12 @@ function StitchingManagement() {
         )}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
           <TextField
-            label="Search Stitching Records"
+            label="Search Stitching"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            sx={{ width: '300px' }}
-            variant="outlined"
+            fullWidth
+            variant="standard"
+            sx={{ maxWidth: '190px' }}
           />
           <Button variant="contained" endIcon={<ContentCut />} onClick={() => { setSelectedRecord(null); setOpenStitchingModal(true); }} sx={{ mt: 2 }}>
             Add

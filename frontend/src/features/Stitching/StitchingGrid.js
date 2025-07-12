@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTheme } from '@mui/material/styles';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
 import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, Button, IconButton, Tooltip, Typography } from '@mui/material';
-import { LocalLaundryService, ExpandMore, ExpandLess, ChevronRight, Edit as EditIcon } from '@mui/icons-material';
+import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -125,8 +125,8 @@ function StitchingGrid({
       cell: ({ row }) => (
         <Box>
           <Tooltip title="Edit" placement='bottom' arrow>
-            <IconButton onClick={() => onEditStitching(row.original)}>
-              <EditIcon />
+            <IconButton onClick={() => onEditStitching(row.original)} sx={{ mr: 1 }}>
+              <EditIcon fontSize='small' />
             </IconButton>
           </Tooltip>
           {/* <Tooltip title="Show Washing" placement='bottom' arrow>
@@ -135,10 +135,15 @@ function StitchingGrid({
             </IconButton>
           </Tooltip> */}
           <Tooltip title="Add Washing" placement='bottom' arrow>
-            <Button
-              variant="contained"
+            <IconButton
               size="small"
-              endIcon={<LocalLaundryService />}
+              sx={{
+                mr: 1,
+                outline: 'none',
+                "&.MuiButtonBase-root:hover": {
+                  bgcolor: "transparent"
+                }
+              }}
               onClick={() => {
                 setSelectedLot({
                   lotNumber: row.original.lotId?.lotNumber || '',
@@ -147,10 +152,10 @@ function StitchingGrid({
                 });
                 setOpenWashingModal(true);
               }}
-              sx={{ mr: 1 }}
             >
-              Add
-            </Button>
+              <Add fontSize='small' />
+              <LocalLaundryService fontSize='small' />
+            </IconButton>
           </Tooltip>
         </Box>
       )

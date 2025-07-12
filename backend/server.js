@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+require('express-async-errors'); // Add this line
 
 // Routes
 const authRoutes = require('./routes/auth');

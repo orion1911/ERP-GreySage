@@ -1,7 +1,7 @@
-import * as React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Box, useMediaQuery, useTheme, IconButton } from '@mui/material';
-import MenuIcon from '@mui/icons-material/Menu';
+import { SnackBar } from './components/SnackBar';
 import "@fontsource/dm-sans";
 import "@fontsource/dm-sans/700.css";
 import "@fontsource/dm-sans/400-italic.css";
@@ -41,6 +41,8 @@ const AdminLayout = () => (
 
 const AuthenticatedLayout = ({ variant, setVariant }) => {
   const theme = useTheme();
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
+
   const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // Mobile breakpoint (<600px)
   const [collapsed, setCollapsed] = React.useState(isMobile); // Default to collapsed on mobile
   const drawerWidth = collapsed ? 60 : 240;
@@ -68,6 +70,40 @@ const AuthenticatedLayout = ({ variant, setVariant }) => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isMobile, collapsed]);
+
+  let snackbarTimeout;
+  const showSnackbar = (error, severity = 'error') => {
+    let message = error;
+    clearTimeout(snackbarTimeout);
+
+    if (typeof error === 'object') {
+      if (error.response.status === 401 || error.response.status === 403) {
+        severity = 'sessionError';
+      }
+      else if (error.response && error.response.data && error.response.data.error) {
+        message = error.response.data.error;
+      } else {
+        message = 'An unexpected API error occurred';
+      }
+    }
+    if (severity === 'sessionError') {
+      message = 'Session expired. Please log in again.';
+    }
+    setSnackbar({ open: true, message: message, severity: severity });
+
+    snackbarTimeout = setTimeout(() => {
+      setSnackbar((prev) => ({ ...prev, open: false }));
+    }, 4000); // Match autoHideDuration in SnackBar.js
+  };
+
+  useEffect(() => {
+    if (snackbar.severity === 'sessionError' && !snackbar.open) {
+      // Redirect to login if session error
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+  }, [snackbar.open])
 
   return (
     <ProtectedRoute>
@@ -112,7 +148,12 @@ const AuthenticatedLayout = ({ variant, setVariant }) => {
             backgroundColor: theme.palette.background.default,
           }}
         >
-          <Outlet context={{ isMobile, drawerWidth }} />
+          <SnackBar
+            open={snackbar.open}
+            message={snackbar.message}
+            severity={snackbar.severity}
+          />
+          <Outlet context={{ isMobile, drawerWidth, showSnackbar }} />
         </Box>
       </Box>
     </ProtectedRoute>

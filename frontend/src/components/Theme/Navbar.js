@@ -16,7 +16,7 @@ import DryCleaningIcon from '@mui/icons-material/DryCleaning';
 import ContentCutIcon from '@mui/icons-material/ContentCut';
 import LaundryIcon from '@mui/icons-material/LocalLaundryService';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import { ShoppingCart as ShoppingCartIcon, Leaderboard as LeaderboardIcon } from '@mui/icons-material';
 
 function Navbar({ variant, setVariant, collapsed, setCollapsed, handleDrawerToggle }) {
   const user = JSON.parse(localStorage.getItem('user'));
@@ -38,6 +38,7 @@ function Navbar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTogg
   const drawerWidth = collapsed ? 60 : 240;
 
   const navItems = [
+    { label: 'Dashboard', path: '/dashboard', icon: <LeaderboardIcon /> },
     { label: 'Orders', path: '/orders', icon: <ShoppingCartIcon /> },
     { label: 'Invoices', path: '/invoices', icon: <ReceiptIcon /> },
     { label: 'Clients', path: '/clients', icon: <PeopleIcon /> },

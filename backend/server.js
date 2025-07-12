@@ -5,6 +5,7 @@ require('express-async-errors'); // Add this line
 
 // Routes
 const authRoutes = require('./routes/auth');
+const dashboardRoutes = require('./routes/dashboard');
 const userRoutes = require('./routes/users');
 const clientRoutes = require('./routes/clients');
 const fitStyleRoutes = require('./routes/fitStyles');
@@ -54,6 +55,7 @@ mongoose.connect(process.env.MONGO_URI, {
 
 // Route Setup
 app.use('/api', authRoutes);
+app.use('/api', dashboardRoutes);
 app.use('/api', userRoutes);
 app.use('/api', clientRoutes);
 app.use('/api', fitStyleRoutes);

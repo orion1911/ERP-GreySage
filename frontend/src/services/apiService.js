@@ -3,6 +3,30 @@ import axiosInstance from './axiosInstance';
 const apiService = {
 
   admin: {
+    dashboard: {
+      getOrderStats: async (params) => {
+        try {
+          const response = await axiosInstance.get('api/dashboard/orders/status', {
+            params: { params },
+          });
+          return response.data;
+        } catch (error) {
+          throw error
+        }
+      },
+
+      getProductionStats: async (params) => {
+        try {
+          const response = await axiosInstance.get('api/dashboard/production/stages', {
+            params: { params },
+          });
+          return response.data;
+        } catch (error) {
+          throw error
+        }
+      },
+    },
+
     userMgmt: {
       getUsers: async () => {
         try {
@@ -22,6 +46,7 @@ const apiService = {
         }
       }
     },
+
     audit: {
       getAudits: async () => {
         try {
@@ -32,9 +57,10 @@ const apiService = {
         }
       },
     },
+
     report: {
       getReport: async () => {
-         try {
+        try {
           const response = await axiosInstance.get('api/reports');
           return response.data;
         } catch (error) {
@@ -42,7 +68,7 @@ const apiService = {
         }
       },
       generateReport: async (repData) => {
-         try {
+        try {
           const response = await axiosInstance.post('api/reports', repData);
           return response.data;
         } catch (error) {

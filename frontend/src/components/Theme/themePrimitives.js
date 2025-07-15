@@ -219,11 +219,11 @@ export const getDesignTokens = (mode, variant = 'purple') => {
         tableHeader: mode === 'dark' ? gray[50] : '#a3aed0', // Defined for table headers
       },
       action: {
-        hover: alpha(gray[200], 0.2),
-        selected: `${alpha(gray[200], 0.3)}`,
+        hover: alpha(gray[300], 0.2),
+        selected: `${alpha(gray[300], 0.4)}`,
         ...(mode === 'dark' && {
           hover: alpha(gray[600], 0.2),
-          selected: alpha(gray[600], 0.3),
+          selected: alpha(gray[600], 0.4),
         }),
       },
       baseShadow:

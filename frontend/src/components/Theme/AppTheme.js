@@ -110,29 +110,29 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
             }),
           },
         },
-        MuiListItemButton: {
-          styleOverrides: {
-            root: ({ theme }) => ({
-              '&:hover': {
-                ...(theme.palette.mode === 'light' && {
-                  backgroundColor: theme.palette.primary.dark,
-                  [`& .${typographyClasses.root}`]: {
-                    color: theme.palette.text.primary, // Dark text for contrast in light mode
-                  },
-                }),
-                ...theme.applyStyles('dark', {
-                  backgroundColor: theme.palette.primary.dark,
-                  [`& .${typographyClasses.root}`]: {
-                    color: theme.palette.text.primary, // White text in dark mode
-                  },
-                }),
-              },
-              '&.Mui-selected': {
-                backgroundColor: theme.palette.primary.dark,
-              },
-            }),
-          },
-        },
+        // MuiListItemButton: {
+        //   styleOverrides: {
+        //     root: ({ theme }) => ({
+        //       '&:hover': {
+        //         ...(theme.palette.mode === 'light' && {
+        //           backgroundColor: theme.palette.primary.light,
+        //           [`& .${typographyClasses.root}`]: {
+        //             color: theme.palette.text.primary, // Dark text for contrast in light mode
+        //           },
+        //         }),
+        //         ...theme.applyStyles('dark', {
+        //           backgroundColor: theme.palette.primary.dark,
+        //           [`& .${typographyClasses.root}`]: {
+        //             color: theme.palette.text.primary, // White text in dark mode
+        //           },
+        //         }),
+        //       },
+        //       '&.Mui-selected': {
+        //         backgroundColor: theme.palette.primary.dark,
+        //       },
+        //     }),
+        //   },
+        // },
         MuiListItemText: {
           styleOverrides: {
             root: ({ theme }) => ({
@@ -219,18 +219,18 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
             }),
           },
         },
-        MuiTableRow: {
-          styleOverrides: {
-            root: ({ theme }) => ({
-              '&:nth-of-type(odd)': {
-                // backgroundColor: theme.palette.action.hover,
-              },
-              '&:hover': {
-                backgroundColor: theme.palette.action.selected,
-              },
-            }),
-          },
-        },
+        // MuiTableRow: {
+        //   styleOverrides: {
+        //     root: ({ theme }) => ({
+        //       '&:nth-of-type(odd)': {
+        //         // backgroundColor: theme.palette.action.hover,
+        //       },
+        //       '&:hover': {
+        //         backgroundColor: theme.palette.action.selected,
+        //       },
+        //     }),
+        //   },
+        // },
         MuiTableCell: {
           styleOverrides: {
             root: ({ theme }) => ({

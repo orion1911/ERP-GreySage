@@ -14,7 +14,7 @@ function FinishingVendorCatalog() {
 
   const getFinishingVendors = () => {
     apiService.finishingVendors.getFinishingVendors(search)
-      .then(res => {setTimeout(() => setVendors(res), process.env.REACT_APP_DATA_LOAD_TIMEOUT)})
+      .then(res => { setTimeout(() => setVendors(res), process.env.REACT_APP_DATA_LOAD_TIMEOUT) })
       .catch(err => {
         if (err.response?.status === 401 || err.response?.status === 403) {
           alert('Session expired. Please log in again.');
@@ -113,123 +113,121 @@ function FinishingVendorCatalog() {
   const isColumnSortable = (column) => column.columnDef && column.columnDef.enableSorting === true;
 
   return (
-    <Container sx={{ mt: 4 }}>
-      <Paper sx={{ p: 3 }}>
-        <Typography variant="h4">Finishing Vendor Catalog</Typography>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'right', mb: 2 }}>
-          <TextField
-            label="Search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            fullWidth
-            variant="standard"
-            sx={{ maxWidth: '190px' }}
-          />
-          <Button variant="contained" onClick={() => setOpenModal(true)} sx={{ mt: 2 }}>
-            Add Finishing Vendor
-          </Button>
-        </Box>
-        <TableContainer>
-          <Table>
-            <TableHead>
-              {table.getHeaderGroups().map(headerGroup => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map(colHeader => (
-                    <TableCell
-                      key={colHeader.column.id}
-                      onClick={(event) => {
-                        if (isColumnSortable(colHeader.column)) {
-                          const sortHandler = colHeader.column.getToggleSortingHandler();
-                          if (sortHandler) {
-                            sortHandler(event);
-                          }
+    <>
+      <Typography variant="h4" sx={{ mb: 1 }}>Finishing Vendor Catalog</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'right', mb: 2 }}>
+        <TextField
+          label="Search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          fullWidth
+          variant="standard"
+          sx={{ maxWidth: '190px' }}
+        />
+        <Button variant="contained" onClick={() => setOpenModal(true)} sx={{ mt: 2 }}>
+          Add Finishing Vendor
+        </Button>
+      </Box>
+      <TableContainer>
+        <Table>
+          <TableHead>
+            {table.getHeaderGroups().map(headerGroup => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map(colHeader => (
+                  <TableCell
+                    key={colHeader.column.id}
+                    onClick={(event) => {
+                      if (isColumnSortable(colHeader.column)) {
+                        const sortHandler = colHeader.column.getToggleSortingHandler();
+                        if (sortHandler) {
+                          sortHandler(event);
                         }
-                      }}
-                      style={{ cursor: isColumnSortable(colHeader.column) ? 'pointer' : 'default' }}
-                    >
-                      {flexRender(getHeaderContent(colHeader.column), colHeader.getContext())}
-                      {isColumnSortable(colHeader.column) && colHeader.column.getIsSorted() ? (colHeader.column.getIsSorted() === 'desc' ? ' 🔽' : ' 🔼') : ''}
+                      }
+                    }}
+                    style={{ cursor: isColumnSortable(colHeader.column) ? 'pointer' : 'default' }}
+                  >
+                    {flexRender(getHeaderContent(colHeader.column), colHeader.getContext())}
+                    {isColumnSortable(colHeader.column) && colHeader.column.getIsSorted() ? (colHeader.column.getIsSorted() === 'desc' ? ' 🔽' : ' 🔼') : ''}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableHead>
+          <TableBody>
+            {!vendors ? (
+              <TableRowsLoader colsNum={5} rowsNum={10} />
+            ) : (vendors && vendors.length > 0 ? (
+              table.getRowModel().rows.map(row => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map(cell => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell || cell.getValue(), cell.getContext())}
                     </TableCell>
                   ))}
                 </TableRow>
-              ))}
-            </TableHead>
-            <TableBody>
-              {!vendors ? (
-                <TableRowsLoader colsNum={5} rowsNum={10} />
-              ) : (vendors && vendors.length > 0 ? (
-                table.getRowModel().rows.map(row => (
-                  <TableRow key={row.id}>
-                    {row.getVisibleCells().map(cell => (
-                      <TableCell key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell || cell.getValue(), cell.getContext())}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))) : <NoRecordRow />)}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              ))) : <NoRecordRow />)}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
-        <Modal
-          open={openModal}
-          onClose={() => setOpenModal(false)}
-          aria-labelledby="add-vendor-modal"
-          aria-describedby="modal-to-add-new-vendor"
+      <Modal
+        open={openModal}
+        onClose={() => setOpenModal(false)}
+        aria-labelledby="add-vendor-modal"
+        aria-describedby="modal-to-add-new-vendor"
+      >
+        <Box
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 400,
+            bgcolor: 'background.paper',
+            borderRadius: 2,
+            boxShadow: 24,
+            p: 4,
+          }}
         >
-          <Box
-            sx={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: 400,
-              bgcolor: 'background.paper',
-              borderRadius: 2,
-              boxShadow: 24,
-              p: 4,
-            }}
-          >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6" id="add-vendor-modal">Add Finishing Vendor</Typography>
-              <IconButton onClick={() => setOpenModal(false)}>
-                <CloseIcon />
-              </IconButton>
-            </Box>
-            <TextField
-              name="name"
-              label="Name"
-              value={form.name}
-              onChange={handleChange}
-              fullWidth
-              margin="normal"
-              variant="outlined"
-            />
-            <TextField
-              name="contact"
-              label="Contact"
-              value={form.contact}
-              onChange={handleChange}
-              fullWidth
-              margin="normal"
-              variant="outlined"
-            />
-            <TextField
-              name="address"
-              label="Address"
-              value={form.address}
-              onChange={handleChange}
-              fullWidth
-              margin="normal"
-              variant="outlined"
-            />
-            <Button variant="contained" onClick={handleAddVendor} sx={{ mt: 2 }}>
-              SAVE
-            </Button>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" id="add-vendor-modal">Add Finishing Vendor</Typography>
+            <IconButton onClick={() => setOpenModal(false)}>
+              <CloseIcon />
+            </IconButton>
           </Box>
-        </Modal>
-      </Paper>
-    </Container>
+          <TextField
+            name="name"
+            label="Name"
+            value={form.name}
+            onChange={handleChange}
+            fullWidth
+            margin="normal"
+            variant="outlined"
+          />
+          <TextField
+            name="contact"
+            label="Contact"
+            value={form.contact}
+            onChange={handleChange}
+            fullWidth
+            margin="normal"
+            variant="outlined"
+          />
+          <TextField
+            name="address"
+            label="Address"
+            value={form.address}
+            onChange={handleChange}
+            fullWidth
+            margin="normal"
+            variant="outlined"
+          />
+          <Button variant="contained" onClick={handleAddVendor} sx={{ mt: 2 }}>
+            SAVE
+          </Button>
+        </Box>
+      </Modal>
+    </>
   );
 }
 

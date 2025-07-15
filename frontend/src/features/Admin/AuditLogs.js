@@ -41,7 +41,7 @@ function AuditLogs() {
   const isColumnSortable = (column) => column.columnDef && column.columnDef.enableSorting === true;
 
   return (
-    <Container sx={{ mt: 4 }}>
+    <>
       <Typography variant="h4" gutterBottom>Audit Logs</Typography>
       <TextField
         label="Search"
@@ -88,7 +88,7 @@ function AuditLogs() {
           ))}
         </TableBody>
       </Table>
-    </Container>
+    </>
   );
 }
 

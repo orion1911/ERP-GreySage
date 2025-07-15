@@ -4,7 +4,7 @@ import { Container, Paper, Box, Grid, Stack, Typography } from '@mui/material';
 import dayjs from 'dayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { DateRangePicker } from '@mui/x-date-pickers-pro';
 import { MorphDateTextField } from '../../components/MuiCustom.js';
 import StatCard from './StatCard.js';
 import apiService from '../../services/apiService.js';
@@ -45,17 +45,21 @@ const data = [
 ];
 
 function Dashboard() {
-  const { showSnackbar } = useOutletContext();
+  const { isMobile, showSnackbar } = useOutletContext();
   const user = JSON.parse(localStorage.getItem('user'));
   const navigate = useNavigate();
   const token = localStorage.getItem('token');
 
   const [orderStats, setOrdertats] = useState();
   const [productionStats, setProductionStats] = useState();
-  const [dateRange, setDateRange] = React.useState({
-    fromDate: dayjs('2022-11-19'),
-    toDate: dayjs(new Date()),
-  });
+  // const [dateRange, setDateRange] = React.useState({
+  //   fromDate: dayjs('2022-11-19'),
+  //   toDate: dayjs(new Date()),
+  // });
+  const [dateRange, setDateRange] = React.useState([
+    dayjs('2022-04-17'),
+    dayjs('2022-04-21'),
+  ]);
 
   const [cardData, setCardData] = useState([]);
 
@@ -83,29 +87,27 @@ function Dashboard() {
   }, [token]);
 
   return (
-    // <Container sx={{ mt: 4 }}>
+    // <Container maxWidth={false} disableGutters={isMobile ? true : false} sx={{ mt: 4 }}>
     //   <Typography variant="h4">Welcome, {user.username} ({user.role})</Typography>
-    // </Container>
-    <Container sx={{ mt: 4 }}>
-      <Paper sx={{ p: 3 }}>
-
-        <Grid container spacing={2}>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <Typography variant="h4" sx={{ mb: 2 }}>Dashboard</Typography>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }} spacing={2}>
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <DatePicker
-                // label='From Date'
-                value={dateRange.fromDate}
-                onChange={(newValue) => setDateRange(...dateRange, { fromDate: newValue })}
-                format='DD-MMM-YYYY'
-                slots={{ textField: MorphDateTextField }}
-                sx={{ width: 155 }}
-                variant='standard'
-              />
-            </LocalizationProvider>
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
+    // </>
+    <>
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, sm: 6, md: 4, }}>
+          <Typography variant="h4">Dashboard</Typography>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }} sx={{ mb: 3, mt: 1, textAlign: 'center' }}>
+          <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <DateRangePicker
+              // label='From Date'
+              value={dateRange}
+              onChange={(newValue) => setDateRange(newValue)}
+              format='DD-MMM-YYYY'
+              slots={{ textField: MorphDateTextField }}
+              slotProps={{ textField: { variant: 'standard', size: 'medium' } }}
+              sx={{ width: '95%' }}
+            />
+          </LocalizationProvider>
+          {/* <LocalizationProvider dateAdapter={AdapterDayjs}>
               <DatePicker
                 // label='To Date'
                 value={dateRange.toDate}
@@ -114,9 +116,9 @@ function Dashboard() {
                 slots={{ textField: MorphDateTextField }}
                 sx={{ width: 155, float: 'right' }}
               />
-            </LocalizationProvider>
-          </Grid>
-          {/* <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+            </LocalizationProvider> */}
+        </Grid>
+        {/* <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <LocalizationProvider dateAdapter={AdapterDayjs}>
             <DatePicker
               label='To Date'
@@ -128,30 +130,30 @@ function Dashboard() {
             />
           </LocalizationProvider>
           </Grid> */}
-        </Grid>
-        <Box sx={{ width: '100%', maxWidth: { sm: '100%', md: '1700px' } }}>
-          <Grid
-            container
-            spacing={2}
-            columns={12}
-            sx={{ mb: 2 }}
-          >
-            {data.map((card, index) => (
-              <Grid key={index} size={{ xs: 12, sm: 6, lg: 4 }}>
-                <StatCard {...card} />
-              </Grid>
-            ))}
-            {/* <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+      </Grid>
+      <Box sx={{ width: '100%', maxWidth: { sm: '100%', md: '1700px' } }}>
+        <Grid
+          container
+          spacing={2}
+          columns={12}
+          sx={{ mb: 2 }}
+        >
+          {data.map((card, index) => (
+            <Grid key={index} size={{ xs: 12, sm: 6, lg: 4 }}>
+              <StatCard {...card} />
+            </Grid>
+          ))}
+          {/* <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                 <HighlightedCard />
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>
                   <SessionsChart />
                 </Grid> */}
-            <Grid size={{ xs: 12, md: 12 }}>
-              <TotalQtyByClientBar />
-            </Grid>
+          <Grid size={{ xs: 12, md: 12 }}>
+            <TotalQtyByClientBar />
           </Grid>
-          {/* <Typography component="h2" variant="h6" sx={{ mb: 2 }}>
+        </Grid>
+        {/* <Typography component="h2" variant="h6" sx={{ mb: 2 }}>
                 Details
               </Typography>
               <Grid container spacing={2} columns={12}>
@@ -166,9 +168,8 @@ function Dashboard() {
                 </Grid>
               </Grid>
               <Copyright sx={{ my: 4 }} /> */}
-        </Box>
-      </Paper>
-    </Container>
+      </Box>
+    </>
   );
 }
 

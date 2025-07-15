@@ -105,7 +105,7 @@ function InvoiceManagement() {
   });
 
   return (
-    <Container sx={{ mt: 4 }}>
+    <>
       <Typography variant="h4" gutterBottom>Invoice Management</Typography>
       <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 2, mb: 2 }}>
         <Typography variant="h6">Create Invoice</Typography>
@@ -209,7 +209,7 @@ function InvoiceManagement() {
           })}
         </TableBody>
       </Table>
-    </Container>
+    </>
   );
 }
 

@@ -34,7 +34,7 @@ function Reports() {
   };
 
   return (
-    <Container sx={{ mt: 4 }}>
+    <>
       <Typography variant="h4" gutterBottom>Reports</Typography>
       <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 2, mb: 2 }}>
         <Typography variant="h6">Generate Report</Typography>
@@ -93,7 +93,7 @@ function Reports() {
           </Button>
         </Box>
       ))}
-    </Container>
+    </>
   );
 }
 

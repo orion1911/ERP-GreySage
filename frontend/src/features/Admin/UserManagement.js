@@ -46,7 +46,7 @@ function UserManagement() {
   };
 
   return (
-    <Container sx={{ mt: 4 }}>
+    <>
       <Typography variant="h4" gutterBottom>User Management</Typography>
       <TextField
         label="Search"
@@ -93,7 +93,7 @@ function UserManagement() {
           ))}
         </TableBody>
       </Table>
-    </Container>
+    </>
   );
 }
 

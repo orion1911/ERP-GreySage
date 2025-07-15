@@ -127,9 +127,10 @@ function StitchingManagement() {
   };
 
   return (
-    <Container sx={{ mt: 4 }}>
-      <Paper sx={{ p: 3 }}>
-        <Typography variant="h4">Stitching Management</Typography>
+    <>
+      {/* <Paper sx={{ p: 3 }}> */}
+      <>
+        <Typography variant="h4" sx={{ mb: 1 }}>Stitching Management</Typography>
         {!order ? (<Skeleton animation="wave" variant="text" sx={{ marginBottom: 2, width: '60%' }} />) : (
           <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
             <Typography>Order ID: <b>{order.orderId}</b></Typography>
@@ -182,8 +183,8 @@ function StitchingManagement() {
           onAddWashing={handleAddWashing}
           editRecord={selectedWashingRecord}
         />
-      </Paper>
-    </Container>
+      </>
+    </>
   );
 }
 

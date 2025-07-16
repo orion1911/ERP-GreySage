@@ -24,7 +24,7 @@ const data = [
   },
   {
     title: 'In Stitching',
-    value: '325',
+    value: '18k',
     interval: 'Last 30 days',
     trend: 'down',
     data: [
@@ -34,7 +34,17 @@ const data = [
   },
   {
     title: 'In Washing',
-    value: '200k',
+    value: '12k',
+    interval: 'Last 30 days',
+    trend: 'neutral',
+    data: [
+      500, 400, 510, 530, 520, 600, 530, 520, 510, 730, 520, 510, 530, 620, 510, 530,
+      520, 410, 530, 520, 610, 530, 520, 610, 530, 420, 510, 430, 520, 510,
+    ],
+  },
+  {
+    title: 'In Finishing',
+    value: '2k',
     interval: 'Last 30 days',
     trend: 'neutral',
     data: [
@@ -139,7 +149,7 @@ function Dashboard() {
           sx={{ mb: 2 }}
         >
           {data.map((card, index) => (
-            <Grid key={index} size={{ xs: 12, sm: 6, lg: 4 }}>
+            <Grid key={index} size={{ xs: 6, sm: 6, lg: 4 }}>
               <StatCard {...card} />
             </Grid>
           ))}

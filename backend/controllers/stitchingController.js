@@ -57,7 +57,7 @@ const validateLotNumber = async (lotNumber, excludeLotId = null) => {
       (newRangeEnd >= range.start && newRangeEnd <= range.end) ||
       (newRangeStart <= range.start && newRangeEnd >= range.end);
     if (overlap) {
-      throw new Error(`Lot range ${newRangeStart}-${newRangeEnd} in series ${series} conflicts with existing range ${range.start}-${range.end}`);
+      throw new Error(`Lot range already exists! Lot range ${series}/${newRangeStart}/${newRangeEnd} conflicts with existing range ${series}/${range.start}/${range.end}`);
     }
   }
 };
@@ -98,10 +98,10 @@ const createStitching = async (req, res) => {
   });
   if (existingLot) {
     if (existingLot.lotNumber === lotNumber) {
-      return res.status(400).json({ error: 'Lot number already exists' });
+      return res.status(400).json({ error: `Lot number (${existingLot.lotNumber}) already exists` });
     }
     if (existingLot.invoiceNumber === invoiceNumber) {
-      return res.status(400).json({ error: 'Invoice number already exists' });
+      return res.status(400).json({ error: `Invoice number (${existingLot.invoiceNumber}) already exists` });
     }
   }
 
@@ -160,7 +160,7 @@ const createStitching = async (req, res) => {
   }
 
   // Perform non-transactional updates
-  await updateVendorBalance(vendorId, 'stitching', lot._id, orderId, quantity, rate);
+  // await updateVendorBalance(vendorId, 'stitching', lot._id, orderId, quantity, rate);
   // await logAction(req.user.userId, 'create_stitching', 'Stitching', stitching._id, `Lot ${lotNumber} with invoice ${invoiceNumber} created`);
 
   res.status(201).json(stitching);

@@ -19,7 +19,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { ShoppingCart as ShoppingCartIcon, Leaderboard as LeaderboardIcon } from '@mui/icons-material';
 import { motion } from 'motion/react'; // Import motion from @motionone/dom
 
-function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerToggle }) {
+function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerToggle, isMobile }) {
   const user = JSON.parse(localStorage.getItem('user'));
   const navigate = useNavigate();
   const location = useLocation();
@@ -35,6 +35,15 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
     const newVariant = event.target.value;
     console.log('Navbar: Changing variant to', newVariant);
     setVariant(newVariant);
+  };
+
+  const handleMenuClick = (item) => {
+    if (item.path) {
+      navigate(item.path);
+      isMobile && setCollapsed(true);
+    } else if (item.onClick) {
+      item.onClick();
+    }
   };
 
   const drawerWidth = collapsed ? 60 : 240;
@@ -108,12 +117,13 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
             >
               <ListItemButton
                 selected={location.pathname === item.path}
-                onClick={() => (item.path ? navigate(item.path) : item.onClick())}
+                onClick={() => handleMenuClick(item)}
                 sx={{
                   backgroundColor: location.pathname === item.path ? theme.palette.action.selected : 'transparent',
                   justifyContent: collapsed ? 'center' : 'flex-start',
                   px: collapsed ? 1 : 2,
                   overflowX: 'hidden',
+                  whiteSpace: 'nowrap'
                 }}
                 disabled={item.path === '/invoices'}
               >

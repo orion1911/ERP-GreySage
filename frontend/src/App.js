@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { LicenseInfo } from '@mui/x-license';
 import { Box, Stack, Container, useMediaQuery, useTheme, IconButton } from '@mui/material';
+import { Menu as MenuIcon } from '@mui/icons-material';
 import { SnackBar } from './components/SnackBar';
 import "@fontsource/dm-sans";
 import "@fontsource/dm-sans/700.css";
@@ -111,17 +112,27 @@ const AuthenticatedLayout = ({ variant, setVariant }) => {
   return (
     <ProtectedRoute>
       <Box sx={{ display: 'flex', minHeight: '100vh', height: '100vh', backgroundColor: theme.palette.background.default, overflow: 'hidden' }}>
-        {/* Navbar as a fixed sidebar */}
+        {isMobile && collapsed && (<Box sx={{
+          position: 'absolute', display: 'flex', top: 0, right: 0, zIndex: 99, p: 2
+        }}>
+          <IconButton
+            size="small"
+            onClick={collapsed ? handleDrawerToggle : () => setCollapsed(!collapsed)}
+            sx={{ backgroundColor: theme.palette.background.paper, boxShadow: theme.palette.mode === 'light' ? 2 : '0px 3px 1px -2px rgba(255, 255, 255, 0.2),0px 2px 2px 0px rgba(255, 255, 255, 0.14),0px 1px 5px 0px rgba(255, 255, 255, 0.12)' }}
+          >
+            {collapsed && <MenuIcon />}
+          </IconButton>
+        </Box>)}
         <Box
-          className="navbar" // Add class for click detection
+          className="navbar"
           sx={{
-            width: drawerWidth,
+            width: isMobile && collapsed ? 0 : drawerWidth,
             flexShrink: 0,
             transition: theme.transitions.create(['width'], {
               easing: theme.transitions.easing.sharp,
               duration: theme.transitions.duration.enteringScreen,
             }),
-            position: isMobile ? 'fixed' : 'static', // Fixed position for both mobile and desktop
+            position: isMobile ? 'fixed' : 'static',
             top: 0,
             bottom: 0,
             height: '100vh', // Full viewport height
@@ -136,6 +147,7 @@ const AuthenticatedLayout = ({ variant, setVariant }) => {
             collapsed={collapsed}
             setCollapsed={setCollapsed}
             handleDrawerToggle={handleDrawerToggle}
+            isMobile={isMobile}
           />
         </Box>
         <Box
@@ -146,7 +158,7 @@ const AuthenticatedLayout = ({ variant, setVariant }) => {
             width: '100%',
             mt: 2,
             // ml: `${drawerWidth}px`, // Offset by sidebar width
-            ml: isMobile ? '60px' : '0', // Offset by sidebar width
+            // ml: isMobile ? '60px' : '0', // Offset by sidebar width
             minHeight: '100vh',
             overflowY: 'auto', // Independent vertical scrolling
             backgroundColor: theme.palette.background.default,

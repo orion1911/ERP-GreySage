@@ -27,7 +27,7 @@ const ClientSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
 });
-ClientSchema.index({ clientCode: 1 });
+ClientSchema.index({ name: 1 }, { unique: true }); // Unique index on name
 
 // FitStyle Schema: Lookup replacing Product
 const FitStyleSchema = new mongoose.Schema({
@@ -36,6 +36,7 @@ const FitStyleSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
 });
+FitStyleSchema.index({ name: 1 }, { unique: true }); // Unique index on name
 
 // FabricVendor Schema: Lookup for fabric vendors
 const FabricVendorSchema = new mongoose.Schema({
@@ -93,7 +94,10 @@ const OrderSchema = new mongoose.Schema({
   statusHistory: [{ status: Number, changedAt: { type: Date, default: Date.now } }],
   createdAt: { type: Date, default: Date.now }
 });
-OrderSchema.index({ orderId: 1, clientId: 1 });
+OrderSchema.index({ clientId: 1, date: 1 }); // Compound index for client-specific date queries
+OrderSchema.index({ status: 1, date: 1 }); // Compound index for status-based date queries
+// OrderSchema.index({ createdAt: 1, clientId: 1, status: 1 });
+// OrderSchema.index({ orderId: 1, clientId: 1 });
 
 const LotSchema = new mongoose.Schema({
   lotNumber: { type: String, required: true, unique: true }, // e.g., A/1/5
@@ -108,7 +112,7 @@ LotSchema.index({ lotNumber: 1, invoiceNumber: 1, orderId: 1 });
 // Stitching Schema: Stage #2 - Stitching/Making by vendors
 const StitchingSchema = new mongoose.Schema({
   lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot', required: true },
-  orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },  date: { type: Date, required: true },
+  orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
   date: { type: Date, required: true },
   stitchOutDate: { type: Date },
   vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'StitchingVendor', required: true },
@@ -118,12 +122,14 @@ const StitchingSchema = new mongoose.Schema({
   description: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
-StitchingSchema.index({ lotId: 1, orderId: 1, vendorId: 1 });
+StitchingSchema.index({ orderId: 1, date: 1 }); // Compound index for order-specific date queries
+StitchingSchema.index({ lotId: 1 }); // Index for joining with Washing
+// StitchingSchema.index({ lotId: 1, orderId: 1, vendorId: 1 });
 
 // Washing Schema: Stage #3 - Washing by vendors
 const WashingSchema = new mongoose.Schema({
   lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot', required: true },
-  orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },  date: { type: Date, required: true },  
+  orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
   date: { type: Date, required: true },
   washOutDate: { type: Date },
   vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'WashingVendor', required: true },
@@ -137,12 +143,14 @@ const WashingSchema = new mongoose.Schema({
   description: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
-WashingSchema.index({ lotId: 1, orderId: 1, vendorId: 1 });
+WashingSchema.index({ orderId: 1, date: 1 }); // Compound index for order-specific date queries
+WashingSchema.index({ lotId: 1 }); // Index for joining with Stitching
+// WashingSchema.index({ lotId: 1, orderId: 1, vendorId: 1 });
 
 // Finishing Schema: Stage #4 - Finishing by vendors
 const FinishingSchema = new mongoose.Schema({
   lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot', required: true },
-  orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },  date: { type: Date, required: true },  
+  orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true }, 
   date: { type: Date, required: true },
   finishOutDate: { type: Date },
   vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'FinishingVendor', required: true },
@@ -152,7 +160,8 @@ const FinishingSchema = new mongoose.Schema({
   description: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
-FinishingSchema.index({ lotId: 1, orderId: 1, vendorId: 1 });
+FinishingSchema.index({ orderId: 1, date: 1 }); // Compound index for order-specific date queries
+// FinishingSchema.index({ lotId: 1, orderId: 1, vendorId: 1 });
 
 // VendorBalance Schema: Tracks payments and balances
 const VendorBalanceSchema = new mongoose.Schema({

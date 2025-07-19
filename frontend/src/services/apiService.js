@@ -1,28 +1,38 @@
 import axiosInstance from './axiosInstance';
 
 const apiService = {
-
   admin: {
     dashboard: {
       getOrderStats: async (params) => {
         try {
           const response = await axiosInstance.get('api/dashboard/orders/status', {
-            params: { params },
+            params,
           });
           return response.data;
         } catch (error) {
-          throw error
+          throw error;
         }
       },
 
       getProductionStats: async (params) => {
         try {
           const response = await axiosInstance.get('api/dashboard/production/stages', {
-            params: { params },
+            params,
           });
           return response.data;
         } catch (error) {
-          throw error
+          throw error;
+        }
+      },
+
+      getOrderStatusSummary: async (params) => {
+        try {
+          const response = await axiosInstance.get('api/dashboard/orders/status-summary', {
+            params,
+          });
+          return response.data;
+        } catch (error) {
+          throw error;
         }
       },
     },
@@ -33,8 +43,7 @@ const apiService = {
           const response = await axiosInstance.get('api/users');
           return response.data;
         } catch (error) {
-          throw error
-          // throw error.response?.data || error.message;
+          throw error;
         }
       },
       deleteUser: async (id) => {
@@ -42,9 +51,9 @@ const apiService = {
           const response = await axiosInstance.put(`api/users/${id}`);
           return response.data;
         } catch (error) {
-          throw error
+          throw error;
         }
-      }
+      },
     },
 
     audit: {
@@ -53,7 +62,7 @@ const apiService = {
           const response = await axiosInstance.get('api/audit-logs');
           return response.data;
         } catch (error) {
-          throw error
+          throw error;
         }
       },
     },
@@ -64,7 +73,7 @@ const apiService = {
           const response = await axiosInstance.get('api/reports');
           return response.data;
         } catch (error) {
-          throw error
+          throw error;
         }
       },
       generateReport: async (repData) => {
@@ -72,10 +81,10 @@ const apiService = {
           const response = await axiosInstance.post('api/reports', repData);
           return response.data;
         } catch (error) {
-          throw error
+          throw error;
         }
-      }
-    }
+      },
+    },
   },
 
   // Order-related API calls
@@ -85,7 +94,7 @@ const apiService = {
         const response = await axiosInstance.post('api/orders', orderData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -94,7 +103,7 @@ const apiService = {
         const response = await axiosInstance.post(`api/orders-update/${id}`, orderData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -105,7 +114,7 @@ const apiService = {
         });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -114,7 +123,7 @@ const apiService = {
         const response = await axiosInstance.get(`api/orders/${orderId}`);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -123,7 +132,7 @@ const apiService = {
         const response = await axiosInstance.put(`api/orders/${id}/status`, { status });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
   },
@@ -135,7 +144,7 @@ const apiService = {
         const response = await axiosInstance.post('api/stitching', stitchingData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -144,7 +153,7 @@ const apiService = {
         const response = await axiosInstance.post(`api/stitching-update/${id}`, stitchingData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -153,7 +162,7 @@ const apiService = {
         const response = await axiosInstance.put('api/stitching', stitchingData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -164,8 +173,7 @@ const apiService = {
         });
         return response.data;
       } catch (error) {
-        throw error
-        // throw error
+        throw error;
       }
     },
   },
@@ -177,7 +185,7 @@ const apiService = {
         const response = await axiosInstance.post('api/washing', washingData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -186,7 +194,7 @@ const apiService = {
         const response = await axiosInstance.post(`api/washing-update/${id}`, washingData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -195,7 +203,7 @@ const apiService = {
         const response = await axiosInstance.put(`api/washing/${id}`, { washOutDate });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -206,7 +214,7 @@ const apiService = {
         });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
   },
@@ -218,7 +226,7 @@ const apiService = {
         const response = await axiosInstance.post('api/finishing', finishingData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -227,7 +235,7 @@ const apiService = {
         const response = await axiosInstance.put(`api/finishing/${id}`, { finishOutDate });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -238,7 +246,7 @@ const apiService = {
         });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
   },
@@ -250,7 +258,7 @@ const apiService = {
         const response = await axiosInstance.post('api/fabric-vendors', vendorData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -261,7 +269,7 @@ const apiService = {
         });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -270,7 +278,7 @@ const apiService = {
         const response = await axiosInstance.put(`api/fabric-vendors/${id}/toggle-active`);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
   },
@@ -282,7 +290,7 @@ const apiService = {
         const response = await axiosInstance.post('api/stitching-vendors', vendorData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -293,7 +301,7 @@ const apiService = {
         });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -302,7 +310,7 @@ const apiService = {
         const response = await axiosInstance.put(`api/stitching-vendors/${id}/toggle-active`);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
   },
@@ -314,7 +322,7 @@ const apiService = {
         const response = await axiosInstance.post('api/washing-vendors', vendorData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -325,7 +333,7 @@ const apiService = {
         });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -334,7 +342,7 @@ const apiService = {
         const response = await axiosInstance.put(`api/washing-vendors/${id}/toggle-active`);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
   },
@@ -346,7 +354,7 @@ const apiService = {
         const response = await axiosInstance.post('api/finishing-vendors', vendorData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -357,7 +365,7 @@ const apiService = {
         });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -366,7 +374,7 @@ const apiService = {
         const response = await axiosInstance.put(`api/finishing-vendors/${id}/toggle-active`);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
   },
@@ -380,7 +388,7 @@ const apiService = {
         });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -391,7 +399,7 @@ const apiService = {
         });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
   },
@@ -402,7 +410,7 @@ const apiService = {
         const response = await axiosInstance.post('api/clients', clientData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -411,7 +419,7 @@ const apiService = {
         const response = await axiosInstance.put(`api/clients/${id}/toggle-active`);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -422,7 +430,7 @@ const apiService = {
         });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
   },
@@ -433,7 +441,7 @@ const apiService = {
         const response = await axiosInstance.post('api/fitstyles', fitStyleData);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -444,7 +452,7 @@ const apiService = {
         });
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
 
@@ -453,10 +461,10 @@ const apiService = {
         const response = await axiosInstance.put(`api/fitstyles/${id}/toggle-active`);
         return response.data;
       } catch (error) {
-        throw error
+        throw error;
       }
     },
-  }
+  },
 };
 
 export default apiService;

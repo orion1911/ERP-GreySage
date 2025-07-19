@@ -70,7 +70,7 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
     const formData = {
       ...data,
       totalQuantity: Number(data.totalQuantity),
-      threadColors: data.threadColors.map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity.trim())})),
+      threadColors: data.threadColors.map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity)})),
       date: data.date.toISOString(),
     };
 

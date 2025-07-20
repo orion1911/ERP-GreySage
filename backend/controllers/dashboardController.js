@@ -294,7 +294,7 @@ const getOrderStatusSummary = async (req, res) => {
       };
     }));
 
-  // Client-specific quantities and counts
+    // Client-specific quantities and counts
     let clientData = [];
     if (clientId && isValidObjectId(clientId)) {
       const client = await Client.findById(clientId).lean();
@@ -550,13 +550,158 @@ const getOrderStatusSummary = async (req, res) => {
       }).flat();
     }
 
+    // Calculate Overall Quantity Since Inception (unfiltered by date or client)
+    const overallSinceInception = await Order.aggregate([
+      { $match: { status: 5 } },
+      {
+        $group: {
+          _id: null,
+          totalQuantity: { $sum: '$finalTotalQuantity' },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+    const sinceInceptionValue = overallSinceInception[0]?.totalQuantity || 0;
+    const sinceInceptionCount = overallSinceInception[0]?.count || 0;
+    const sinceInceptionTrend = await getMonthlyTrendData('2023-01-01', new Date().toISOString(), { title: 'Completed' }); // Use a broad range for trend
+
+    const sinceInceptionData = {
+      title: `Overall Completed (${sinceInceptionCount} orders)`,
+      value: sinceInceptionValue >= 1000 ? `${(sinceInceptionValue / 1000).toFixed(1)}k` : sinceInceptionValue.toString(),
+      interval: 'Since Inception',
+      trend: 'neutral', // Static trend as it's a cumulative total
+      data: sinceInceptionTrend.data,
+      labels: sinceInceptionTrend.labels
+    };
+
     res.json({
       overall: overallData,
-      byClient: clientData
+      byClient: clientData,
+      sinceInception: sinceInceptionData
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error fetching order status summary' });
+  }
+};
+
+const getAllClientCompletedQuantities = async (req, res) => {
+  try {
+    const dateFilter = getDateRangeFilter(req.query);
+    const { fromDate, toDate, interval = 'monthly' } = req.query; // Default to monthly if not specified
+
+    // Aggregate order quantities by client and time period based on interval
+    const clientMonthlyData = await Order.aggregate([
+      { $match: dateFilter },
+      {
+        $lookup: {
+          from: Client.collection.collectionName,
+          localField: 'clientId',
+          foreignField: '_id',
+          as: 'clientDetails'
+        }
+      },
+      { $unwind: '$clientDetails' },
+      {
+        $group: {
+          _id: {
+            clientName: '$clientDetails.name',
+            year: { $year: '$date' },
+            ...(interval === 'monthly' && { month: { $month: '$date' } }),
+            ...(interval === 'quarterly' && { quarter: { $concat: [{ $substr: [{ $toString: { $ceil: { $divide: [{ $month: '$date' }, 3] } } }, 0, 1] }, 'Q'] } }),
+          },
+          totalQuantity: { $sum: '$finalTotalQuantity' }
+        }
+      },
+      {
+        $project: {
+          clientName: '$_id.clientName',
+          year: '$_id.year',
+          month: '$_id.month',
+          quarter: '$_id.quarter',
+          totalQuantity: 1,
+          _id: 0
+        }
+      },
+      { $sort: { year: 1, month: 1, quarter: 1 } }
+    ]);
+
+    // Structure data for BarChart based on interval
+    const startDate = new Date(fromDate);
+    const endDate = new Date(toDate);
+    let labels = [];
+    let clientMap = {};
+
+    if (interval === 'yearly') {
+      let currentYear = startDate.getFullYear();
+      const endYear = endDate.getFullYear();
+      while (currentYear <= endYear) {
+        labels.push(currentYear.toString());
+        currentYear++;
+      }
+    } else if (interval === 'quarterly') {
+      let currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+      const endMonth = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
+      while (currentDate <= endMonth) {
+        const quarter = Math.ceil((currentDate.getMonth() + 1) / 3) + 'Q';
+        const year = currentDate.getFullYear();
+        if (!labels.includes(`${year} ${quarter}`)) {
+          labels.push(`${year} ${quarter}`);
+        }
+        currentDate.setMonth(currentDate.getMonth() + 1);
+      }
+    } else { // monthly
+      let currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+      const endMonth = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
+      while (currentDate <= endMonth) {
+        const monthName = currentDate.toLocaleDateString('en-US', { month: 'short' });
+        const year = currentDate.getFullYear();
+        labels.push(`${monthName} ${year}`);
+        currentDate.setMonth(currentDate.getMonth() + 1);
+      }
+    }
+
+    clientMonthlyData.forEach(item => {
+      const key = interval === 'yearly' ? item.year.toString() :
+                 interval === 'quarterly' ? `${item.year} ${item.quarter}` :
+                 `${new Date(item.year, (item.month || 1) - 1).toLocaleDateString('en-US', { month: 'short' })} ${item.year}`;
+      const index = labels.indexOf(key);
+      if (index !== -1) {
+        if (!clientMap[item.clientName]) {
+          clientMap[item.clientName] = Array(labels.length).fill(0);
+        }
+        clientMap[item.clientName][index] = (clientMap[item.clientName][index] || 0) + item.totalQuantity;
+      }
+    });
+
+    const barChartSeries = Object.keys(clientMap).map(clientName => ({
+      id: clientName.replace(' ', '-').toLowerCase(),
+      label: clientName,
+      data: clientMap[clientName],
+      stack: 'A',
+    }));
+
+    // Calculate total quantity and trend
+    const totalQuantity = clientMonthlyData.reduce((sum, item) => sum + item.totalQuantity, 0);
+    const trend = totalQuantity > 0 ? 'up' : 'neutral';
+
+    // Format interval string
+    const intervalLabel = interval === 'yearly' ? 'Yearly' :
+                         interval === 'quarterly' ? 'Quarterly' : 'Monthly';
+    const intervalText = fromDate && toDate
+      ? `${intervalLabel} from ${new Date(fromDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} - ${new Date(toDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
+      : `${intervalLabel} Range`;
+
+    res.json({
+      totalQuantity,
+      trend,
+      interval: intervalText,
+      series: barChartSeries,
+      labels,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error fetching client monthly quantities' });
   }
 };
 
@@ -602,7 +747,6 @@ const getProductionStages = async (req, res) => {
   try {
     const dateFilter = getDateRangeFilter(req.query);
 
-    // Stitching Count: Sum of quantity for lotId in Stitching but not in Washing
     const stitchingData = await Stitching.aggregate([
       { $match: dateFilter },
       {
@@ -623,7 +767,6 @@ const getProductionStages = async (req, res) => {
     ]);
     const stitchingCount = stitchingData[0]?.totalQuantity || 0;
 
-    // Washing Count: Sum of quantity from washDetails for lotId in Washing
     const washingData = await Washing.aggregate([
       { $match: dateFilter },
       { $unwind: '$washDetails' },
@@ -636,7 +779,6 @@ const getProductionStages = async (req, res) => {
     ]);
     const washingCount = washingData[0]?.totalQuantity || 0;
 
-    // Finishing Count: Sum of quantity for all lotId in Finishing
     const finishingData = await Finishing.aggregate([
       { $match: dateFilter },
       {
@@ -812,4 +954,4 @@ const getTopFitStyles = async (req, res) => {
   }
 };
 
-module.exports = { getOrdersByStatus, getProductionStages, getInvoiceStatus, getVendorPerformance, getAuditLog, getTopFitStyles, getOrderStatusSummary };
+module.exports = { getOrdersByStatus, getProductionStages, getInvoiceStatus, getVendorPerformance, getAuditLog, getTopFitStyles, getOrderStatusSummary, getAllClientCompletedQuantities };

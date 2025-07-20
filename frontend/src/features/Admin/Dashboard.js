@@ -23,6 +23,7 @@ function Dashboard() {
     dayjs(new Date()),
   ]);
   const [cardData, setCardData] = useState([]);
+  const [sinceInceptionData, setSinceInceptionData] = useState();
   const [clients, setClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState('all');
 
@@ -61,6 +62,7 @@ function Dashboard() {
       setTimeout(() => {
         // Use byClient data if a specific client is selected, otherwise use overall
         setCardData(selectedClient === 'all' ? statusSummaryRes.overall : statusSummaryRes.byClient);
+        setSinceInceptionData(statusSummaryRes.sinceInception);
       }, process.env.REACT_APP_DATA_LOAD_TIMEOUT);
     } catch (err) {
       if (err.response?.status === 401 || err.response?.status === 403) {
@@ -127,8 +129,11 @@ function Dashboard() {
               <StatCard {...card} />
             </Grid>
           ))}
+          {sinceInceptionData && <Grid key="since-inception" size={{ xs: 6, sm: 6, lg: 4 }}>
+            <StatCard {...sinceInceptionData} />
+          </Grid>}
           <Grid size={{ xs: 12, md: 12 }}>
-            <TotalQtyByClientBar />
+            <TotalQtyByClientBar dateRange={dateRange} />
           </Grid>
         </Grid>
       </Box>

@@ -14,6 +14,17 @@ const apiService = {
         }
       },
 
+      getAllClientStats: async (params) => {
+        try {
+          const response = await axiosInstance.get('api/dashboard/orders/status-summary-clients', {
+            params,
+          });
+          return response.data;
+        } catch (error) {
+          throw error;
+        }
+      },
+
       getProductionStats: async (params) => {
         try {
           const response = await axiosInstance.get('api/dashboard/production/stages', {

@@ -5,7 +5,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { MorphDateTextField } from '../../components/MuiCustom';
 import { Edit as EditIcon } from '@mui/icons-material';
-import { NoRecordRow } from '../../components/Skeleton/TableSkeletonLoader';
+import { NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 
 function WashingGrid({ washingRecords, lotId, handleUpdateWashOut, onEditWashing }) {
   return (

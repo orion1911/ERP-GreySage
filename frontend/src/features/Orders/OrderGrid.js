@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
 import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, IconButton, Chip, Link, Typography } from '@mui/material';
 import { Edit as EditIcon, CheckCircle, Cancel, ShoppingCartCheckout, ContentCut, LocalLaundryService, AutoAwesome } from '@mui/icons-material';
-import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/TableSkeletonLoader';
+import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 
 function OrderGrid({ orders, search, onEditOrder }) {
     const navigate = useNavigate();

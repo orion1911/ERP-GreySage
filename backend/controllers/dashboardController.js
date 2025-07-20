@@ -285,7 +285,7 @@ const getOrderStatusSummary = async (req, res) => {
       }
       const trend = await getMonthlyTrendData(fromDate, toDate, category);
       return {
-        title: `${category.title} (${count} orders)`,
+        title: `${category.title} / (${count} orders)`,
         value: totalQuantity >= 1000 ? `${(totalQuantity / 1000).toFixed(1)}k` : totalQuantity.toString(),
         interval,
         trend: category.trend,
@@ -402,7 +402,7 @@ const getOrderStatusSummary = async (req, res) => {
         }
         const trend = await getMonthlyTrendData(fromDate, toDate, category, clientId);
         return {
-          title: `${category.title} (${clientName}, ${count} orders)`,
+          title: `${category.title} (${clientName}, / ${count} orders)`,
           value: totalQuantity >= 1000 ? `${(totalQuantity / 1000).toFixed(1)}k` : totalQuantity.toString(),
           interval,
           trend: category.trend,
@@ -539,7 +539,7 @@ const getOrderStatusSummary = async (req, res) => {
           }
           const trend = getMonthlyTrendData(fromDate, toDate, category, clientId);
           return {
-            title: `${category.title} (${clientName}, ${count} orders)`,
+            title: `${category.title} (${clientName}, / ${count} orders)`,
             value: totalQuantity >= 1000 ? `${(totalQuantity / 1000).toFixed(1)}k` : totalQuantity.toString(),
             interval,
             trend: category.trend,
@@ -566,7 +566,7 @@ const getOrderStatusSummary = async (req, res) => {
     const sinceInceptionTrend = await getMonthlyTrendData('2023-01-01', new Date().toISOString(), { title: 'Completed' }); // Use a broad range for trend
 
     const sinceInceptionData = {
-      title: `Overall Completed (${sinceInceptionCount} orders)`,
+      title: `Overall Completed / (${sinceInceptionCount} orders)`,
       value: sinceInceptionValue >= 1000 ? `${(sinceInceptionValue / 1000).toFixed(1)}k` : sinceInceptionValue.toString(),
       interval: 'Since Inception',
       trend: 'neutral', // Static trend as it's a cumulative total

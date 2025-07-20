@@ -8,7 +8,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { MorphDateTextField } from '../../components/MuiCustom';
 import WashingGrid from '../Washing/WashingGrid';
-import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/TableSkeletonLoader';
+import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 
 function StitchingGrid({
   stitchingRecords,

@@ -9,6 +9,7 @@ import { MorphDateTextField } from '../../components/MuiCustom.js';
 import StatCard from './StatCard.js';
 import apiService from '../../services/apiService.js';
 import TotalQtyByClientBar from './TotalQtyByClientBar.js';
+import { StatCardSkeleton } from '../../components/Skeleton/SkeletonLoader.js';
 
 function Dashboard() {
   const { isMobile, showSnackbar } = useOutletContext();
@@ -124,11 +125,11 @@ function Dashboard() {
           columns={12}
           sx={{ mb: 2 }}
         >
-          {cardData.map((card, index) => (
+          {cardData.length > 0 ? cardData.map((card, index) => (
             <Grid key={index} size={{ xs: 6, sm: 6, lg: 4 }}>
               <StatCard {...card} />
             </Grid>
-          ))}
+          )): <StatCardSkeleton numOfCards={6} />}
           {sinceInceptionData && <Grid key="since-inception" size={{ xs: 6, sm: 6, lg: 4 }}>
             <StatCard {...sinceInceptionData} />
           </Grid>}

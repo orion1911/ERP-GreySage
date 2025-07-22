@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
-import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Divider } from '@mui/material';
 import { Close as CloseIcon, Add as AddIcon, Delete as DeleteIcon, Save as SaveIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -95,7 +95,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
       <Box
         sx={{
           ml: isMobile ? 0 : drawerWidth + 'px',
-          width: '50%',
+          width: isMobile ? '80%' : '50%',
           maxHeight: '80vh',
           overflowY: 'auto',
           bgcolor: 'background.paper',
@@ -104,7 +104,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
           p: 4,
         }}
       >
-        
+
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6" id="add-washing-modal">{isEditMode ? 'Edit Washing' : 'Add Washing'}</Typography>
           <IconButton id="close-wash-modal" onClick={onClose}>
@@ -123,7 +123,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     label="Lot Number"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     disabled
                   />
                 )}
@@ -139,7 +139,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     label="Invoice Number"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     disabled
                   />
                 )}
@@ -156,6 +156,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     <Select
                       {...field}
                       label="Vendor"
+                      variant='standard'
                     >
                       {vendors.map(vendor => (
                         <MenuItem key={vendor._id} value={vendor._id}>{vendor.name}</MenuItem>
@@ -171,7 +172,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                 <Controller
                   name="date"
                   control={control}
-                  rules={{ required: 'Date is required' }}
+                  rules={{ required: 'Required!' }}
                   render={({ field }) => (
                     <DatePicker
                       {...field}
@@ -184,6 +185,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                         textField: {
                           error: !!errors.date,
                           helperText: errors.date?.message,
+                          variant: 'standard'
                         },
                       }}
                     />
@@ -192,12 +194,12 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
               </LocalizationProvider>
             </Grid>
             {fields.map((wd, index) => (
-              <Grid container spacing={1} key={wd.id} sx={{ alignItems: 'flex-start', mt: 1 }}>
-                <Grid size={{ xs: 6, md: 2 }}>
+              <>
+                <Grid size={{ xs: 6, md: 6 }}>
                   <Controller
                     name={`washDetails[${index}].washColor`}
                     control={control}
-                    rules={{ required: 'Wash Color is required' }}
+                    rules={{ required: 'Required!' }}
                     render={({ field }) => (
                       <TextField
                         {...field}
@@ -207,7 +209,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                         label="Wash Color"
                         fullWidth
                         margin="normal"
-                        variant="outlined"
+                        variant="standard"
                         error={!!errors.washDetails?.[index]?.washColor}
                         helperText={errors.washDetails?.[index]?.washColor?.message}
                         sx={{ mb: 1 }}
@@ -215,34 +217,12 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     )}
                   />
                 </Grid>
-                <Grid size={{ xs: 6, md: 4 }}>
-                  <Controller
-                    name={`washDetails[${index}].washCreation`}
-                    control={control}
-                    rules={{ required: 'Wash Creation is required' }}
-                    render={({ field }) => (
-                      <TextField
-                        {...field}
-                        onChange={(e) => {
-                          field.onChange(e.target.value.toUpperCase());
-                        }}
-                        label="Wash Creation"
-                        fullWidth
-                        margin="normal"
-                        variant="outlined"
-                        error={!!errors.washDetails?.[index]?.washCreation}
-                        helperText={errors.washDetails?.[index]?.washCreation?.message}
-                        sx={{ mb: 1 }}
-                      />
-                    )}
-                  />
-                </Grid>
-                <Grid size={{ xs: 6, md: 2 }}>
+                <Grid size={{ xs: 3, md: 3 }}>
                   <Controller
                     name={`washDetails[${index}].rate`}
                     control={control}
                     rules={{
-                      required: 'Rate is required',
+                      required: 'Required!',
                       pattern: {
                         value: /^\d+(\.\d+)?$/,
                         message: 'Only numbers allowed',
@@ -254,7 +234,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                         label="Rate"
                         fullWidth
                         margin="normal"
-                        variant="outlined"
+                        variant="standard"
                         error={!!errors.washDetails?.[index]?.rate}
                         helperText={errors.washDetails?.[index]?.rate?.message}
                         sx={{ mb: 1 }}
@@ -262,12 +242,12 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     )}
                   />
                 </Grid>
-                <Grid size={{ xs: 6, md: 2 }}>
+                <Grid size={{ xs: 3, md: 3 }}>
                   <Controller
                     name={`washDetails[${index}].quantity`}
                     control={control}
                     rules={{
-                      required: 'Quantity is required',
+                      required: 'Required!',
                       pattern: {
                         value: /^\d+$/,
                         message: 'Only numbers allowed',
@@ -279,9 +259,31 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                         label="Quantity"
                         fullWidth
                         margin="normal"
-                        variant="outlined"
+                        variant="standard"
                         error={!!errors.washDetails?.[index]?.quantity}
                         helperText={errors.washDetails?.[index]?.quantity?.message}
+                        sx={{ mb: 1 }}
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid size={{ xs: 9, md: 9 }}>
+                  <Controller
+                    name={`washDetails[${index}].washCreation`}
+                    control={control}
+                    rules={{ required: 'Required!' }}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e.target.value.toUpperCase());
+                        }}
+                        label="Wash Creation"
+                        fullWidth
+                        margin="normal"
+                        variant="standard"
+                        error={!!errors.washDetails?.[index]?.washCreation}
+                        helperText={errors.washDetails?.[index]?.washCreation?.message}
                         sx={{ mb: 1 }}
                       />
                     )}
@@ -304,7 +306,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                           label="Quantity Short"
                           fullWidth
                           margin="normal"
-                          variant="outlined"
+                          variant="standard"
                           error={!!errors.washDetails?.[index]?.quantityShort}
                           helperText={errors.washDetails?.[index]?.quantityShort?.message}
                           sx={{ mb: 1 }}
@@ -313,7 +315,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     />
                   </Grid>
                 )}
-                <Grid size={{ xs: 6, md: 2 }} sx={{ alignContent: 'center' }}>
+                <Grid size={{ xs: 3, md: 3 }} sx={{ alignContent: 'center' }}>
                   {index > 0 && <IconButton sx={{ mt: 2 }} onClick={() => remove(index)} color="error">
                     <DeleteIcon />
                   </IconButton>}
@@ -323,7 +325,11 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     <AddIcon />
                   </IconButton>}
                 </Grid>
-              </Grid>
+                <Grid size={{ xs: 12, md: 12 }} sx={{ m: 0, p: 0 }}>
+                  {fields.length > 1 && <Divider fullWidth />}
+                </Grid>
+                {/* </Grid> */}
+              </>
             ))}
             <Grid size={{ xs: 12, md: 12 }}>
               <Controller
@@ -335,9 +341,10 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     label="Description"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     multiline
                     rows={1}
+                    sx={{ mt: 1 }}
                   />
                 )}
               />
@@ -350,7 +357,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                 loading={loading}
                 loadingPosition="end"
                 variant="contained"
-                // sx={{ mt: 2 }}
+              // sx={{ mt: 2 }}
               >
                 {isEditMode ? 'UPDATE' : 'SAVE'}
               </Button>

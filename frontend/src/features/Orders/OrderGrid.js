@@ -1,12 +1,19 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, IconButton, Chip, Link, Typography } from '@mui/material';
+import React, { useState, useMemo } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import { useReactTable, getCoreRowModel } from '@tanstack/react-table';
+import { Link, IconButton, Chip, Box, Typography } from '@mui/material';
 import { Edit as EditIcon, CheckCircle, Cancel, ShoppingCartCheckout, ContentCut, LocalLaundryService, AutoAwesome } from '@mui/icons-material';
-import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
+import OrderGridSx from './OrderGridSx';
+import OrderGridMd from './OrderGridMd';
 
-function OrderGrid({ orders, search, onEditOrder }) {
+function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
     const navigate = useNavigate();
+    const { isMobile } = useOutletContext();
+    const [expandedRows, setExpandedRows] = useState({});
+    const [sortBy, setSortBy] = useState('orderId'); // Default sort by Order ID
+    const [sortDirection, setSortDirection] = useState('asc'); // Track sort direction
+    const [filterAnchorEl, setFilterAnchorEl] = useState(null); // Filter menu anchor
+    const [filterStatus, setFilterStatus] = useState(''); // Filter by status
 
     const statusLabels = {
         1: 'Placed',
@@ -14,7 +21,7 @@ function OrderGrid({ orders, search, onEditOrder }) {
         3: 'Washing',
         4: 'Finishing',
         5: 'Complete',
-        6: 'Cancelled'
+        6: 'Cancelled',
     };
 
     const statusIcons = {
@@ -23,8 +30,64 @@ function OrderGrid({ orders, search, onEditOrder }) {
         3: <LocalLaundryService />,
         4: <AutoAwesome />,
         5: <CheckCircle />,
-        6: <Cancel />
+        6: <Cancel />,
     };
+
+    // Custom sorting function with direction
+    const sortData = (data, sortKey, direction) => {
+        return [...data].sort((a, b) => {
+            let valueA, valueB;
+            if (sortKey === 'clientName') {
+                valueA = a.clientId?.name || '';
+                valueB = b.clientId?.name || '';
+            } else if (sortKey === 'fitStyleName') {
+                valueA = a.fitStyleId?.name || '';
+                valueB = b.fitStyleId?.name || '';
+            } else if (sortKey === 'orderId') {
+                valueA = a.orderId || '';
+                valueB = b.orderId || '';
+            } else if (sortKey === 'date') {
+                valueA = new Date(a.date);
+                valueB = new Date(b.date);
+            } else if (sortKey === 'fabric') {
+                valueA = a.fabric || '';
+                valueB = b.fabric || '';
+            } else if (sortKey === 'status') {
+                valueA = statusLabels[a.status] || '';
+                valueB = statusLabels[b.status] || '';
+            }
+            if (typeof valueA === 'string' && typeof valueB === 'string') {
+                return direction === 'asc' ? valueA.localeCompare(valueB) : valueB.localeCompare(valueA);
+            }
+            if (direction === 'asc') {
+                return valueA > valueB ? 1 : valueA < valueB ? -1 : 0;
+            } else {
+                return valueA < valueB ? 1 : valueA > valueB ? -1 : 0;
+            }
+        });
+    };
+
+    // Custom filtering function
+    const filterData = (data, statusFilter) => {
+        return data.filter(order =>
+            !statusFilter || statusLabels[order.status]?.toLowerCase().includes(statusFilter.toLowerCase())
+        );
+    };
+
+    // Apply global search, custom sorting, and filtering
+    const processedOrders = useMemo(() => {
+        let filteredOrders = orders || [];
+        if (globalSearch) {
+            filteredOrders = filteredOrders.filter(order =>
+                order.orderId?.toLowerCase().includes(globalSearch.toLowerCase()) ||
+                order.clientId?.name?.toLowerCase().includes(globalSearch.toLowerCase()) ||
+                order.fitStyleId?.name?.toLowerCase().includes(globalSearch.toLowerCase()) ||
+                order.fabric?.toLowerCase().includes(globalSearch.toLowerCase())
+            );
+        }
+        filteredOrders = filterData(filteredOrders, filterStatus);
+        return sortData(filteredOrders, sortBy, sortDirection);
+    }, [orders, globalSearch, sortBy, sortDirection, filterStatus]);
 
     const columns = [
         {
@@ -32,48 +95,52 @@ function OrderGrid({ orders, search, onEditOrder }) {
             header: 'Order ID',
             enableSorting: true,
             cell: ({ row }) => (
-                <Box>
-                    <Link component="button" onClick={() => navigate(`/stitching/${row.original._id}`)}>{row.original.orderId}</Link>
-                </Box>
-            )
+                <Link
+                    component="button"
+                    onClick={() => navigate(`/stitching/${row.original._id}`)}
+                    sx={{ fontWeight: 'bold', textDecoration: 'underline' }}
+                >
+                    {row.original.orderId}
+                </Link>
+            ),
         },
         {
             accessorKey: 'date',
             header: 'Date',
             enableSorting: true,
-            cell: ({ row }) => new Date(row.original.date).toLocaleDateString()
+            cell: ({ row }) => new Date(row.original.date).toLocaleDateString(),
         },
         {
             accessorKey: 'clientName',
             header: 'Client',
             enableSorting: true,
-            cell: ({ row }) => row.original.clientId?.name || 'N/A'
+            cell: ({ row }) => row.original.clientId?.name || 'N/A',
         },
         {
             accessorKey: 'fitStyleName',
             header: 'Fit Style',
             enableSorting: true,
-            cell: ({ row }) => row.original.fitStyleId?.name || 'N/A'
+            cell: ({ row }) => row.original.fitStyleId?.name || 'N/A',
         },
         {
             accessorKey: 'fabric',
             header: 'Fabric',
-            enableSorting: true
+            enableSorting: true,
         },
         {
             accessorKey: 'waistSize',
             header: 'Waist Size',
-            enableSorting: true
+            enableSorting: true,
         },
         {
             accessorKey: 'totalQuantity',
             header: 'Qty',
-            enableSorting: true
+            enableSorting: true,
         },
         {
             accessorKey: 'finalTotalQuantity',
             header: 'Final Qty',
-            enableSorting: true
+            enableSorting: true,
         },
         {
             accessorKey: 'threadColors',
@@ -81,12 +148,12 @@ function OrderGrid({ orders, search, onEditOrder }) {
             cell: ({ row }) => (
                 <Box>
                     {row.original.threadColors.map((tc, index) => (
-                        <Typography key={index}>
+                        <Typography key={index} variant="body2">
                             {tc.color}, {tc.quantity} pcs
                         </Typography>
                     ))}
                 </Box>
-            )
+            ),
         },
         {
             accessorKey: 'status',
@@ -108,101 +175,67 @@ function OrderGrid({ orders, search, onEditOrder }) {
                                             status === 5 ? 'primary' :
                                                 status === 6 ? 'secondary' : 'default'
                         }
-                        sx={{ width: '100%', alignItems: 'center' }}
+                        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     />
                 );
-            }
+            },
         },
         {
             accessorKey: 'actions',
             header: 'Actions',
             cell: ({ row }) => (
-                <IconButton onClick={() => onEditOrder(row.original)} size='small'>
-                    <EditIcon fontSize='small' />
+                <IconButton onClick={() => onEditOrder(row.original)} size="small">
+                    <EditIcon fontSize="small" />
                 </IconButton>
-            )
-        }
+            ),
+        },
     ];
 
     const table = useReactTable({
         columns,
-        data: orders || [],
+        data: processedOrders,
         getCoreRowModel: getCoreRowModel(),
-        getFilteredRowModel: getFilteredRowModel(),
-        getSortedRowModel: getSortedRowModel(),
-        state: {
-            globalFilter: search
-        },
-        globalFilterFn: (row, columnId, filterValue) => {
-            const orderId = row.original.orderId?.toString().toLowerCase() || '';
-            const clientName = row.original.clientId?.name?.toString().toLowerCase() || '';
-            const fitStyleName = row.original.fitStyleId?.name?.toString().toLowerCase() || '';
-            const fabric = row.original.fabric?.toString().toLowerCase() || '';
-            const search = filterValue.toLowerCase();
-            return (
-                orderId.includes(search) ||
-                clientName.includes(search) ||
-                fitStyleName.includes(search) ||
-                fabric.includes(search)
-            );
-        }
     });
 
-    const getHeaderContent = (column) => column.columnDef && column.columnDef.header ? column.columnDef.header.toUpperCase() : column.id;
-    const isColumnSortable = (column) => column.columnDef && column.columnDef.enableSorting === true;
+    const toggleRowExpansion = (rowId) => {
+        setExpandedRows((prev) => ({
+            ...prev,
+            [rowId]: !prev[rowId],
+        }));
+    };
 
-    return (
-        <TableContainer>
-            <Table>
-                <TableHead>
-                    {table.getHeaderGroups().map(headerGroup => (
-                        <TableRow key={headerGroup.id}>
-                            {headerGroup.headers.map(colHeader => (
-                                <TableCell
-                                    key={colHeader.column.id}
-                                    onClick={(event) => {
-                                        if (isColumnSortable(colHeader.column)) {
-                                            const sortHandler = colHeader.column.getToggleSortingHandler();
-                                            if (sortHandler) {
-                                                sortHandler(event);
-                                            }
-                                        }
-                                    }}
-                                    style={{
-                                        cursor: isColumnSortable(colHeader.column) ? 'pointer' : 'default',
-                                        textAlign: (colHeader.column.id === 'status' || colHeader.column.id === 'actions') && 'center'
-                                    }}
-                                >
-                                    {flexRender(getHeaderContent(colHeader.column), colHeader.getContext())}
-                                    {isColumnSortable(colHeader.column) && colHeader.column.getIsSorted() ? (colHeader.column.getIsSorted() === 'desc' ? ' 🔽' : ' 🔼') : ''}
-                                </TableCell>
-                            ))}
-                        </TableRow>
-                    ))}
-                </TableHead>
-                <TableBody>
-                    {!orders ? (
-                        <TableRowsLoader colsNum={11} rowsNum={10} />
-                    ) : (orders && orders.length > 0 ? (
-                        table.getRowModel().rows.map(row => (
-                            <TableRow key={row.id}>
-                                {row.getVisibleCells().map(cell => (
-                                    <TableCell
-                                        key={cell.id}
-                                        style={{
-                                            textAlign: (cell.column.id === 'totalQuantity' || cell.column.id === 'finalTotalQuantity'
-                                                || cell.column.id === 'status' || cell.column.id === 'actions'
-                                            ) && 'center'
-                                        }}
-                                    >
-                                        {flexRender(cell.column.columnDef.cell || cell.getValue(), cell.getContext())}
-                                    </TableCell>
-                                ))}
-                            </TableRow>
-                        ))) : <NoRecordRow />)}
-                </TableBody>
-            </Table>
-        </TableContainer>
+    return isMobile ? (
+        <OrderGridSx
+            processedOrders={processedOrders}
+            navigate={navigate}
+            expandedRows={expandedRows}
+            toggleRowExpansion={toggleRowExpansion}
+            statusLabels={statusLabels}
+            statusIcons={statusIcons}
+            onEditOrder={onEditOrder}
+            sortBy={sortBy}
+            setSortBy={setSortBy}
+            sortDirection={sortDirection}
+            setSortDirection={setSortDirection}
+            filterAnchorEl={filterAnchorEl}
+            setFilterAnchorEl={setFilterAnchorEl}
+            filterStatus={filterStatus}
+            setFilterStatus={setFilterStatus}
+        />
+    ) : (
+        <OrderGridMd
+            processedOrders={processedOrders}
+            columns={columns}
+            table={table}
+            sortBy={sortBy}
+            sortDirection={sortDirection}
+            setSortBy={setSortBy}
+            setSortDirection={setSortDirection}
+            filterAnchorEl={filterAnchorEl}
+            setFilterAnchorEl={setFilterAnchorEl}
+            filterStatus={filterStatus}
+            setFilterStatus={setFilterStatus}
+        />
     );
 }
 

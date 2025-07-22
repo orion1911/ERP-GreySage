@@ -124,7 +124,7 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
       <Box
         sx={{
           ml: isMobile ? 0 : drawerWidth + 'px',
-          width: '50%',
+          width: isMobile ? '80%' : '50%',
           maxHeight: '80vh',
           overflowY: 'auto',
           bgcolor: 'background.paper',
@@ -161,6 +161,7 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                         textField: {
                           error: !!errors.date,
                           helperText: errors.date?.message,
+                          variant: 'standard'
                         },
                       }}
                     />
@@ -179,6 +180,7 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                     <Select
                       {...field}
                       label="Client"
+                      variant="standard"
                     >
                       {clients.map(client => (
                         <MenuItem key={client._id} value={client._id}>{client.name}</MenuItem>
@@ -203,7 +205,7 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                     label="Fabric"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     error={!!errors.fabric}
                     helperText={errors.fabric?.message}
                   />
@@ -216,11 +218,12 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                 control={control}
                 rules={{ required: 'Fit Style is required' }}
                 render={({ field }) => (
-                  <FormControl margin="normal" variant="outlined" fullWidth error={!!errors.fitStyleId}>
+                  <FormControl margin="normal" variant="standard" fullWidth error={!!errors.fitStyleId}>
                     <InputLabel>Fit Style</InputLabel>
                     <Select
                       {...field}
                       label="Fit Style"
+                      variant="standard"
                     >
                       {fitStyles.map(fitStyle => (
                         <MenuItem key={fitStyle._id} value={fitStyle._id}>{fitStyle.name}</MenuItem>
@@ -245,7 +248,7 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                     label="Waist Size"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     error={!!errors.waistSize}
                     helperText={errors.waistSize?.message}
                   />
@@ -269,7 +272,7 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                     label="Total Quantity"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     error={!!errors.totalQuantity}
                     helperText={errors.totalQuantity?.message}
                   />
@@ -292,14 +295,14 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                         label="Thread Color"
                         fullWidth
                         margin="normal"
-                        variant="outlined"
+                        variant="standard"
                         error={!!errors.threadColors?.[index]?.color}
                         helperText={errors.threadColors?.[index]?.color?.message}
                       />
                     )}
                   />
                 </Grid>
-                <Grid size={{ xs: 6, md: 4 }}>
+                <Grid size={{ xs: 3, md: 4 }}>
                   <Controller
                     name={`threadColors[${index}].quantity`}
                     control={control}
@@ -316,14 +319,14 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                         label="Quantity"
                         fullWidth
                         margin="normal"
-                        variant="outlined"
+                        variant="standard"
                         error={!!errors.threadColors?.[index]?.quantity}
                         helperText={errors.threadColors?.[index]?.quantity?.message}
                       />
                     )}
                   />
                 </Grid>
-                <Grid size={{ xs: 6, md: 4 }} sx={{ alignContent: 'center' }}>
+                <Grid size={{ xs: 3, md: 4 }} sx={{ alignContent: 'center' }}>
                   {index > 0 && (
                     <IconButton sx={{ mt: 2 }} onClick={() => remove(index)} color="error">
                       <DeleteIcon />
@@ -347,7 +350,7 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                     label="Description"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     multiline
                     rows={1}
                   />

@@ -133,10 +133,10 @@ function StitchingManagement() {
         <Typography variant="h4" sx={{ mb: 1 }}>Stitching Management</Typography>
         {!order ? (<Skeleton animation="wave" variant="text" sx={{ marginBottom: 2, width: '60%' }} />) : (
           <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
-            <Typography>Order ID: <b>{order.orderId}</b></Typography>
-            <Typography>Total Quantity: <b>{order.totalQuantity}</b></Typography>
-            <Typography>Stitched Quantity: <b>{totalStitchedQuantity}</b></Typography>
-            <Typography>Remaining Quantity: <b>{order.totalQuantity - totalStitchedQuantity}</b></Typography>
+            <Typography><b>{order.orderId}</b></Typography>
+            <Typography>Total QTY: <b>{order.totalQuantity}</b></Typography>
+            {/* <Typography>Stitched Quantity: <b>{totalStitchedQuantity}</b></Typography> */}
+            <Typography>Remaining QTY: <b>{order.totalQuantity - totalStitchedQuantity}</b></Typography>
           </Box>
         )}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>

@@ -1,13 +1,13 @@
 import React from 'react';
 import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Chip, Link, Typography, useTheme, Grid, Select, MenuItem, Menu } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList } from '@mui/icons-material';
-import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
+import { OrderCardsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 
 function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansion, statusLabels, statusIcons, onEditOrder, sortBy, setSortBy, sortDirection, setSortDirection, filterAnchorEl, setFilterAnchorEl, filterStatus, setFilterStatus }) {
     const theme = useTheme();
 
     return (
-        <Box sx={{ p: 1 }}>
+        <Box sx={{ pt: 1 }}>
             <Grid container spacing={2} sx={{ mb: 2, justifyContent: 'flex-end' }}>
                 <Grid item xs={12} sm={6} md={4}>
                     <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
@@ -54,12 +54,10 @@ function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansi
                     </Stack>
                 </Grid>
             </Grid>
-            {!processedOrders ? (
-                <TableRowsLoader colsNum={1} rowsNum={10} />
-            ) : processedOrders.length > 0 ? (
+            {processedOrders.length > 0 ? (
                 processedOrders.map((order) => (
-                    <Card key={order._id} variant="outlined" sx={{ mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
-                        <CardContent sx={{ p: 2 }}>
+                    <Card key={order._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+                        <CardContent>
                             <Stack direction="row" justifyContent="space-between" alignItems="center">
                                 <Typography variant="subtitle1" fontWeight="bold">
                                     <Link
@@ -70,17 +68,9 @@ function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansi
                                         {order.orderId}
                                     </Link>
                                 </Typography>
-                                <IconButton onClick={() => toggleRowExpansion(order._id)} size="small">
-                                    <ExpandMoreIcon sx={{ transform: expandedRows[order._id] ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-                                </IconButton>
-                            </Stack>
-                            <Stack spacing={1} sx={{ mt: 1 }}>
-                                <Typography variant="body2">
-                                    <strong>Client:</strong> {order.clientId?.name || 'N/A'}
-                                </Typography>
                                 <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
-                                    <strong>Status:</strong>{' '}
                                     <Chip
+                                        size="small"
                                         icon={statusIcons[order.status]}
                                         label={statusLabels[order.status] || 'Unknown'}
                                         color={
@@ -91,8 +81,16 @@ function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansi
                                                             order.status === 5 ? 'primary' :
                                                                 order.status === 6 ? 'secondary' : 'default'
                                         }
-                                        sx={{ ml: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                        sx={{ ml: 1, p: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                     />
+                                </Typography>
+                                <IconButton onClick={() => toggleRowExpansion(order._id)} size="small">
+                                    <ExpandMoreIcon sx={{ transform: expandedRows[order._id] ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                                </IconButton>
+                            </Stack>
+                            <Stack spacing={1} sx={{ mt: 1 }}>
+                                <Typography variant="body2">
+                                    <strong>Client:</strong> {order.clientId?.name || 'N/A'}
                                 </Typography>
                                 <Typography variant="body2">
                                     <strong>Quantity:</strong> {order.totalQuantity}
@@ -119,7 +117,7 @@ function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansi
                                         <strong>Threads:</strong>
                                         {order.threadColors.map((tc, index) => (
                                             <Box key={index} component="span" sx={{ display: 'block' }}>
-                                                {tc.colore}, {tc.quantity} pcs
+                                                {tc.color}, {tc.quantity} pcs
                                             </Box>
                                         ))}
                                     </Typography>
@@ -138,7 +136,7 @@ function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansi
                     </Card>
                 ))
             ) : (
-                <NoRecordRow />
+                <OrderCardsLoader />
             )}
         </Box>
     );

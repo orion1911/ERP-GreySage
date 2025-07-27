@@ -36,6 +36,7 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
 
     // Custom sorting function with direction
     const sortData = (data, sortKey, direction) => {
+        if (!data || !Array.isArray(data)) return undefined;
         return [...data].sort((a, b) => {
             let valueA, valueB;
             if (sortKey === 'clientName') {
@@ -70,6 +71,7 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
 
     // Custom filtering function
     const filterData = (data, statusFilter) => {
+        if (!data || !Array.isArray(data)) return undefined;
         return data.filter(order =>
             !statusFilter || statusLabels[order.status]?.toLowerCase().includes(statusFilter.toLowerCase())
         );
@@ -77,7 +79,7 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
 
     // Apply global search, custom sorting, and filtering
     const processedOrders = useMemo(() => {
-        let filteredOrders = orders || [];
+        let filteredOrders = orders;
         if (globalSearch) {
             filteredOrders = filteredOrders.filter(order =>
                 order.orderId?.toLowerCase().includes(globalSearch.toLowerCase()) ||

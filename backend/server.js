@@ -27,31 +27,45 @@ const errorHandler = require('./middleware/error');
 const app = express();
 
 // Middleware Setup
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+  : ['https://greysage.vercel.app'];
+
 app.use(cors({
-  // origin: [
-  //   'https://urban-enigma-jxq7wq46vp5h7ww-8080.app.github.dev',
-  //   'http://localhost:8080', // For local development
-  //   'http://frontend:3000'  // For Docker-internal communication
-  // ],
-  origin: '*',
+  origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  // credentials: true // If your app uses cookies or auth headers
 }));
-app.options('*', cors()); // Explicitly handle OPTIONS requests
-
+app.options('*', cors());
 app.use(express.json());
 
 // MongoDB Connection
-//mongodb://adiladmin:caballer09@localhost:27017/sales_accounting?authSource=admin
+const connectDB = async () => {
+  if (mongoose.connection.readyState >= 1) {
+    // console.log('Already connected to MongoDB');
+    return;
+  }
 
-// console.log(process.env.MONGO_URI)
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
+  try {
+    await mongoose.connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      maxPoolSize: 100,
+      minPoolSize: 2,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+    console.log('Connected to MongoDB');
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+    // process.exit(1);
+  }
+};
+
+// Log connection events
+// mongoose.connection.on('connected', () => console.log('Mongoose connected'));
+// mongoose.connection.on('disconnected', () => console.log('Mongoose disconnected'));
+// mongoose.connection.on('error', (err) => console.error('Mongoose error:', err));
 
 // Route Setup
 app.use('/api', authRoutes);
@@ -74,5 +88,8 @@ app.use('/api', auditLogRoutes);
 // Error Handling Middleware
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Start server
+connectDB().then(() => {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+});

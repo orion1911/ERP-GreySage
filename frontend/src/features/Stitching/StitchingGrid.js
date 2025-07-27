@@ -9,6 +9,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { MorphDateTextField } from '../../components/MuiCustom';
 import WashingGrid from '../Washing/WashingGrid';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
+import { getFormattedDate } from '../../components/Validators';
 
 function StitchingGrid({
   stitchingRecords,
@@ -74,7 +75,7 @@ function StitchingGrid({
       accessorKey: 'date',
       header: 'DATE',
       enableSorting: true,
-      cell: ({ row }) => new Date(row.original.date).toLocaleDateString()
+      cell: ({ row }) => getFormattedDate(row.original.date)
     },
     {
       accessorKey: 'vendorId.name',

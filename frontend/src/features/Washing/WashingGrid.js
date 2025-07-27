@@ -6,6 +6,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { MorphDateTextField } from '../../components/MuiCustom';
 import { Edit as EditIcon } from '@mui/icons-material';
 import { NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
+import { getFormattedDate } from '../../components/Validators';
 
 function WashingGrid({ washingRecords, lotId, handleUpdateWashOut, onEditWashing }) {
   return (
@@ -27,7 +28,7 @@ function WashingGrid({ washingRecords, lotId, handleUpdateWashOut, onEditWashing
             {washingRecords && washingRecords.length === 0 ? (<NoRecordRow />) : (washingRecords.map((wr) => (
               <TableRow key={wr._id}>
                 {/* <TableCell>{wr.lotId.invoiceNumber}</TableCell> */}
-                <TableCell align='center'>{new Date(wr.date).toLocaleDateString()}</TableCell>
+                <TableCell align='center'>{getFormattedDate(wr.date)}</TableCell>
                 <TableCell align='center'>{wr.vendorId?.name || 'N/A'}</TableCell>
                 <TableCell>
                   {wr.washDetails.map((wd, index) => (

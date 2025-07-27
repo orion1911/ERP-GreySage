@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Chip, Link, Typography, useTheme, Grid, Select, MenuItem, Menu } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList } from '@mui/icons-material';
 import { OrderCardsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
+import { getFormattedDate } from '../../components/Validators';
 
 function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansion, statusLabels, statusIcons, onEditOrder, sortBy, setSortBy, sortDirection, setSortDirection, filterAnchorEl, setFilterAnchorEl, filterStatus, setFilterStatus }) {
     const theme = useTheme();
@@ -89,17 +90,43 @@ function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansi
                                 </IconButton>
                             </Stack>
                             <Stack spacing={1} sx={{ mt: 1 }}>
-                                <Typography variant="body2">
+                                <Grid container spacing={1} sx={{ textAlign: 'center' }}>
+                                    <Grid size={{ xs: 3, sm: 3 }} sx={{ textAlign: 'left' }}>
+                                        <Typography variant="body2" sx={{ wrap: 'nowrap' }}>
+                                            <strong>Date</strong><br />
+                                            {getFormattedDate(order.date)}
+                                        </Typography>
+                                    </Grid>
+                                    <Grid size={{ xs: 3, sm: 3 }}>
+                                        <Typography variant="body2">
+                                            <strong>Client</strong><br />
+                                            {order.clientId?.name || ''}
+                                        </Typography>
+                                    </Grid>
+                                    <Grid size={{ xs: 3, sm: 3 }}>
+                                        <Typography variant="body2">
+                                            <strong>Fit Style</strong><br />
+                                            {order.fitStyleId?.name || ''}
+                                        </Typography>
+                                    </Grid>
+                                    <Grid size={{ xs: 3, sm: 3 }} sx={{ textAlign: 'right' }}>
+                                        <Typography variant="body2">
+                                            <strong>Quantity</strong><br />
+                                            {order.finalTotalQuantity}
+                                        </Typography>
+                                    </Grid>
+                                </Grid>
+                                {/* <Typography variant="body2">
                                     <strong>Client:</strong> {order.clientId?.name || 'N/A'}
                                 </Typography>
                                 <Typography variant="body2">
                                     <strong>Quantity:</strong> {order.totalQuantity}
-                                </Typography>
+                                </Typography> */}
                             </Stack>
                             <Collapse in={expandedRows[order._id]}>
-                                <Stack spacing={1} sx={{ mt: 2 }}>
+                                <Grid container spacing={1} sx={{ mt: 2 }}>
                                     <Typography variant="body2">
-                                        <strong>Date:</strong> {new Date(order.date).toLocaleDateString()}
+                                        <strong>Date:</strong> {getFormattedDate(order.date)}
                                     </Typography>
                                     <Typography variant="body2">
                                         <strong>Fit Style:</strong> {order.fitStyleId?.name || 'N/A'}
@@ -130,7 +157,7 @@ function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansi
                                     >
                                         Edit
                                     </Button>
-                                </Stack>
+                                </Grid>
                             </Collapse>
                         </CardContent>
                     </Card>

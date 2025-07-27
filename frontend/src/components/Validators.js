@@ -17,3 +17,13 @@ export const handleNumFieldKeyPress = (event) => {
     event.preventDefault(); // Block other keys
   }
 };
+
+export const getFormattedDate = (date, monthFormat = 'short') => {
+  if (!date) return '';
+  const d = new Date(date);
+  return d.toLocaleDateString('en-GB', {
+    year: 'numeric',
+    month: monthFormat, // '2-digit', 'long'
+    day: '2-digit'
+  });
+}

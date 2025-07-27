@@ -19,7 +19,7 @@ function OrderGridMd({ processedOrders, columns, table, sortBy, sortDirection, s
                             <Grid container spacing={2} sx={{ justifyContent: 'flex-end' }}>
                                 <Grid item xs={12} sm={6} md={4}>
                                     <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                                        <Select
+                                        {/* <Select
                                             variant="standard"
                                             size="small"
                                             value={sortBy}
@@ -29,12 +29,12 @@ function OrderGridMd({ processedOrders, columns, table, sortBy, sortDirection, s
                                             }}
                                             sx={{ minWidth: 120 }}
                                         >
-                                            <MenuItem value="orderId">Order ID</MenuItem>
                                             <MenuItem value="date">Date</MenuItem>
                                             <MenuItem value="clientName">Client</MenuItem>
                                             <MenuItem value="fitStyleName">Fit Style</MenuItem>
-                                            <MenuItem value="fabric">Fabric</MenuItem>
                                             <MenuItem value="status">Status</MenuItem>
+                                            <MenuItem value="fabric">Fabric</MenuItem>
+                                            <MenuItem value="orderId">Order ID</MenuItem>
                                         </Select>
                                         <IconButton
                                             color="primary"
@@ -43,7 +43,7 @@ function OrderGridMd({ processedOrders, columns, table, sortBy, sortDirection, s
                                             sx={{ ml: 1 }}
                                         >
                                             {sortDirection === 'asc' ? <ArrowUpward /> : <ArrowDownward />}
-                                        </IconButton>
+                                        </IconButton> */}
                                         <Button
                                             variant="standard"
                                             size="small"

@@ -290,7 +290,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                   />
                 </Grid>
                 {isEditMode && (
-                  <Grid size={{ xs: 6, md: 2 }}>
+                  <Grid size={{ xs: 3, md: 3 }}>
                     <Controller
                       name={`washDetails[${index}].quantityShort`}
                       control={control}
@@ -303,7 +303,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                       render={({ field }) => (
                         <TextField
                           {...field}
-                          label="Quantity Short"
+                          label="QTY Short"
                           fullWidth
                           margin="normal"
                           variant="standard"

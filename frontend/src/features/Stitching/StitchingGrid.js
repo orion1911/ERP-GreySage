@@ -1,18 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { useTheme } from '@mui/material/styles';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, Button, IconButton, Tooltip, Typography } from '@mui/material';
-import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon } from '@mui/icons-material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, Button, IconButton, Tooltip, Typography, Stack, Grid, Select, MenuItem, Menu } from '@mui/material';
+import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon, ArrowUpward, ArrowDownward, FilterList } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { MorphDateTextField } from '../../components/MuiCustom';
 import WashingGrid from '../Washing/WashingGrid';
+import StitchingGridSx from './StitchingGridSx';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
+import { getFormattedDate } from '../../components/Validators';
 
 function StitchingGrid({
   stitchingRecords,
   washingRecords,
+  hasWashing,
   fetchWashingRecords,
   handleUpdateStitchOut,
   handleUpdateWashOut,
@@ -23,20 +27,74 @@ function StitchingGrid({
   onEditWashing
 }) {
   const theme = useTheme();
+  const { isMobile } = useOutletContext();
   const [expandedRows, setExpandedRows] = useState({});
+  const [sortBy, setSortBy] = useState('date');
+  const [sortDirection, setSortDirection] = useState('desc');
+  const [filterAnchorEl, setFilterAnchorEl] = useState(null);
+  const [filterStatus, setFilterStatus] = useState('');
 
   const toggleRowExpansion = (rowId) => {
     setExpandedRows(prev => {
       const newExpanded = { ...prev, [rowId]: !prev[rowId] };
       if (newExpanded[rowId]) {
         const row = stitchingRecords.find(r => r._id === rowId);
-        if (row && row.lotId?._id && !washingRecords[row.lotId._id]) {
+        if (row && row.lotId?._id && !(washingRecords && washingRecords[row.lotId._id])) {
           fetchWashingRecords(row.lotId._id);
         }
       }
       return newExpanded;
     });
   };
+
+  const sortData = (data, sortKey, direction) => {
+    if (!data || !Array.isArray(data)) return undefined;
+    return [...data].sort((a, b) => {
+      let valueA, valueB;
+      if (sortKey === 'lotNumber') {
+        valueA = a.lotId?.lotNumber || '';
+        valueB = b.lotId?.lotNumber || '';
+      } else if (sortKey === 'invoiceNumber') {
+        valueA = a.lotId?.invoiceNumber || '';
+        valueB = b.lotId?.invoiceNumber || '';
+      } else if (sortKey === 'date') {
+        valueA = new Date(a.date);
+        valueB = new Date(b.date);
+      } else if (sortKey === 'vendorName') {
+        valueA = a.vendorId?.name || '';
+        valueB = b.vendorId?.name || '';
+      } else if (sortKey === 'quantity') {
+        valueA = a.quantity || 0;
+        valueB = b.quantity || 0;
+      } else if (sortKey === 'quantityShort') {
+        valueA = a.quantityShort || 0;
+        valueB = b.quantityShort || 0;
+      } else if (sortKey === 'rate') {
+        valueA = a.rate || 0;
+        valueB = b.rate || 0;
+      }
+      if (typeof valueA === 'string' && typeof valueB === 'string') {
+        return direction === 'asc' ? valueA.localeCompare(valueB) : valueB.localeCompare(valueB);
+      }
+      return direction === 'asc' ? valueA - valueB : valueB - valueA;
+    });
+  };
+
+  const filterData = (data, search) => {
+    if (!data || !Array.isArray(data)) return undefined;
+    return data.filter(record =>
+      !search ||
+      record.lotId?.lotNumber?.toLowerCase().includes(search.toLowerCase()) ||
+      record.lotId?.invoiceNumber?.toString().toLowerCase().includes(search.toLowerCase()) ||
+      record.vendorId?.name?.toLowerCase().includes(search.toLowerCase())
+    );
+  };
+
+  const processedRecords = useMemo(() => {
+    let filtered = stitchingRecords;
+    filtered = filterData(filtered, searchTerm);
+    return sortData(filtered, sortBy, sortDirection);
+  }, [stitchingRecords, searchTerm, sortBy, sortDirection]);
 
   const columns = [
     {
@@ -48,14 +106,11 @@ function StitchingGrid({
             size="small"
             sx={{
               outline: 'none',
-              "&.MuiButtonBase-root:hover": {
-                bgcolor: "transparent"
-              }
+              "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
             }}
             onClick={() => toggleRowExpansion(row.original._id)}
           >
-            {expandedRows[row.original._id] ? <><LocalLaundryService fontSize='small' /><ExpandMore /></>
-              : <><LocalLaundryService fontSize='small' /><ChevronRight /></>}
+            {expandedRows[row.original._id] ? <><LocalLaundryService fontSize='small' /><ExpandMore /></> : <><LocalLaundryService fontSize='small' /><ChevronRight /></>}
           </IconButton>
         </Tooltip>
       )
@@ -74,7 +129,7 @@ function StitchingGrid({
       accessorKey: 'date',
       header: 'DATE',
       enableSorting: true,
-      cell: ({ row }) => new Date(row.original.date).toLocaleDateString()
+      cell: ({ row }) => getFormattedDate(row.original.date)
     },
     {
       accessorKey: 'vendorId.name',
@@ -102,26 +157,12 @@ function StitchingGrid({
       header: 'STITCH OUT',
       enableSorting: true,
       cell: ({ row }) => (
-        row.original.stitchOutDate ? (
-          new Date(row.original.stitchOutDate).toLocaleDateString()
-        ) : ''
-        // (
-        //   <LocalizationProvider dateAdapter={AdapterDayjs}>
-        //     <DatePicker
-        //       value={null}
-        //       onChange={(e) => handleUpdateStitchOut(row.original._id, e)}
-        //       format='DD-MMM-YYYY'
-        //       slots={{ textField: MorphDateTextField }}
-        //       sx={{ width: 165 }}
-        //     />
-        //   </LocalizationProvider>
-        // )
+        row.original.stitchOutDate ? getFormattedDate(row.original.stitchOutDate) : ''
       )
     },
     {
       accessorKey: 'actions',
       header: () => (<div style={{ textAlign: 'center' }}>ACTIONS</div>),
-      align: 'center',
       cell: ({ row }) => (
         <Box>
           <Tooltip title="Edit" placement='bottom' arrow>
@@ -129,20 +170,13 @@ function StitchingGrid({
               <EditIcon fontSize='small' />
             </IconButton>
           </Tooltip>
-          {/* <Tooltip title="Show Washing" placement='bottom' arrow>
-            <IconButton size="small" onClick={() => toggleRowExpansion(row.original._id)}>
-              {expandedRows[row.original._id] ? <><LocalLaundryService /><ExpandLess /></> : <><LocalLaundryService /><ExpandMore /></>}
-            </IconButton>
-          </Tooltip> */}
           <Tooltip title="Add Washing" placement='bottom' arrow>
             <IconButton
               size="small"
               sx={{
                 mr: 1,
                 outline: 'none',
-                "&.MuiButtonBase-root:hover": {
-                  bgcolor: "transparent"
-                }
+                "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
               }}
               onClick={() => {
                 setSelectedLot({
@@ -164,63 +198,115 @@ function StitchingGrid({
 
   const table = useReactTable({
     columns,
-    data: stitchingRecords,
+    data: processedRecords,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    state: {
-      globalFilter: searchTerm
-    },
-    globalFilterFn: (row, columnId, filterValue) => {
-      const lotNumber = row.original.lotId?.lotNumber?.toString().toLowerCase() || '';
-      const invoiceNumber = row.original.lotId?.invoiceNumber?.toString().toLowerCase() || '';
-      const vendorName = row.original.vendorId?.name?.toLowerCase() || '';
-      const search = filterValue.toLowerCase();
-      return (
-        lotNumber.includes(search) ||
-        invoiceNumber.includes(search) ||
-        vendorName.includes(search)
-      );
-    }
+    state: { globalFilter: searchTerm }
   });
 
   const getHeaderContent = (column) => column.columnDef && column.columnDef.header ? column.columnDef.header : column.id;
   const isColumnSortable = (column) => column.columnDef && column.columnDef.enableSorting === true;
 
-  return (
+  return isMobile ? (
+    <StitchingGridSx
+      processedRecords={processedRecords}
+      washingRecords={washingRecords}
+      fetchWashingRecords={fetchWashingRecords}
+      handleUpdateStitchOut={handleUpdateStitchOut}
+      handleUpdateWashOut={handleUpdateWashOut}
+      setOpenWashingModal={setOpenWashingModal}
+      setSelectedLot={setSelectedLot}
+      expandedRows={expandedRows}
+      toggleRowExpansion={toggleRowExpansion}
+      onEditStitching={onEditStitching}
+      onEditWashing={onEditWashing}
+      sortBy={sortBy}
+      setSortBy={setSortBy}
+      sortDirection={sortDirection}
+      setSortDirection={setSortDirection}
+      filterAnchorEl={filterAnchorEl}
+      setFilterAnchorEl={setFilterAnchorEl}
+      filterStatus={filterStatus}
+      setFilterStatus={setFilterStatus}
+    />
+  ) : (
     <TableContainer>
       <Table>
         <TableHead>
+          <TableRow sx={{ backgroundColor: theme.palette.background.paper }}>
+            <TableCell colSpan={columns.length} sx={{ p: 0.5 }}>
+              <Grid container spacing={2} sx={{ justifyContent: 'flex-end' }}>
+                <Grid item xs={12} sm={6} md={4}>
+                  <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+                    <Select
+                      variant="standard"
+                      size="small"
+                      value={sortBy}
+                      onChange={(e) => {
+                        setSortBy(e.target.value);
+                        setSortDirection('asc');
+                      }}
+                    >
+                      <MenuItem value="lotNumber">Sort By Lot Number</MenuItem>
+                      <MenuItem value="invoiceNumber">Sort By Invoice Number</MenuItem>
+                      <MenuItem value="date">Sort By Date</MenuItem>
+                      <MenuItem value="vendorName">Sort By Vendor</MenuItem>
+                      <MenuItem value="quantity">Sort By Quantity</MenuItem>
+                      <MenuItem value="quantityShort">Sort By Quantity Short</MenuItem>
+                      <MenuItem value="rate">Sort By Rate</MenuItem>
+                    </Select>
+                    <IconButton
+                      onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+                      sx={{ ml: 1 }}
+                    >
+                      {sortDirection === 'asc' ? <ArrowUpward /> : <ArrowDownward />}
+                    </IconButton>
+                    <IconButton
+                      onClick={(e) => setFilterAnchorEl(e.currentTarget)}
+                    >
+                      <FilterList />
+                    </IconButton>
+                    <Menu
+                      anchorEl={filterAnchorEl}
+                      open={Boolean(filterAnchorEl)}
+                      onClose={() => setFilterAnchorEl(null)}
+                    >
+                      <MenuItem onClick={() => { setFilterStatus(''); setFilterAnchorEl(null); }}>All</MenuItem>
+                    </Menu>
+                  </Stack>
+                </Grid>
+              </Grid>
+            </TableCell>
+          </TableRow>
           {table.getHeaderGroups().map(headerGroup => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map(colHeader => (
                 <TableCell
                   key={colHeader.column.id}
-                  onClick={(event) => {
+                  onClick={() => {
                     if (isColumnSortable(colHeader.column)) {
-                      const sortHandler = colHeader.column.getToggleSortingHandler();
-                      if (sortHandler) {
-                        sortHandler(event);
-                      }
+                      setSortBy(colHeader.column.id);
+                      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
                     }
                   }}
                   style={{
                     cursor: isColumnSortable(colHeader.column) ? 'pointer' : 'default',
                     textAlign: 'center',
-                    width: colHeader.column.id === 'toggleWashing' && '20px'
+                    width: colHeader.column.id === 'toggleWashing' ? '20px' : 'auto'
                   }}
                 >
                   {flexRender(getHeaderContent(colHeader.column), colHeader.getContext())}
-                  {isColumnSortable(colHeader.column) && colHeader.column.getIsSorted() ? (colHeader.column.getIsSorted() === 'desc' ? ' 🔽' : ' 🔼') : ''}
+                  {sortBy === colHeader.column.id ? (sortDirection === 'desc' ? ' 🔽' : ' 🔼') : ''}
                 </TableCell>
               ))}
             </TableRow>
           ))}
         </TableHead>
         <TableBody>
-          {!stitchingRecords ? (
+          {!processedRecords ? (
             <TableRowsLoader colsNum={10} rowsNum={10} />
-          ) : (stitchingRecords && stitchingRecords.length > 0 ? (
+          ) : processedRecords.length > 0 ? (
             table.getRowModel().rows.map(row => (
               <React.Fragment key={row.id}>
                 <TableRow>
@@ -229,9 +315,10 @@ function StitchingGrid({
                       key={cell.id}
                       style={{
                         textAlign: 'center',
-                        width: cell.column.id === 'toggleWashing' && '20px',
-                        padding: cell.column.id === 'toggleWashing' && 0
-                      }}>
+                        width: cell.column.id === 'toggleWashing' ? '20px' : 'auto',
+                        padding: cell.column.id === 'toggleWashing' ? 0 : 'auto'
+                      }}
+                    >
                       {flexRender(cell.column.columnDef.cell || cell.getValue(), cell.getContext())}
                     </TableCell>
                   ))}
@@ -240,16 +327,28 @@ function StitchingGrid({
                   <TableRow>
                     <TableCell colSpan={10}>
                       <WashingGrid
-                        washingRecords={washingRecords[row.original.lotId?._id] || []}
+                        washingRecords={washingRecords && washingRecords[row.original.lotId?._id] || []}
+                        hasWashing={hasWashing}
                         lotId={row.original.lotId?._id}
                         handleUpdateWashOut={handleUpdateWashOut}
                         onEditWashing={onEditWashing}
+                        sortBy={sortBy}
+                        setSortBy={setSortBy}
+                        sortDirection={sortDirection}
+                        setSortDirection={setSortDirection}
+                        filterAnchorEl={filterAnchorEl}
+                        setFilterAnchorEl={setFilterAnchorEl}
+                        filterStatus={filterStatus}
+                        setFilterStatus={setFilterStatus}
                       />
                     </TableCell>
                   </TableRow>
                 )}
               </React.Fragment>
-            ))) : <NoRecordRow />)}
+            ))
+          ) : (
+            <NoRecordRow />
+          )}
         </TableBody>
       </Table>
     </TableContainer>

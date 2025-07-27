@@ -110,7 +110,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
       <Box
         sx={{
           ml: isMobile ? 0 : drawerWidth + 'px',
-          width: '50%',
+          width: isMobile ? '80%' : '50%',
           maxHeight: '80vh',
           overflowY: 'auto',
           bgcolor: 'background.paper',
@@ -145,6 +145,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                         textField: {
                           error: !!errors.date,
                           helperText: errors.date?.message,
+                          variant: 'standard'
                         },
                       }}
                     />
@@ -164,7 +165,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                     label="Lot Number"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     error={!!errors.lotNumber}
                     helperText={errors.lotNumber?.message}
                     placeholder="e.g., A/2 or A/1/3"
@@ -189,7 +190,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                     label="Invoice Number"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     error={!!errors.invoiceNumber}
                     helperText={errors.invoiceNumber?.message}
                   />
@@ -207,6 +208,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                     <Select
                       {...field}
                       label="Vendor"
+                      variant="standard"
                     >
                       {vendors.map(vendor => (
                         <MenuItem key={vendor._id} value={vendor._id}>{vendor.name}</MenuItem>
@@ -234,7 +236,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                     label="Quantity"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     error={!!errors.quantity}
                     helperText={errors.quantity?.message}
                   />
@@ -258,7 +260,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                     label="Rate"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     error={!!errors.rate}
                     helperText={errors.rate?.message}
                   />
@@ -275,7 +277,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                     label="Description"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     multiline
                     rows={1}
                   />

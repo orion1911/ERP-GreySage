@@ -1,4 +1,4 @@
-import { TableCell, TableRow, Skeleton, Box, Stack, Grid, Card, CardContent, Chip, Typography } from '@mui/material';
+import { TableCell, TableRow, Skeleton, Box, Stack, Grid, Card, CardContent, Chip, IconButton, Typography, useTheme } from '@mui/material';
 
 export const TableRowsLoader = ({ colsNum, rowsNum }) => {
     return [...Array(rowsNum)].map((row, index) => (
@@ -105,3 +105,133 @@ export const TotalQtyByClientBarSkeleton = () => {
         </Card>
     );
 }
+
+export const OrderCardSkeleton = () => {
+    const theme = useTheme();
+
+    return (
+        <Card variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+            <CardContent>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="subtitle1" fontWeight="bold">
+                        <Skeleton animation="wave" variant="text" width={180} />
+                    </Typography>
+                    <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Chip
+                            size="small"
+                            label={<Skeleton animation="wave" variant="text" width={60} />}
+                            sx={{ ml: 1, p: 1.5 }}
+                        />
+                    </Typography>
+                    <IconButton size="small">
+                        <Skeleton animation="wave" variant="circular" width={24} height={24} />
+                    </IconButton>
+                </Stack>
+                <Stack spacing={1} sx={{ mt: 1 }}>
+                    <Grid container spacing={1} sx={{ textAlign: 'center' }}>
+                        <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                            <Typography variant="body2" sx={{ wrap: 'nowrap' }}>
+                                <strong>Date</strong><br />
+                                <Skeleton animation="wave" variant="text" width='100%' />
+                            </Typography>
+                        </Grid>
+                        <Grid size={{ xs: 4, sm: 4 }}>
+                            <Typography variant="body2">
+                                <strong>Client</strong><br />
+                                <Skeleton animation="wave" variant="text" width='100%' />
+                            </Typography>
+                        </Grid>
+                        <Grid size={{ xs: 4, sm: 4 }}>
+                            <Typography variant="body2">
+                                <strong>Fit Style</strong><br />
+                                <Skeleton animation="wave" variant="text" width='100%' />
+                            </Typography>
+                        </Grid>
+                    </Grid>
+                </Stack>
+            </CardContent>
+        </Card>
+    );
+};
+
+export const StitchingCardSkeleton = () => {
+  const theme = useTheme();
+  return (
+    <Card variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+      <CardContent>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Typography variant="subtitle1" fontWeight="bold">
+            <Skeleton animation="wave" variant="text" width={180} />
+          </Typography>
+          <IconButton size="small">
+            <Skeleton animation="wave" variant="circular" width={24} height={24} />
+          </IconButton>
+        </Stack>
+        <Stack spacing={1} sx={{ mt: 1 }}>
+          <Grid container spacing={1} sx={{ textAlign: 'center' }}>
+            <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+              <Typography variant="body2">
+                <strong>Date</strong><br />
+                <Skeleton animation="wave" variant="text" width={100} />
+              </Typography>
+            </Grid>
+            <Grid size={{ xs: 4, sm: 4 }}>
+              <Typography variant="body2">
+                <strong>Vendor</strong><br />
+                <Skeleton animation="wave" variant="text" width={100} />
+              </Typography>
+            </Grid>
+            <Grid size={{ xs: 4, sm: 4 }}>
+              <Typography variant="body2">
+                <strong>Quantity</strong><br />
+                <Skeleton animation="wave" variant="text" width={60} />
+              </Typography>
+            </Grid>
+          </Grid>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+};
+
+export const WashingCardSkeleton = () => {
+  const theme = useTheme();
+  return (
+    <Card variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+      <CardContent>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Typography variant="subtitle1" fontWeight="bold">
+            <Skeleton animation="wave" variant="text" width={180} />
+          </Typography>
+          <IconButton size="small">
+            <Skeleton animation="wave" variant="circular" width={24} height={24} />
+          </IconButton>
+        </Stack>
+        <Stack spacing={1} sx={{ mt: 1 }}>
+          <Grid container spacing={1} sx={{ textAlign: 'center' }}>
+            <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'left' }}>
+              <Typography variant="body2">
+                <strong>Vendor</strong><br />
+                <Skeleton animation="wave" variant="text" width={100} />
+              </Typography>
+            </Grid>
+            <Grid size={{ xs: 6, sm: 6 }}>
+              <Typography variant="body2">
+                <strong>Wash Details</strong><br />
+                <Skeleton animation="wave" variant="text" width={150} />
+              </Typography>
+            </Grid>
+          </Grid>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+};
+
+export const OrderCardsLoader = ({ numOfCards = 3, type = 'order' }) => {
+  return [...Array(numOfCards)].map((_, index) => (
+    type === 'stitching' ? <StitchingCardSkeleton key={index} /> :
+    type === 'washing' ? <WashingCardSkeleton key={index} /> :
+    <OrderCardSkeleton key={index} />
+  ));
+};

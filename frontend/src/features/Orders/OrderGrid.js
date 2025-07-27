@@ -5,13 +5,14 @@ import { Link, IconButton, Chip, Box, Typography } from '@mui/material';
 import { Edit as EditIcon, CheckCircle, Cancel, ShoppingCartCheckout, ContentCut, LocalLaundryService, AutoAwesome } from '@mui/icons-material';
 import OrderGridSx from './OrderGridSx';
 import OrderGridMd from './OrderGridMd';
+import { getFormattedDate } from '../../components/Validators';
 
 function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
     const navigate = useNavigate();
     const { isMobile } = useOutletContext();
     const [expandedRows, setExpandedRows] = useState({});
-    const [sortBy, setSortBy] = useState('orderId'); // Default sort by Order ID
-    const [sortDirection, setSortDirection] = useState('asc'); // Track sort direction
+    const [sortBy, setSortBy] = useState('date'); // Default sort
+    const [sortDirection, setSortDirection] = useState('desc'); // Track sort direction
     const [filterAnchorEl, setFilterAnchorEl] = useState(null); // Filter menu anchor
     const [filterStatus, setFilterStatus] = useState(''); // Filter by status
 
@@ -35,6 +36,7 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
 
     // Custom sorting function with direction
     const sortData = (data, sortKey, direction) => {
+        if (!data || !Array.isArray(data)) return undefined;
         return [...data].sort((a, b) => {
             let valueA, valueB;
             if (sortKey === 'clientName') {
@@ -69,6 +71,7 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
 
     // Custom filtering function
     const filterData = (data, statusFilter) => {
+        if (!data || !Array.isArray(data)) return undefined;
         return data.filter(order =>
             !statusFilter || statusLabels[order.status]?.toLowerCase().includes(statusFilter.toLowerCase())
         );
@@ -76,7 +79,7 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
 
     // Apply global search, custom sorting, and filtering
     const processedOrders = useMemo(() => {
-        let filteredOrders = orders || [];
+        let filteredOrders = orders;
         if (globalSearch) {
             filteredOrders = filteredOrders.filter(order =>
                 order.orderId?.toLowerCase().includes(globalSearch.toLowerCase()) ||
@@ -99,6 +102,7 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
                     component="button"
                     onClick={() => navigate(`/stitching/${row.original._id}`)}
                     sx={{ fontWeight: 'bold', textDecoration: 'underline' }}
+                    underline="none"
                 >
                     {row.original.orderId}
                 </Link>
@@ -108,7 +112,7 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
             accessorKey: 'date',
             header: 'Date',
             enableSorting: true,
-            cell: ({ row }) => new Date(row.original.date).toLocaleDateString(),
+            cell: ({ row }) => getFormattedDate(row.original.date)
         },
         {
             accessorKey: 'clientName',
@@ -130,17 +134,17 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
         {
             accessorKey: 'waistSize',
             header: 'Waist Size',
-            enableSorting: true,
+            // enableSorting: true,
         },
         {
             accessorKey: 'totalQuantity',
             header: 'Qty',
-            enableSorting: true,
+            // enableSorting: true,
         },
         {
             accessorKey: 'finalTotalQuantity',
             header: 'Final Qty',
-            enableSorting: true,
+            // enableSorting: true,
         },
         {
             accessorKey: 'threadColors',

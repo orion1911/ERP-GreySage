@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Chip, Link, Typography, useTheme, Grid, Select, MenuItem, Menu } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList } from '@mui/icons-material';
 import { OrderCardsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
+import { getFormattedDate } from '../../components/Validators';
 
 function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansion, statusLabels, statusIcons, onEditOrder, sortBy, setSortBy, sortDirection, setSortDirection, filterAnchorEl, setFilterAnchorEl, filterStatus, setFilterStatus }) {
     const theme = useTheme();
@@ -54,16 +55,19 @@ function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansi
                     </Stack>
                 </Grid>
             </Grid>
-            {processedOrders.length > 0 ? (
+            {processedOrders === undefined ? (
+                <OrderCardsLoader />
+            ) : processedOrders.length > 0 ? (
                 processedOrders.map((order) => (
                     <Card key={order._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
                         <CardContent>
                             <Stack direction="row" justifyContent="space-between" alignItems="center">
                                 <Typography variant="subtitle1" fontWeight="bold">
                                     <Link
-                                        component="button"
+                                        // component="button"
                                         onClick={() => navigate(`/stitching/${order._id}`)}
                                         sx={{ textDecoration: 'underline' }}
+                                        underline="none"
                                     >
                                         {order.orderId}
                                     </Link>
@@ -89,54 +93,82 @@ function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansi
                                 </IconButton>
                             </Stack>
                             <Stack spacing={1} sx={{ mt: 1 }}>
-                                <Typography variant="body2">
-                                    <strong>Client:</strong> {order.clientId?.name || 'N/A'}
-                                </Typography>
-                                <Typography variant="body2">
-                                    <strong>Quantity:</strong> {order.totalQuantity}
-                                </Typography>
+                                <Grid container spacing={1} sx={{ textAlign: 'center' }}>
+                                    <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                                        <Typography variant="body2" sx={{ wrap: 'nowrap' }}>
+                                            <strong>Date</strong><br />
+                                            {getFormattedDate(order.date)}
+                                        </Typography>
+                                    </Grid>
+                                    <Grid size={{ xs: 4, sm: 4 }}>
+                                        <Typography variant="body2">
+                                            <strong>Client</strong><br />
+                                            {order.clientId?.name || ''}
+                                        </Typography>
+                                    </Grid>
+                                    <Grid size={{ xs: 4, sm: 4 }}>
+                                        <Typography variant="body2">
+                                            <strong>Fit Style</strong><br />
+                                            {order.fitStyleId?.name || ''}
+                                        </Typography>
+                                    </Grid>
+                                </Grid>
                             </Stack>
                             <Collapse in={expandedRows[order._id]}>
-                                <Stack spacing={1} sx={{ mt: 2 }}>
-                                    <Typography variant="body2">
-                                        <strong>Date:</strong> {new Date(order.date).toLocaleDateString()}
-                                    </Typography>
-                                    <Typography variant="body2">
-                                        <strong>Fit Style:</strong> {order.fitStyleId?.name || 'N/A'}
-                                    </Typography>
-                                    <Typography variant="body2">
-                                        <strong>Fabric:</strong> {order.fabric}
-                                    </Typography>
-                                    <Typography variant="body2">
-                                        <strong>Waist Size:</strong> {order.waistSize}
-                                    </Typography>
-                                    <Typography variant="body2">
-                                        <strong>Final Qty:</strong> {order.finalTotalQuantity}
-                                    </Typography>
-                                    <Typography variant="body2">
-                                        <strong>Threads:</strong>
-                                        {order.threadColors.map((tc, index) => (
-                                            <Box key={index} component="span" sx={{ display: 'block' }}>
-                                                {tc.color}, {tc.quantity} pcs
-                                            </Box>
-                                        ))}
-                                    </Typography>
-                                    <Button
-                                        variant="outlined"
-                                        startIcon={<EditIcon />}
-                                        onClick={() => onEditOrder(order)}
-                                        size="small"
-                                        sx={{ mt: 1 }}
-                                    >
-                                        Edit
-                                    </Button>
-                                </Stack>
+                                <Grid container spacing={1} sx={{ mt: 2, textAlign: 'center' }}>
+                                    <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                                        <Typography variant="body2">
+                                            <strong>Quantity</strong><br />
+                                            {order.totalQuantity}
+                                        </Typography>
+                                    </Grid>
+                                    <Grid size={{ xs: 4, sm: 4 }}>
+                                        <Typography variant="body2">
+                                            <strong>Fabric</strong><br />
+                                            {order.fabric}
+                                        </Typography>
+                                    </Grid>
+                                    <Grid size={{ xs: 4, sm: 4 }}>
+                                        <Typography variant="body2">
+                                            <strong>Waist Size</strong><br />
+                                            {order.waistSize}
+                                        </Typography>
+                                    </Grid>
+                                    <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                                        <Typography variant="body2">
+                                            <strong>Final Qty</strong><br />
+                                            {order.finalTotalQuantity}
+                                        </Typography>
+                                    </Grid>
+                                    <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>
+                                        <Typography variant="body2">
+                                            <strong>Threads:</strong>
+                                            {order.threadColors.map((tc, index) => (
+                                                <Box key={index} component="span" sx={{ display: 'block' }}>
+                                                    {tc.color}, {tc.quantity} pcs
+                                                </Box>
+                                            ))}
+                                        </Typography>
+                                    </Grid>
+                                    <Grid size={{ xs: 12, sm: 12 }}>
+                                        <Button
+                                            variant="contained"
+                                            startIcon={<EditIcon />}
+                                            onClick={() => onEditOrder(order)}
+                                            size="small"
+                                            sx={{ mt: 1 }}
+                                            fullWidth
+                                        >
+                                            Edit
+                                        </Button>
+                                    </Grid>
+                                </Grid>
                             </Collapse>
                         </CardContent>
                     </Card>
                 ))
             ) : (
-                <OrderCardsLoader />
+                'No records found'
             )}
         </Box>
     );

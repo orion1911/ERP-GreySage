@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { Container, Paper, Typography, Box, Button, TextField, Skeleton } from '@mui/material';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Container, Paper, Typography, Box, Button, TextField, Skeleton, Link } from '@mui/material';
 import { ContentCut } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 import StitchingGrid from './StitchingGrid';
@@ -9,8 +9,10 @@ import AddWashingModal from '../Washing/AddWashingModal';
 
 function StitchingManagement() {
   const { orderId } = useParams();
+  const navigate = useNavigate();
   const [stitchingRecords, setStitchingRecords] = useState();
-  const [washingRecords, setWashingRecords] = useState({});
+  const [washingRecords, setWashingRecords] = useState();
+  const [hasWashing, setHasWashing] = useState(false);
   const [order, setOrder] = useState(null);
   const [stitchingVendors, setStitchingVendors] = useState([]);
   const [washingVendors, setWashingVendors] = useState([]);
@@ -51,6 +53,10 @@ function StitchingManagement() {
     fetchData();
   }, [orderId, token]);
 
+  useEffect(() => {
+    washingRecords ? setHasWashing(true) : setHasWashing(false)
+  }, [washingRecords])
+
   const fetchWashingRecords = async (lotId) => {
     try {
       const washingRes = await apiService.washing.getWashing('', lotId, '');
@@ -63,11 +69,11 @@ function StitchingManagement() {
   const handleAddStitching = (newStitching) => {
     if (selectedRecord && selectedRecord._id === newStitching._id) {
       // Update existing record
-      setStitchingRecords(stitchingRecords.map(record => 
+      setStitchingRecords(stitchingRecords.map(record =>
         record._id === newStitching._id ? newStitching : record
       ));
-      setTotalStitchedQuantity(stitchingRecords.reduce((sum, record) => 
-        record._id === newStitching._id ? sum + Number(newStitching.quantity) : sum + Number(record.quantity), 
+      setTotalStitchedQuantity(stitchingRecords.reduce((sum, record) =>
+        record._id === newStitching._id ? sum + Number(newStitching.quantity) : sum + Number(record.quantity),
         0
       ));
     } else {
@@ -96,7 +102,7 @@ function StitchingManagement() {
       // Update existing washing record
       setWashingRecords(prev => ({
         ...prev,
-        [lotId]: prev[lotId].map(record => 
+        [lotId]: prev[lotId].map(record =>
           record._id === newWashing._id ? newWashing : record
         )
       }));
@@ -133,10 +139,17 @@ function StitchingManagement() {
         <Typography variant="h4" sx={{ mb: 1 }}>Stitching Management</Typography>
         {!order ? (<Skeleton animation="wave" variant="text" sx={{ marginBottom: 2, width: '60%' }} />) : (
           <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
-            <Typography>Order ID: <b>{order.orderId}</b></Typography>
-            <Typography>Total Quantity: <b>{order.totalQuantity}</b></Typography>
-            <Typography>Stitched Quantity: <b>{totalStitchedQuantity}</b></Typography>
-            <Typography>Remaining Quantity: <b>{order.totalQuantity - totalStitchedQuantity}</b></Typography>
+            <Link
+              component="button"
+              onClick={() => navigate('/orders')}
+              sx={{ fontWeight: 'bold', textAlign: 'left', textDecoration: 'none !important' }}
+              underline="none"
+            >
+              {order.orderId}
+            </Link>
+            <Typography>Total QTY: <b>{order.totalQuantity}</b></Typography>
+            {/* <Typography>Stitched Quantity: <b>{totalStitchedQuantity}</b></Typography> */}
+            <Typography>Remaining QTY: <b>{order.totalQuantity - totalStitchedQuantity}</b></Typography>
           </Box>
         )}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -155,6 +168,7 @@ function StitchingManagement() {
         <StitchingGrid
           stitchingRecords={stitchingRecords}
           washingRecords={washingRecords}
+          hasWashing={hasWashing}
           fetchWashingRecords={fetchWashingRecords}
           handleUpdateStitchOut={handleUpdateStitchOut}
           handleUpdateWashOut={handleUpdateWashOut}

@@ -108,6 +108,7 @@ const createStitching = async (req, res) => {
   // Start a MongoDB session and transaction
   session = await mongoose.startSession();
   let transactionCommitted = false;
+  let stitching = null;
 
   try {
     session.startTransaction();
@@ -124,7 +125,7 @@ const createStitching = async (req, res) => {
     await lot.save({ session });
 
     // Create Stitching entry within the transaction
-    const stitching = new Stitching({
+    stitching = new Stitching({
       lotId: lot._id,
       orderId,
       vendorId,

@@ -128,12 +128,26 @@ export const OrderCardSkeleton = () => {
                     </IconButton>
                 </Stack>
                 <Stack spacing={1} sx={{ mt: 1 }}>
-                    <Typography variant="body2">
-                        <strong>Client:   </strong> <Skeleton animation="wave" variant="text" width={100} sx={{ display: 'inline-flex', ml: 1 }} />
-                    </Typography>
-                    <Typography variant="body2">
-                        <strong>Quantity:  </strong> <Skeleton animation="wave" variant="text" width={60} sx={{ display: 'inline-flex', ml: 1 }} />
-                    </Typography>
+                    <Grid container spacing={1} sx={{ textAlign: 'center' }}>
+                        <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                            <Typography variant="body2" sx={{ wrap: 'nowrap' }}>
+                                <strong>Date</strong><br />
+                                <Skeleton animation="wave" variant="text" width='100%' />
+                            </Typography>
+                        </Grid>
+                        <Grid size={{ xs: 4, sm: 4 }}>
+                            <Typography variant="body2">
+                                <strong>Client</strong><br />
+                                <Skeleton animation="wave" variant="text" width='100%' />
+                            </Typography>
+                        </Grid>
+                        <Grid size={{ xs: 4, sm: 4 }}>
+                            <Typography variant="body2">
+                                <strong>Fit Style</strong><br />
+                                <Skeleton animation="wave" variant="text" width='100%' />
+                            </Typography>
+                        </Grid>
+                    </Grid>
                 </Stack>
             </CardContent>
         </Card>

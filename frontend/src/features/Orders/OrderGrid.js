@@ -100,6 +100,7 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
                     component="button"
                     onClick={() => navigate(`/stitching/${row.original._id}`)}
                     sx={{ fontWeight: 'bold', textDecoration: 'underline' }}
+                    underline="none"
                 >
                     {row.original.orderId}
                 </Link>

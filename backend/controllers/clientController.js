@@ -46,4 +46,22 @@ const toggleClientActive = async (req, res) => {
   res.json(client);
 };
 
-module.exports = { createClient, getClients, toggleClientActive };
+const updateClient = async (req, res) => {
+  const { id } = req.params;
+  const { name, clientCode, contact, email, address } = req.body;
+
+  const client = await Client.findById(id);
+  if (!client) return res.status(404).json({ error: 'Client not found' });
+
+  client.name = name || client.name;
+  client.clientCode = clientCode || client.clientCode;
+  client.contact = contact || client.contact;
+  client.email = email || client.email;
+  client.address = address || client.address;
+
+  await client.save();
+  //await logAction(req.user.userId, 'update_client', 'Client', client._id, `Updated client: ${client.name}`);
+  res.json(client);
+};
+
+module.exports = { createClient, getClients, toggleClientActive, updateClient };

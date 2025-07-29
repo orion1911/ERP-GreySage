@@ -26,4 +26,17 @@ const toggleFitStyleActive = async (req, res) => {
   res.json(fitStyle);
 };
 
-module.exports = { createFitStyle, getFitStyles, toggleFitStyleActive };
+const updateFitStyle = async (req, res) => {
+  const fitStyle = await FitStyle.findById(req.params.id);
+  if (!fitStyle) return res.status(404).json({ error: 'Fit Style not found' });
+
+  const { name, description, isActive } = req.body;
+  if (name !== undefined) fitStyle.name = name;
+  if (description !== undefined) fitStyle.description = description;
+  if (isActive !== undefined) fitStyle.isActive = isActive;
+
+  await fitStyle.save();
+  res.status(200).json(fitStyle);
+};
+
+module.exports = { createFitStyle, getFitStyles, toggleFitStyleActive, updateFitStyle };

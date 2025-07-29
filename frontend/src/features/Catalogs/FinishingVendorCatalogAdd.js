@@ -2,24 +2,38 @@ import React from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { Box, Grid, Modal, Typography, TextField, Button, IconButton } from '@mui/material';
-import { Close as CloseIcon, Save as SaveIcon } from '@mui/icons-material';
+import { Close as CloseIcon, Save as SaveIcon, Publish as PublishIcon } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 
-function FinishingVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess }) {
+function FinishingVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess, editVendor }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
 
-  const { control, handleSubmit, reset } = useForm({
+  const { control, handleSubmit, reset, setValue } = useForm({
     defaultValues: {
-      name: '',
-      contact: '',
-      address: ''
+      name: editVendor?.name || '',
+      contact: editVendor?.contact || '',
+      address: editVendor?.address || ''
     },
     mode: 'onChange'
   });
 
+  React.useEffect(() => {
+    if (editVendor) {
+      setValue('name', editVendor.name || '');
+      setValue('contact', editVendor.contact || '');
+      setValue('address', editVendor.address || '');
+    } else {
+      reset({ name: '', contact: '', address: '' });
+    }
+  }, [editVendor, setValue, reset]);
+
   const onSubmit = (data) => {
     setLoading(true);
-    apiService.finishingVendors.createFinishingVendor(data)
+    const request = editVendor
+      ? apiService.finishingVendors.updateFinishingVendor(editVendor._id, data)
+      : apiService.finishingVendors.createFinishingVendor(data);
+
+    request
       .then(() => {
         setLoading(false);
         reset();
@@ -58,7 +72,9 @@ function FinishingVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSu
         }}
       >
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" id="add-vendor-modal">Add Finishing Vendor</Typography>
+          <Typography variant="h6" id="add-vendor-modal">
+            {editVendor ? 'Edit Finishing Vendor' : 'Add Finishing Vendor'}
+          </Typography>
           <IconButton onClick={onClose}>
             <CloseIcon />
           </IconButton>
@@ -130,12 +146,12 @@ function FinishingVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSu
               <Button
                 type="submit"
                 fullWidth
-                endIcon={<SaveIcon />}
+                endIcon={editVendor ? <PublishIcon /> : <SaveIcon />}
                 disabled={loading}
                 variant="contained"
                 sx={{ mt: 2 }}
               >
-                {loading ? 'Saving...' : 'SAVE'}
+                {loading ? 'Saving...' : editVendor ? 'UPDATE' : 'SAVE'}
               </Button>
             </Grid>
           </Grid>

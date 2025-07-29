@@ -2,20 +2,19 @@ import React from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { Box, Grid, Modal, Typography, TextField, Button, IconButton } from '@mui/material';
-import { Close as CloseIcon, Save as SaveIcon } from '@mui/icons-material';
+import { Close as CloseIcon, Save as SaveIcon, Publish as PublishIcon } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 
-function ClientCatalogAdd({ open, onClose }) {
+function ClientCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess, editClient }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
-  const [loading, setLoading] = React.useState(false);
 
   const { control, handleSubmit, watch, setValue, reset } = useForm({
     defaultValues: {
-      name: '',
-      clientCodePrefix: '',
-      contact: '',
-      email: '',
-      address: ''
+      name: editClient?.name || '',
+      clientCodePrefix: editClient?.clientCode || '',
+      contact: editClient?.contact || '',
+      email: editClient?.email || '',
+      address: editClient?.address || ''
     },
     mode: 'onChange'
   });
@@ -32,23 +31,44 @@ function ClientCatalogAdd({ open, onClose }) {
   };
 
   React.useEffect(() => {
-    if (nameValue) {
+    if (!editClient && nameValue) {
       setValue('clientCodePrefix', generateClientCodePrefix(nameValue));
     }
-  }, [nameValue, setValue]);
+  }, [nameValue, setValue, editClient]);
+
+  React.useEffect(() => {
+    if (editClient) {
+      setValue('name', editClient.name || '');
+      setValue('clientCodePrefix', editClient.clientCode || '');
+      setValue('contact', editClient.contact || '');
+      setValue('email', editClient.email || '');
+      setValue('address', editClient.address || '');
+    } else {
+      reset({ name: '', clientCodePrefix: '', contact: '', email: '', address: '' });
+    }
+  }, [editClient, setValue, reset]);
 
   const onSubmit = (data) => {
     setLoading(true);
-    apiService.client.createClient(data)
+    const request = editClient
+      ? apiService.client.updateClient(editClient._id, { ...data, clientCode: data.clientCodePrefix })
+      : apiService.client.createClient({ ...data, clientCode: data.clientCodePrefix });
+
+    request
       .then(() => {
         setLoading(false);
         reset();
+        onAddSuccess();
         onClose();
       })
       .catch(err => {
-        console.log(err.response);
-        showSnackbar(err);
         setLoading(false);
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          showSnackbar('Session expired. Please log in again.');
+          window.location.href = '/login';
+        } else {
+          showSnackbar(err.response?.data?.error || 'An error occurred');
+        }
       });
   };
 
@@ -73,7 +93,9 @@ function ClientCatalogAdd({ open, onClose }) {
         }}
       >
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" id="add-client-modal">Add Client</Typography>
+          <Typography variant="h6" id="add-client-modal">
+            {editClient ? 'Edit Client' : 'Add Client'}
+          </Typography>
           <IconButton onClick={onClose}>
             <CloseIcon />
           </IconButton>
@@ -108,11 +130,11 @@ function ClientCatalogAdd({ open, onClose }) {
                   <TextField
                     {...field}
                     onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                    label="Client Code Prefix (Suggested)"
+                    label="Client Code Prefix"
                     fullWidth
                     margin="normal"
                     variant="standard"
-                    helperText={error ? error.message : 'Edit the suggested prefix if needed'}
+                    helperText={error ? error.message : editClient ? '' : 'Edit the suggested prefix if needed'}
                     error={!!error}
                   />
                 )}
@@ -188,11 +210,12 @@ function ClientCatalogAdd({ open, onClose }) {
               <Button
                 type="submit"
                 fullWidth
-                endIcon={<SaveIcon />}
+                endIcon={editClient ? <PublishIcon /> : <SaveIcon />}
                 disabled={loading}
                 variant="contained"
+                sx={{ mt: 2 }}
               >
-                {loading ? 'Saving...' : 'SAVE'}
+                {loading ? 'Saving...' : editClient ? 'UPDATE' : 'SAVE'}
               </Button>
             </Grid>
           </Grid>

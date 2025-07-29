@@ -5,7 +5,7 @@ export const TableRowsLoader = ({ colsNum, rowsNum }) => {
         <TableRow key={index}>
             {[...Array(colsNum)].map((col, idx) => {
                 return (
-                    <TableCell>
+                    <TableCell key={idx}>
                         <Skeleton animation="wave" variant="text" />
                     </TableCell>)
             })}

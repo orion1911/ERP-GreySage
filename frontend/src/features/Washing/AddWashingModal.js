@@ -194,7 +194,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
               </LocalizationProvider>
             </Grid>
             {fields.map((wd, index) => (
-              <>
+              <React.Fragment key={index}>
                 <Grid size={{ xs: 6, md: 6 }}>
                   <Controller
                     name={`washDetails[${index}].washColor`}
@@ -329,7 +329,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                   {fields.length > 1 && <Divider fullWidth />}
                 </Grid>
                 {/* </Grid> */}
-              </>
+              </React.Fragment>
             ))}
             <Grid size={{ xs: 12, md: 12 }}>
               <Controller

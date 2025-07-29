@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, Add } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
@@ -27,6 +27,26 @@ function StitchingGridSx({
   setFilterStatus
 }) {
   const theme = useTheme();
+  const [mobileExpandedRows, setMobileExpandedRows] = useState({});
+
+  useEffect(() => {
+    if (processedRecords && Array.isArray(processedRecords)) {
+      processedRecords.forEach(record => {
+        if (record.lotId?._id && !(washingRecords && washingRecords[record.lotId._id])) {
+          fetchWashingRecords(record.lotId._id);
+        }
+      });
+    }
+  }, [processedRecords, washingRecords, fetchWashingRecords]);
+
+  const toggleMobileRowExpansion = (rowId) => {
+    setMobileExpandedRows(prev => ({
+      ...prev,
+      [rowId]: !prev[rowId]
+    }));
+    // Trigger parent toggle to keep expandedRows in sync for desktop
+    toggleRowExpansion(rowId);
+  };
 
   return (
     <Box sx={{ pt: 1 }}>
@@ -105,8 +125,8 @@ function StitchingGridSx({
                       <Add fontSize='small' />
                       <LocalLaundryService fontSize='small' />
                     </IconButton>
-                    <IconButton onClick={() => toggleRowExpansion(record._id)} size="small">
-                      <ExpandMoreIcon sx={{ transform: expandedRows[record._id] ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                    <IconButton onClick={() => toggleMobileRowExpansion(record._id)} size="small">
+                      <ExpandMoreIcon sx={{ transform: mobileExpandedRows[record._id] ? 'rotate(180deg)' : 'rotate(0deg)' }} />
                     </IconButton>
                   </Grid>
                 </Grid>
@@ -133,7 +153,7 @@ function StitchingGridSx({
                   </Grid>
                 </Grid>
               </Stack>
-              <Collapse in={expandedRows[record._id]}>
+              <Collapse in={mobileExpandedRows[record._id]}>
                 <Grid container spacing={1} sx={{ mt: 2, textAlign: 'center' }}>
                   <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
                     <Typography variant="body2">

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useTheme } from '@mui/material/styles';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Typography, Stack, Box, IconButton, Chip, Grid, Select, MenuItem, Menu } from '@mui/material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Typography, Stack, Box, IconButton, Chip, Grid, Select, MenuItem, Menu, Divider } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -59,81 +59,40 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
       {/* <strong>Washing Records</strong><br /> */}
       <Box sx={{ p: 0, pl: 0 }}>
         <TableContainer>
-          <Table>
+          <Table sx={{ backgroundColor: theme.palette.background.default }}>
             <TableHead>
-              {/* <TableRow sx={{ backgroundColor: theme.palette.background.paper }}>
-                <TableCell colSpan={5} sx={{ p: 0.5 }}>
-                  <Grid container spacing={2} sx={{ justifyContent: 'flex-end' }}>
-                    <Grid item xs={12} sm={6} md={4}>
-                      <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                        <Select
-                          variant="standard"
-                          size="small"
-                          value={sortBy}
-                          onChange={(e) => {
-                            setSortBy(e.target.value);
-                            setSortDirection('asc');
-                          }}
-                        >
-                          <MenuItem value="date">Sort By Date</MenuItem>
-                          <MenuItem value="vendorName">Sort By Vendor</MenuItem>
-                        </Select>
-                        <IconButton
-                          onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
-                          sx={{ ml: 1 }}
-                        >
-                          {sortDirection === 'asc' ? <ArrowUpward /> : <ArrowDownward />}
-                        </IconButton>
-                        <IconButton
-                          onClick={(e) => setFilterAnchorEl(e.currentTarget)}
-                        >
-                          <FilterList />
-                        </IconButton>
-                        <Menu
-                          anchorEl={filterAnchorEl}
-                          open={Boolean(filterAnchorEl)}
-                          onClose={() => setFilterAnchorEl(null)}
-                        >
-                          <MenuItem onClick={() => { setFilterStatus(''); setFilterAnchorEl(null); }}>All</MenuItem>
-                        </Menu>
-                      </Stack>
-                    </Grid>
-                  </Grid>
-                </TableCell>
-              </TableRow> */}
               <TableRow>
-                <TableCell align='center'>DATE</TableCell>
-                <TableCell align='center'>VENDOR</TableCell>
-                <TableCell align='center'>WASH DETAIL</TableCell>
-                <TableCell align='center'>WASH OUT</TableCell>
-                <TableCell align='center'>ACTIONS</TableCell>
+                <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>DATE</TableCell>
+                <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>VENDOR</TableCell>
+                <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>WASH DETAIL</TableCell>
+                <TableCell align='center' sx={{ whiteSpace: 'nowrap', paddingTop: 0, paddingBottom: 0 }}>WASH OUT</TableCell>
+                <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>ACTIONS</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {/* {!processedRecords ? (
-                <TableRowsLoader colsNum={5} rowsNum={5} />
-              ) : processedRecords.length === 0 ? (
-                <NoRecordRow />
-              ) : ( */}
               {!processedRecords ? (
                 <TableRowsLoader colsNum={5} rowsNum={5} />
               ) : processedRecords.length > 0 ? (
-                processedRecords.map((wr) => (
+                processedRecords.map((wr, idx) => (
                   <TableRow key={wr._id}>
-                    <TableCell align='center'>{getFormattedDate(wr.date)}</TableCell>
-                    <TableCell align='center'>{wr.vendorId?.name || 'N/A'}</TableCell>
-                    <TableCell>
-                      {wr.washDetails.map((wd, index) => (
-                        <Box sx={{ m: 1, textAlign: 'center', alignContent: 'center', alignItems: 'center' }} key={index}>
-                          <Chip color="success" size="small" sx={{ mr: 1 }} label={wd.washColor} />
-                          <Chip color="success" size="small" sx={{ mr: 1 }} label={wd.washCreation} />
-                          <Chip color="success" size="small" sx={{ mr: 1 }} label={`QTY: ${wd.quantity}`} />
-                          <Chip color="warning" size="small" sx={{ mr: 1 }} label={`QTY SHORT: ${wd.quantityShort ?? 0}`} />
-                        </Box>
-                      ))}
+                    <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>{getFormattedDate(wr.date)}</TableCell>
+                    <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>{wr.vendorId?.name || 'N/A'}</TableCell>
+                    <TableCell width="50%" sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
+                      <Grid container spacing={0.5} sx={{ mt: 1 }}>
+                        {wr.washDetails.map((wd, index) => (
+                          <>
+                            <Grid size={{ sm: 2, md: 2 }}><Chip color="success" size="small" label={wd.washColor} /></Grid>
+                            <Grid size={{ sm: 2, md: 2 }}><Chip color="success" size="small" label={`QTY: ${wd.quantity}`} /></Grid>
+                            <Grid size={{ sm: 2, md: 2 }}><Chip color="warning" size="small" label={`SHORT: ${wd.quantityShort ?? 0}`} /></Grid>
+                            <Grid size={{ sm: 6, md: 6 }}><Chip color="success" size="small" label={wd.washCreation} /></Grid>
+                            {index != wr.washDetails.length - 1 && <Grid size={{ sm: 12, md: 12 }}><Divider fullWidth /></Grid>}
+                          </>
+                        ))}
+                      </Grid>
                     </TableCell>
-                    <TableCell align='center'>
-                      {wr.washOutDate ? (
+                    <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
+                      {wr.washOutDate ?? getFormattedDate(wr.washOutDate)}
+                      {/* {wr.washOutDate ? (
                         getFormattedDate(wr.washOutDate)
                       ) : (
                         <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -145,9 +104,9 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
                             sx={{ width: 165 }}
                           />
                         </LocalizationProvider>
-                      )}
+                      )} */}
                     </TableCell>
-                    <TableCell align='center'>
+                    <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
                       <IconButton onClick={() => onEditWashing(wr)}>
                         <EditIcon />
                       </IconButton>

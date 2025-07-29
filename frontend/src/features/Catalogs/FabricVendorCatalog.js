@@ -1,20 +1,29 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TextField, Button, Container, Typography, Box, Modal, IconButton, Paper } from '@mui/material';
-import { Close as CloseIcon } from '@mui/icons-material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TextField, Button, Typography, Box } from '@mui/material';
+import { PersonAdd } from '@mui/icons-material';
 import apiService from '../../services/apiService';
+import FabricVendorCatalogSx from './FabricVendorCatalogSx';
+import FabricVendorCatalogAdd from './FabricVendorCatalogAdd';
 
 function FabricVendorCatalog() {
+  const { showSnackbar, isMobile } = useOutletContext();
   const [vendors, setVendors] = useState([]);
-  const [form, setForm] = useState({ name: '', contact: '', address: '' });
   const [search, setSearch] = useState('');
   const [openModal, setOpenModal] = useState(false);
+  const [loading, setLoading] = useState(false);
   const token = localStorage.getItem('token');
 
   const getFabricVendors = () => {
+    setLoading(true);
     apiService.fabricVendors.getFabricVendors(search)
-      .then(res => setVendors(res))
+      .then(res => {
+        setVendors(res);
+        setLoading(false);
+      })
       .catch(err => {
+        setLoading(false);
         if (err.response?.status === 401 || err.response?.status === 403) {
           alert('Session expired. Please log in again.');
           window.location.href = '/login';
@@ -28,31 +37,15 @@ function FabricVendorCatalog() {
     getFabricVendors();
   }, [search, token]);
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-
-  const handleAddVendor = () => {
-    apiService.fabricVendors.createFabricVendor(form)
-      .then(res => {
-        setVendors([...vendors, res]);
-        setForm({ name: '', contact: '', address: '' });
-        setOpenModal(false);
-      })
-      .catch(err => {
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          alert('Session expired. Please log in again.');
-          window.location.href = '/login';
-        } else {
-          alert(err.response?.error || 'An error occurred');
-        }
-      });
-  };
-
   const handleToggleActive = (id) => {
+    setLoading(true);
     apiService.fabricVendors.toggleFabricVendorActive(id)
-      .then(res => {
+      .then(() => {
+        setLoading(false);
         getFabricVendors();
       })
       .catch(err => {
+        setLoading(false);
         if (err.response?.status === 401 || err.response?.status === 403) {
           alert('Session expired. Please log in again.');
           window.location.href = '/login';
@@ -85,7 +78,13 @@ function FabricVendorCatalog() {
       header: 'Actions',
       enableSorting: false,
       cell: ({ row }) => (
-        <Button variant="contained" color="error" onClick={() => handleToggleActive(row.original._id)}>
+        <Button
+          variant="contained"
+          color="warning"
+          size="small"
+          disabled={loading}
+          onClick={() => handleToggleActive(row.original._id)}
+        >
           {row.original.isActive ? 'Disable' : 'Enable'}
         </Button>
       )
@@ -113,20 +112,35 @@ function FabricVendorCatalog() {
 
   return (
     <>
-        <Typography variant="h4" sx={{ mb: 1 }}>Fabric Vendor Catalog</Typography>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'right', mb: 2 }}>
-          <TextField
-            label="Search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            fullWidth
-            variant="standard"
-            sx={{ maxWidth: '190px' }}
-          />
-          <Button variant="contained" onClick={() => setOpenModal(true)} sx={{ mt: 2 }}>
-            Add Fabric Vendor
-          </Button>
-        </Box>
+      <Typography variant="h4" sx={{ mb: 1 }}>Fabric Vendor Catalog</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <TextField
+          label="Search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          fullWidth
+          variant="standard"
+          sx={{ maxWidth: '190px' }}
+        />
+        <Button
+          variant="contained"
+          endIcon={<PersonAdd />}
+          onClick={() => setOpenModal(true)}
+          disabled={loading}
+        >
+          Add Fabric Vendor
+        </Button>
+      </Box>
+      {isMobile ? (
+        <FabricVendorCatalogSx
+          vendors={vendors}
+          search={search}
+          loading={loading}
+          handleToggleActive={handleToggleActive}
+          showSnackbar={showSnackbar}
+          token={token}
+        />
+      ) : (
         <TableContainer>
           <Table>
             <TableHead>
@@ -143,7 +157,7 @@ function FabricVendorCatalog() {
                           }
                         }
                       }}
-                      style={{ cursor: isColumnSortable(colHeader.column) ? 'pointer' : 'default' }}
+                      style={{ cursor: isColumnSortable(colHeader.column) ? 'pointer' : 'default', textWrap: 'nowrap', textAlign: 'center' }}
                     >
                       {flexRender(getHeaderContent(colHeader.column), colHeader.getContext())}
                       {isColumnSortable(colHeader.column) && colHeader.column.getIsSorted() ? (colHeader.column.getIsSorted() === 'desc' ? ' 🔽' : ' 🔼') : ''}
@@ -153,76 +167,34 @@ function FabricVendorCatalog() {
               ))}
             </TableHead>
             <TableBody>
-              {table.getRowModel().rows.map(row => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map(cell => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell || cell.getValue(), cell.getContext())}
-                    </TableCell>
-                  ))}
+              {table.getRowModel().rows.length > 0 ? (
+                table.getRowModel().rows.map(row => (
+                  <TableRow key={row.id}>
+                    {row.getVisibleCells().map(cell => (
+                      <TableCell key={cell.id} style={{ textAlign: 'center' }}>
+                        {flexRender(cell.column.columnDef.cell || cell.getValue(), cell.getContext())}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={columns.length} style={{ textAlign: 'center' }}>
+                    No records found
+                  </TableCell>
                 </TableRow>
-              ))}
+              )}
             </TableBody>
           </Table>
         </TableContainer>
-
-        <Modal
-          open={openModal}
-          onClose={() => setOpenModal(false)}
-          aria-labelledby="add-vendor-modal"
-          aria-describedby="modal-to-add-new-vendor"
-        >
-          <Box
-            sx={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: 400,
-              bgcolor: 'background.paper',
-              borderRadius: 2,
-              boxShadow: 24,
-              p: 4,
-            }}
-          >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6" id="add-vendor-modal">Add Fabric Vendor</Typography>
-              <IconButton onClick={() => setOpenModal(false)}>
-                <CloseIcon />
-              </IconButton>
-            </Box>
-            <TextField
-              name="name"
-              label="Name"
-              value={form.name}
-              onChange={handleChange}
-              fullWidth
-              margin="normal"
-              variant="outlined"
-            />
-            <TextField
-              name="contact"
-              label="Contact"
-              value={form.contact}
-              onChange={handleChange}
-              fullWidth
-              margin="normal"
-              variant="outlined"
-            />
-            <TextField
-              name="address"
-              label="Address"
-              value={form.address}
-              onChange={handleChange}
-              fullWidth
-              margin="normal"
-              variant="outlined"
-            />
-            <Button variant="contained" onClick={handleAddVendor} sx={{ mt: 2 }}>
-              SAVE
-            </Button>
-          </Box>
-        </Modal>
+      )}
+      <FabricVendorCatalogAdd
+        open={openModal}
+        onClose={() => setOpenModal(false)}
+        loading={loading}
+        setLoading={setLoading}
+        onAddSuccess={getFabricVendors}
+      />
     </>
   );
 }

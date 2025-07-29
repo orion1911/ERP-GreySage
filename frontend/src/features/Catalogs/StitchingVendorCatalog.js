@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TextField, Button, Typography, Box } from '@mui/material';
-import { PersonAdd } from '@mui/icons-material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TextField, Button, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, useTheme } from '@mui/material';
+import { PersonAdd, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import apiService from '../../services/apiService';
 import StitchingVendorCatalogSx from './StitchingVendorCatalogSx';
@@ -10,11 +10,14 @@ import StitchingVendorCatalogAdd from './StitchingVendorCatalogAdd';
 
 function StitchingVendorCatalog() {
   const { showSnackbar, isMobile } = useOutletContext();
+  const theme = useTheme();
   const [vendors, setVendors] = useState([]);
   const [search, setSearch] = useState('');
   const [openModal, setOpenModal] = useState(false);
   const [loading, setLoading] = useState(false);
-  const token = localStorage.getItem('token');
+  const [editVendor, setEditVendor] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [vendorToToggle, setVendorToToggle] = useState(null);
 
   const getStitchingVendors = () => {
     setLoading(true);
@@ -38,14 +41,21 @@ function StitchingVendorCatalog() {
 
   useEffect(() => {
     getStitchingVendors();
-  }, [search, token]);
+  }, [search]);
 
   const handleToggleActive = (id) => {
+    setVendorToToggle(id);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmToggle = () => {
+    if (!vendorToToggle) return;
     setLoading(true);
-    apiService.stitchingVendors.toggleStitchingVendorActive(id)
+    apiService.stitchingVendors.toggleStitchingVendorActive(vendorToToggle)
       .then(() => {
         setLoading(false);
         getStitchingVendors();
+        setConfirmOpen(false);
       })
       .catch(err => {
         setLoading(false);
@@ -57,7 +67,18 @@ function StitchingVendorCatalog() {
         } else {
           alert(err.response?.data?.error || 'An error occurred');
         }
+        setConfirmOpen(false);
       });
+  };
+
+  const handleCancelToggle = () => {
+    setConfirmOpen(false);
+    setVendorToToggle(null);
+  };
+
+  const handleEditVendor = (vendor) => {
+    setEditVendor(vendor);
+    setOpenModal(true);
   };
 
   const columns = [
@@ -81,15 +102,28 @@ function StitchingVendorCatalog() {
       header: 'Actions',
       enableSorting: false,
       cell: ({ row }) => (
-        <Button
-          variant="contained"
-          color="error"
-          size="small"
-          disabled={loading}
-          onClick={() => handleToggleActive(row.original._id)}
-        >
-          {row.original.isActive ? 'Disable' : 'Enable'}
-        </Button>
+        <Stack direction="row" spacing={1} justifyContent='center'>
+          <Button
+            variant="contained"
+            color="error"
+            size="small"
+            disabled={loading}
+            onClick={() => handleToggleActive(row.original._id)}
+            startIcon={<DeleteIcon />}
+          >
+            {row.original.isActive ? 'Disable' : 'Enable'}
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            disabled={loading}
+            onClick={() => handleEditVendor(row.original)}
+            startIcon={<EditIcon />}
+          >
+            Edit
+          </Button>
+        </Stack>
       )
     },
     {
@@ -128,7 +162,7 @@ function StitchingVendorCatalog() {
         <Button
           variant="contained"
           endIcon={<PersonAdd />}
-          onClick={() => setOpenModal(true)}
+          onClick={() => { setEditVendor(null); setOpenModal(true); }}
           disabled={loading}
           sx={{ mt: 2 }}
         >
@@ -142,7 +176,7 @@ function StitchingVendorCatalog() {
           loading={loading}
           handleToggleActive={handleToggleActive}
           showSnackbar={showSnackbar}
-          token={token}
+          handleEditVendor={handleEditVendor}
         />
       ) : (
         <TableContainer>
@@ -192,11 +226,33 @@ function StitchingVendorCatalog() {
       )}
       <StitchingVendorCatalogAdd
         open={openModal}
-        onClose={() => setOpenModal(false)}
+        onClose={() => { setOpenModal(false); setEditVendor(null); }}
         loading={loading}
         setLoading={setLoading}
         onAddSuccess={getStitchingVendors}
+        editVendor={editVendor}
       />
+      <Dialog
+        open={confirmOpen}
+        onClose={handleCancelToggle}
+        aria-labelledby="confirm-toggle-title"
+        aria-describedby="confirm-toggle-description"
+      >
+        <DialogTitle id="confirm-toggle-title">
+          Confirm Action
+        </DialogTitle>
+        <DialogContent id="confirm-toggle-description">
+          Are you sure you want to {vendors.find(v => v._id === vendorToToggle)?.isActive ? 'disable' : 'enable'} this vendor?
+        </DialogContent>
+        <DialogActions>
+          <Button variant='contained' onClick={handleCancelToggle} color="primary">
+            Cancel
+          </Button>
+          <Button variant='contained' onClick={handleConfirmToggle} color="error" autoFocus>
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

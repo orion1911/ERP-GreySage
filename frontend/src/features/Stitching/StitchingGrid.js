@@ -345,7 +345,7 @@ function StitchingGrid({
                 </TableRow>
                 {expandedRows[row.original._id] && (
                   <TableRow>
-                    <TableCell colSpan={10} sx={{ pt: 0.5, pb: 0.5 }}>
+                    <TableCell colSpan={10} sx={{ p: 0 }}>
                       <WashingGrid
                         washingRecords={washingRecords && washingRecords[row.original.lotId?._id] || []}
                         hasWashing={hasWashing}

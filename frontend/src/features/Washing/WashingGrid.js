@@ -62,7 +62,7 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
           <Table sx={{ backgroundColor: theme.palette.background.default }}>
             <TableHead>
               <TableRow>
-                <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>DATE</TableCell>
+                <TableCell align='center' sx={{ paddingTop: 0.3, paddingBottom: 0.3 }}>DATE</TableCell>
                 <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>VENDOR</TableCell>
                 <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>WASH DETAIL</TableCell>
                 <TableCell align='center' sx={{ whiteSpace: 'nowrap', paddingTop: 0, paddingBottom: 0 }}>WASH OUT</TableCell>
@@ -78,7 +78,7 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
                     <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>{getFormattedDate(wr.date)}</TableCell>
                     <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>{wr.vendorId?.name || 'N/A'}</TableCell>
                     <TableCell width="50%" sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
-                      <Grid container spacing={0.5} sx={{ mt: 1 }}>
+                      <Grid container spacing={0.5} sx={{ mt: 1.5, mb: 1.5 }}>
                         {wr.washDetails.map((wd, index) => (
                           <>
                             <Grid size={{ sm: 2, md: 2 }}><Chip color="success" size="small" label={wd.washColor} /></Grid>

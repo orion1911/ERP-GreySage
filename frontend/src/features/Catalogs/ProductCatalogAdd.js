@@ -2,23 +2,36 @@ import React from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { Box, Grid, Modal, Typography, TextField, Button, IconButton } from '@mui/material';
-import { Close as CloseIcon, Save as SaveIcon } from '@mui/icons-material';
+import { Close as CloseIcon, Save as SaveIcon, Publish as PublishIcon } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 
-function ProductCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess }) {
+function ProductCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess, editProduct }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
 
-  const { control, handleSubmit, reset } = useForm({
+  const { control, handleSubmit, reset, setValue } = useForm({
     defaultValues: {
-      name: '',
-      description: ''
+      name: editProduct?.name || '',
+      description: editProduct?.description || ''
     },
     mode: 'onChange'
   });
 
+  React.useEffect(() => {
+    if (editProduct) {
+      setValue('name', editProduct.name || '');
+      setValue('description', editProduct.description || '');
+    } else {
+      reset({ name: '', description: '' });
+    }
+  }, [editProduct, setValue, reset]);
+
   const onSubmit = (data) => {
     setLoading(true);
-    apiService.fitStyles.createFitstyles(data)
+    const request = editProduct
+      ? apiService.fitStyles.updateFitstyle(editProduct._id, data)
+      : apiService.fitStyles.createFitstyles(data);
+
+    request
       .then(() => {
         setLoading(false);
         reset();
@@ -57,7 +70,9 @@ function ProductCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess })
         }}
       >
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" id="add-product-modal">Add Fit Style</Typography>
+          <Typography variant="h6" id="add-product-modal">
+            {editProduct ? 'Edit Fit Style' : 'Add Fit Style'}
+          </Typography>
           <IconButton onClick={onClose}>
             <CloseIcon />
           </IconButton>
@@ -105,11 +120,12 @@ function ProductCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess })
               <Button
                 type="submit"
                 fullWidth
-                endIcon={<SaveIcon />}
+                endIcon={editProduct ? <PublishIcon /> : <SaveIcon />}
                 disabled={loading}
                 variant="contained"
+                sx={{ mt: 2 }}
               >
-                {loading ? 'Saving...' : 'SAVE'}
+                {loading ? 'Saving...' : editProduct ? 'UPDATE' : 'SAVE'}
               </Button>
             </Grid>
           </Grid>

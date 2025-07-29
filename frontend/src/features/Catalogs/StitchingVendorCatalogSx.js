@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Box, Card, CardContent, Stack, Button, IconButton, Typography, useTheme, Grid, Select, MenuItem } from '@mui/material';
-import { ArrowUpward, ArrowDownward } from '@mui/icons-material';
+import { Box, Card, CardContent, Stack, Button, IconButton, Typography, useTheme, Grid, Select, MenuItem, Tooltip } from '@mui/material';
+import { ArrowUpward, ArrowDownward, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 
 function StitchingVendorCatalogSx({
@@ -9,7 +9,7 @@ function StitchingVendorCatalogSx({
   loading,
   handleToggleActive,
   showSnackbar,
-  token
+  handleEditVendor
 }) {
   const theme = useTheme();
   const [sortBy, setSortBy] = useState('name');
@@ -93,17 +93,32 @@ function StitchingVendorCatalogSx({
                   </Typography>
                 </Grid>
                 <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'right' }}>
-                  <Button
-                    variant="contained"
-                    color="warning"
-                    size="small"
-                    disabled={loading}
-                    onClick={() => handleToggleActive(vendor._id)}
-                    fullWidth
-                    sx={{ mt: 0.2 }}
-                  >
-                    {vendor.isActive ? 'Disable' : 'Enable'}
-                  </Button>
+                  <Stack direction="row" spacing={1} justifyContent="flex-end">
+                    <Tooltip title={vendor.isActive ? 'Disable' : 'Enable'}>
+                      <IconButton
+                        variant="contained"
+                        color={vendor.isActive ? 'warning' : 'success'}
+                        size="small"
+                        disabled={loading}
+                        onClick={() => handleToggleActive(vendor._id)}
+                        sx={{ mt: 0.2 }}
+                      >
+                        {vendor.isActive ? <DeleteIcon /> : <CheckIcon />}
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Edit">
+                      <IconButton
+                        variant="contained"
+                        color="primary"
+                        size="small"
+                        disabled={loading}
+                        onClick={() => handleEditVendor(vendor)}
+                        sx={{ mt: 0.2 }}
+                      >
+                        <EditIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
                 </Grid>
                 <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
                   <Typography variant="body2">

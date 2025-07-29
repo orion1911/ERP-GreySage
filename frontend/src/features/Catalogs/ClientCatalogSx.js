@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Typography, useTheme, Grid, TextField, Select, MenuItem } from '@mui/material';
-import { ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward } from '@mui/icons-material';
+import React, { useState, useMemo } from 'react';
+import { Box, Card, CardContent, Stack, Collapse, IconButton, Typography, useTheme, Grid, Select, MenuItem, Tooltip } from '@mui/material';
+import { ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 
 function ClientCatalogSx({
   clients,
+  search,
   loading,
   handleToggleActive,
+  handleEditClient
 }) {
   const theme = useTheme();
   const [expandedRows, setExpandedRows] = useState({});
@@ -26,20 +28,36 @@ function ClientCatalogSx({
       } else if (sortKey === 'contact') {
         valueA = a.contact || '';
         valueB = b.contact || '';
+      } else if (sortKey === 'email') {
+        valueA = a.email || '';
+        valueB = b.email || '';
       } else if (sortKey === 'address') {
         valueA = a.address || '';
         valueB = b.address || '';
+      } else if (sortKey === 'isActive') {
+        valueA = a.isActive ? 1 : 0;
+        valueB = b.isActive ? 1 : 0;
       }
       if (typeof valueA === 'string' && typeof valueB === 'string') {
-        return direction === 'asc' ? valueA.localeCompare(valueB) : valueB.localeCompare(valueB);
+        return direction === 'asc' ? valueA.localeCompare(valueB) : valueB.localeCompare(valueA);
       }
       return direction === 'asc' ? valueA - valueB : valueB - valueA;
     });
   };
 
+  const filteredClients = useMemo(() => {
+    return clients.filter(client =>
+      client.name?.toLowerCase().includes(search.toLowerCase()) ||
+      client.clientCode?.toLowerCase().includes(search.toLowerCase()) ||
+      client.contact?.toLowerCase().includes(search.toLowerCase()) ||
+      client.email?.toLowerCase().includes(search.toLowerCase()) ||
+      client.address?.toLowerCase().includes(search.toLowerCase())
+    );
+  }, [clients, search]);
+
   const processedClients = useMemo(() => {
-    return sortData(clients, sortBy, sortDirection);
-  }, [clients, sortBy, sortDirection]);
+    return sortData(filteredClients, sortBy, sortDirection);
+  }, [filteredClients, sortBy, sortDirection]);
 
   const toggleRowExpansion = (rowId) => {
     setExpandedRows(prev => ({
@@ -51,7 +69,7 @@ function ClientCatalogSx({
   return (
     <Box sx={{ pt: 1 }}>
       <Grid container spacing={2} sx={{ mb: 2, justifyContent: 'flex-end' }}>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
             <Select
               variant="standard"
@@ -65,7 +83,9 @@ function ClientCatalogSx({
               <MenuItem value="name">Sort By Name</MenuItem>
               <MenuItem value="clientCode">Sort By Client Code</MenuItem>
               <MenuItem value="contact">Sort By Contact</MenuItem>
+              <MenuItem value="email">Sort By Email</MenuItem>
               <MenuItem value="address">Sort By Address</MenuItem>
+              <MenuItem value="isActive">Sort By Status</MenuItem>
             </Select>
             <IconButton
               onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
@@ -90,9 +110,31 @@ function ClientCatalogSx({
                     </Typography>
                   </Grid>
                   <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'right' }}>
-                    <IconButton onClick={() => toggleRowExpansion(client._id)} size="small">
-                      <ExpandMoreIcon sx={{ transform: expandedRows[client._id] ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-                    </IconButton>
+                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      <Tooltip title={client.isActive ? 'Disable' : 'Enable'}>
+                        <IconButton
+                          color={client.isActive ? 'warning' : 'success'}
+                          size="small"
+                          disabled={loading}
+                          onClick={() => handleToggleActive(client._id)}
+                        >
+                          {client.isActive ? <DeleteIcon /> : <CheckIcon />}
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Edit">
+                        <IconButton
+                          color="primary"
+                          size="small"
+                          disabled={loading}
+                          onClick={() => handleEditClient(client)}
+                        >
+                          <EditIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <IconButton onClick={() => toggleRowExpansion(client._id)} size="small">
+                        <ExpandMoreIcon sx={{ transform: expandedRows[client._id] ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                      </IconButton>
+                    </Stack>
                   </Grid>
                 </Grid>
               </Stack>
@@ -104,7 +146,7 @@ function ClientCatalogSx({
                       {client.clientCode || 'N/A'}
                     </Typography>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 6 }}>
+                  <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'left' }}>
                     <Typography variant="body2">
                       <strong>Contact</strong><br />
                       {client.contact || 'N/A'}
@@ -131,20 +173,6 @@ function ClientCatalogSx({
                       <strong>Address</strong><br />
                       {client.address || 'N/A'}
                     </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 12 }}>
-                    <Button
-                      variant="contained"
-                      color="warning"
-                      size="small"
-                      loading={loading}
-                      loadingPosition="end"
-                      onClick={() => handleToggleActive(client._id)}
-                      fullWidth
-                      sx={{ mt: 1 }}
-                    >
-                      {client.isActive ? 'Disable' : 'Enable'}
-                    </Button>
                   </Grid>
                 </Grid>
               </Collapse>

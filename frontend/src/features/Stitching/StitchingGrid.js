@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useTheme } from '@mui/material/styles';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
@@ -33,6 +33,26 @@ function StitchingGrid({
   const [sortDirection, setSortDirection] = useState('desc');
   const [filterAnchorEl, setFilterAnchorEl] = useState(null);
   const [filterStatus, setFilterStatus] = useState('');
+
+  // Initialize expandedRows and fetch washing records
+  useEffect(() => {
+    if (stitchingRecords && Array.isArray(stitchingRecords)) {
+      // Fetch washing records for all records
+      stitchingRecords.forEach(record => {
+        if (record.lotId?._id && !(washingRecords && washingRecords[record.lotId._id])) {
+          fetchWashingRecords(record.lotId._id);
+        }
+      });
+      // Set rows to expanded only where washing records are available
+      const newExpanded = {};
+      stitchingRecords.forEach(record => {
+        if (record._id && washingRecords && washingRecords[record.lotId?._id] && washingRecords[record.lotId._id].length > 0) {
+          newExpanded[record._id] = true;
+        }
+      });
+      setExpandedRows(newExpanded);
+    }
+  }, [stitchingRecords, washingRecords, fetchWashingRecords]);
 
   const toggleRowExpansion = (rowId) => {
     setExpandedRows(prev => {
@@ -325,7 +345,7 @@ function StitchingGrid({
                 </TableRow>
                 {expandedRows[row.original._id] && (
                   <TableRow>
-                    <TableCell colSpan={10}>
+                    <TableCell colSpan={10} sx={{ pt: 0.5, pb: 0.5 }}>
                       <WashingGrid
                         washingRecords={washingRecords && washingRecords[row.original.lotId?._id] || []}
                         hasWashing={hasWashing}

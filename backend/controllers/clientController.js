@@ -30,7 +30,7 @@ const createClient = async (req, res) => {
 
 const getClients = async (req, res) => {
   const { search, showInactive } = req.query;
-  const query = { isActive: showInactive === 'true' ? undefined : true };
+  const query = { isActive: showInactive === 'true' ? false : true };
   if (search) query.name = { $regex: search, $options: 'i' };
   const clients = await Client.find(query);
   res.json(clients);

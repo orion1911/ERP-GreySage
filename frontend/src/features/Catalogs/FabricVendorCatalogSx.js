@@ -54,7 +54,6 @@ function FabricVendorCatalogSx({
 
     return (
         <Box sx={{ pt: 1 }}>
-            <Typography variant="h4" sx={{ mb: 1 }}>Fabric Vendor Catalog</Typography>
             <Grid container spacing={2} sx={{ mb: 2, justifyContent: 'flex-end' }}>
                 <Grid item xs={12} sm={6} md={4}>
                     <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">

@@ -5,20 +5,21 @@ import { Box, Grid, Modal, Typography, TextField, Button, IconButton } from '@mu
 import { Close as CloseIcon, Save as SaveIcon } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 
-function ProductCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess }) {
+function StitchingVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
 
   const { control, handleSubmit, reset } = useForm({
     defaultValues: {
       name: '',
-      description: ''
+      contact: '',
+      address: ''
     },
     mode: 'onChange'
   });
 
   const onSubmit = (data) => {
     setLoading(true);
-    apiService.fitStyles.createFitstyles(data)
+    apiService.stitchingVendors.createStitchingVendor(data)
       .then(() => {
         setLoading(false);
         reset();
@@ -40,8 +41,8 @@ function ProductCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess })
     <Modal
       open={open}
       onClose={onClose}
-      aria-labelledby="add-product-modal"
-      aria-describedby="modal-to-add-new-product"
+      aria-labelledby="add-vendor-modal"
+      aria-describedby="modal-to-add-new-vendor"
       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
     >
       <Box
@@ -57,7 +58,7 @@ function ProductCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess })
         }}
       >
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" id="add-product-modal">Add Fit Style</Typography>
+          <Typography variant="h6" id="add-vendor-modal">Add Stitching Vendor</Typography>
           <IconButton onClick={onClose}>
             <CloseIcon />
           </IconButton>
@@ -68,12 +69,12 @@ function ProductCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess })
               <Controller
                 name="name"
                 control={control}
-                rules={{ required: 'Design is required' }}
+                rules={{ required: 'Name is required' }}
                 render={({ field, fieldState: { error } }) => (
                   <TextField
                     {...field}
                     onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                    label="Design"
+                    label="Name"
                     fullWidth
                     margin="normal"
                     variant="standard"
@@ -85,13 +86,37 @@ function ProductCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess })
             </Grid>
             <Grid size={{ xs: 12, md: 12 }}>
               <Controller
-                name="description"
+                name="contact"
                 control={control}
-                rules={{ required: 'Description is required' }}
+                rules={{
+                  required: 'Contact is required',
+                  pattern: {
+                    value: /^\d+$/,
+                    message: 'Only numbers allowed',
+                  },
+                }}
                 render={({ field, fieldState: { error } }) => (
                   <TextField
                     {...field}
-                    label="Description"
+                    label="Contact"
+                    fullWidth
+                    margin="normal"
+                    variant="standard"
+                    error={!!error}
+                    helperText={error ? error.message : ''}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 12 }}>
+              <Controller
+                name="address"
+                control={control}
+                rules={{ required: 'Address is required' }}
+                render={({ field, fieldState: { error } }) => (
+                  <TextField
+                    {...field}
+                    label="Address"
                     fullWidth
                     margin="normal"
                     variant="standard"
@@ -108,6 +133,7 @@ function ProductCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess })
                 endIcon={<SaveIcon />}
                 disabled={loading}
                 variant="contained"
+                sx={{ mt: 2 }}
               >
                 {loading ? 'Saving...' : 'SAVE'}
               </Button>
@@ -119,4 +145,4 @@ function ProductCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess })
   );
 }
 
-export default ProductCatalogAdd;
+export default StitchingVendorCatalogAdd;

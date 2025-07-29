@@ -112,7 +112,7 @@ function FabricVendorCatalog() {
 
   return (
     <>
-      <Typography variant="h4" sx={{ mb: 1 }}>Fabric Vendor Catalog</Typography>
+      <Typography variant="h4" sx={{ mb: 1 }}>Fabric Vendor</Typography>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <TextField
           label="Search"
@@ -127,8 +127,9 @@ function FabricVendorCatalog() {
           endIcon={<PersonAdd />}
           onClick={() => setOpenModal(true)}
           disabled={loading}
+          sx={{ mt: 2 }}
         >
-          Add Fabric Vendor
+          Add Vendor
         </Button>
       </Box>
       {isMobile ? (

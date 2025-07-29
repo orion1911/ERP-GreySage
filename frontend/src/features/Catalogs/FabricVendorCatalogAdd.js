@@ -6,7 +6,7 @@ import { Close as CloseIcon, Save as SaveIcon } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 
 function FabricVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess }) {
-  const { showSnackbar } = useOutletContext();
+  const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
 
   const { control, handleSubmit, reset } = useForm({
     defaultValues: {
@@ -43,14 +43,14 @@ function FabricVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSucce
       onClose={onClose}
       aria-labelledby="add-vendor-modal"
       aria-describedby="modal-to-add-new-vendor"
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
     >
       <Box
         sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: 400,
+          ml: isMobile ? 0 : drawerWidth + 'px',
+          width: isMobile ? '80%' : '30%',
+          maxHeight: '80vh',
+          overflowY: 'auto',
           bgcolor: 'background.paper',
           borderRadius: 2,
           boxShadow: 24,
@@ -65,7 +65,7 @@ function FabricVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSucce
         </Box>
         <form onSubmit={handleSubmit(onSubmit)}>
           <Grid container spacing={2}>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12, md: 12 }}>
               <Controller
                 name="name"
                 control={control}
@@ -73,35 +73,42 @@ function FabricVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSucce
                 render={({ field, fieldState: { error } }) => (
                   <TextField
                     {...field}
+                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                     label="Name"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     error={!!error}
                     helperText={error ? error.message : ''}
                   />
                 )}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12, md: 12 }}>
               <Controller
                 name="contact"
                 control={control}
-                rules={{ required: 'Contact is required' }}
+                rules={{
+                  required: 'Contact is required',
+                  pattern: {
+                    value: /^\d+$/,
+                    message: 'Only numbers allowed',
+                  },
+                }}
                 render={({ field, fieldState: { error } }) => (
                   <TextField
                     {...field}
                     label="Contact"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     error={!!error}
                     helperText={error ? error.message : ''}
                   />
                 )}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12, md: 12 }}>
               <Controller
                 name="address"
                 control={control}
@@ -112,14 +119,14 @@ function FabricVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSucce
                     label="Address"
                     fullWidth
                     margin="normal"
-                    variant="outlined"
+                    variant="standard"
                     error={!!error}
                     helperText={error ? error.message : ''}
                   />
                 )}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12, md: 3 }}>
               <Button
                 type="submit"
                 fullWidth

@@ -126,7 +126,7 @@ function ClientCatalog() {
           onClick={() => setOpenModal(true)}
           sx={{ mt: 2 }}
         >
-          Add
+          Add Client
         </Button>
       </Box>
       {isMobile ? (

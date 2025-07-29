@@ -107,6 +107,7 @@ function ClientCatalogAdd({ open, onClose }) {
                 render={({ field, fieldState: { error } }) => (
                   <TextField
                     {...field}
+                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                     label="Client Code Prefix (Suggested)"
                     fullWidth
                     margin="normal"
@@ -121,7 +122,13 @@ function ClientCatalogAdd({ open, onClose }) {
               <Controller
                 name="contact"
                 control={control}
-                rules={{ required: 'Contact is required' }}
+                rules={{
+                  required: 'Contact is required',
+                  pattern: {
+                    value: /^\d+$/,
+                    message: 'Only numbers allowed',
+                  },
+                }}
                 render={({ field, fieldState: { error } }) => (
                   <TextField
                     {...field}

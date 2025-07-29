@@ -107,7 +107,7 @@ function ProductCatalog() {
 
   return (
     <>
-      <Typography variant="h4" sx={{ mb: 1 }}>Fit Style Catalog</Typography>
+      <Typography variant="h4" sx={{ mb: 1 }}>Fit Style</Typography>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <TextField
           label="Search"
@@ -123,6 +123,7 @@ function ProductCatalog() {
           endIcon={<PersonAdd />}
           onClick={() => setOpenModal(true)}
           disabled={loading}
+          sx={{ mt: 2 }}
         >
           Add Fit Style
         </Button>

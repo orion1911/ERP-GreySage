@@ -324,6 +324,15 @@ const apiService = {
         throw error;
       }
     },
+
+    updateStitchingVendor: async (id, vendorData) => {
+      try {
+        const response = await axiosInstance.patch(`api/stitching-vendors/${id}`, vendorData);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
   },
 
   // Washing Vendors API calls
@@ -351,6 +360,15 @@ const apiService = {
     toggleWashingVendorActive: async (id) => {
       try {
         const response = await axiosInstance.put(`api/washing-vendors/${id}/toggle-active`);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    updateWashingVendor: async (id, vendorData) => {
+      try {
+        const response = await axiosInstance.patch(`api/washing-vendors/${id}`, vendorData);
         return response.data;
       } catch (error) {
         throw error;
@@ -425,7 +443,7 @@ const apiService = {
       }
     },
 
-    updateClient: async (id) => {
+    toggleClientActive: async (id) => {
       try {
         const response = await axiosInstance.put(`api/clients/${id}/toggle-active`);
         return response.data;
@@ -439,6 +457,15 @@ const apiService = {
         const response = await axiosInstance.get('api/clients', {
           params: { search },
         });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    updateClient: async (id, clientData) => {
+      try {
+        const response = await axiosInstance.patch(`api/clients/${id}`, clientData);
         return response.data;
       } catch (error) {
         throw error;
@@ -470,6 +497,15 @@ const apiService = {
     toggleFitstyleActive: async (id) => {
       try {
         const response = await axiosInstance.put(`api/fitstyles/${id}/toggle-active`);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    updateFitstyle: async (id, fitStyleData) => {
+      try {
+        const response = await axiosInstance.patch(`api/fitstyles/${id}`, fitStyleData);
         return response.data;
       } catch (error) {
         throw error;

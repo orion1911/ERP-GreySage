@@ -26,6 +26,21 @@ const toggleVendorActive = async (req, res, Model, vendorType) => {
   res.json(vendor);
 };
 
+const updateVendor = async (req, res, Model, vendorType) => {
+  const vendor = await Model.findById(req.params.id);
+  if (!vendor) return res.status(404).json({ error: `${vendorType} not found` });
+
+  const { name, contact, address, isActive } = req.body;
+  if (name !== undefined) vendor.name = name;
+  if (contact !== undefined) vendor.contact = contact;
+  if (address !== undefined) vendor.address = address;
+  if (isActive !== undefined) vendor.isActive = isActive;
+
+  await vendor.save();
+  // await logAction(req.user.userId, `update_${vendorType}_vendor`, vendorType, vendor._id, `Updated ${vendorType} vendor: ${vendor.name}`);
+  res.status(200).json(vendor);
+};
+
 const createFabricVendor = async (req, res) => createVendor(req, res, FabricVendor, 'FabricVendor');
 const createStitchingVendor = async (req, res) => createVendor(req, res, StitchingVendor, 'StitchingVendor');
 const createWashingVendor = async (req, res) => createVendor(req, res, WashingVendor, 'WashingVendor');
@@ -41,6 +56,11 @@ const toggleStitchingVendorActive = async (req, res) => toggleVendorActive(req, 
 const toggleWashingVendorActive = async (req, res) => toggleVendorActive(req, res, WashingVendor, 'WashingVendor');
 const toggleFinishingVendorActive = async (req, res) => toggleVendorActive(req, res, FinishingVendor, 'FinishingVendor');
 
+const updateFabricVendor = async (req, res) => updateVendor(req, res, FabricVendor, 'FabricVendor');
+const updateStitchingVendor = async (req, res) => updateVendor(req, res, StitchingVendor, 'StitchingVendor');
+const updateWashingVendor = async (req, res) => updateVendor(req, res, WashingVendor, 'WashingVendor');
+const updateFinishingVendor = async (req, res) => updateVendor(req, res, FinishingVendor, 'FinishingVendor');
+
 module.exports = {
   createFabricVendor,
   createStitchingVendor,
@@ -53,5 +73,9 @@ module.exports = {
   toggleFabricVendorActive,
   toggleStitchingVendorActive,
   toggleWashingVendorActive,
-  toggleFinishingVendorActive
+  toggleFinishingVendorActive,
+  updateFabricVendor,
+  updateStitchingVendor,
+  updateWashingVendor,
+  updateFinishingVendor
 };

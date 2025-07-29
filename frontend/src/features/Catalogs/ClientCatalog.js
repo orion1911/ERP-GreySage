@@ -1,47 +1,82 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TextField, Button, Container, Typography, Box, Grid } from '@mui/material';
-import { PersonAdd } from '@mui/icons-material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TextField, Button, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, useTheme } from '@mui/material';
+import { PersonAdd, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import apiService from '../../services/apiService';
 import ClientCatalogSx from './ClientCatalogSx';
 import ClientCatalogAdd from './ClientCatalogAdd';
 
 function ClientCatalog() {
   const { showSnackbar, isMobile } = useOutletContext();
+  const theme = useTheme();
   const [loading, setLoading] = useState(false);
   const [clients, setClients] = useState([]);
   const [search, setSearch] = useState('');
   const [openModal, setOpenModal] = useState(false);
-  const token = localStorage.getItem('token');
+  const [editClient, setEditClient] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [clientToToggle, setClientToToggle] = useState(null);
 
   const getClients = () => {
+    setLoading(true);
     apiService.client.getClients(search)
-      .then(res => setClients(res))
+      .then(res => {
+        setClients(res);
+        setLoading(false);
+      })
       .catch(err => {
-        console.log(err.response);
-        showSnackbar(err);
+        setLoading(false);
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          showSnackbar('Session expired. Please log in again.');
+          window.location.href = '/login';
+        } else {
+          showSnackbar(err.response?.data?.error || 'An error occurred');
+        }
       });
   };
 
   useEffect(() => {
     getClients();
-  }, [search, token]);
-
-  
+  }, [search]);
 
   const handleToggleActive = (id) => {
+    setClientToToggle(id);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmToggle = () => {
+    if (!clientToToggle) return;
     setLoading(true);
-    apiService.client.updateClient(id)
-      .then(res => {
+    apiService.client.toggleClientActive(clientToToggle)
+      .then(() => {
         setLoading(false);
         getClients();
+        setConfirmOpen(false);
       })
       .catch(err => {
-        console.log(err.response);
-        showSnackbar(err);
         setLoading(false);
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          showSnackbar('Session expired. Please log in again.');
+          window.location.href = '/login';
+        } else if (err.response?.status === 404) {
+          showSnackbar('Client not found.');
+        } else {
+          showSnackbar(err.response?.data?.error || 'An error occurred');
+        }
+        setConfirmOpen(false);
       });
+  };
+
+  const handleCancelToggle = () => {
+    setConfirmOpen(false);
+    setClientToToggle(null);
+  };
+
+  const handleEditClient = (client) => {
+    setEditClient(client);
+    setOpenModal(true);
   };
 
   const columns = [
@@ -60,11 +95,11 @@ function ClientCatalog() {
       header: 'Contact',
       enableSorting: true
     },
-    // {
-    //   accessorKey: 'email',
-    //   header: 'Email',
-    //   enableSorting: true
-    // },
+    {
+      accessorKey: 'email',
+      header: 'Email',
+      enableSorting: true
+    },
     {
       accessorKey: 'address',
       header: 'Address',
@@ -75,24 +110,36 @@ function ClientCatalog() {
       header: 'Actions',
       enableSorting: false,
       cell: ({ row }) => (
-        <Button
-          variant="contained"
-          color="warning"
-          size='small'
-          loading={loading}
-          loadingPosition="end"
-          onClick={() => handleToggleActive(row.original._id)}
-        >
-          {row.original.isActive ? 'Disable' : 'Enable'}
-        </Button>
+        <Stack direction="row" spacing={1} justifyContent="center">
+          <Button
+            variant="contained"
+            color="error"
+            size="small"
+            disabled={loading}
+            onClick={() => handleToggleActive(row.original._id)}
+            startIcon={<DeleteIcon />}
+          >
+            {row.original.isActive ? 'Disable' : 'Enable'}
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            disabled={loading}
+            onClick={() => handleEditClient(row.original)}
+            startIcon={<EditIcon />}
+          >
+            Edit
+          </Button>
+        </Stack>
       )
     },
-    // {
-    //   accessorKey: 'isActive',
-    //   header: 'Status',
-    //   enableSorting: true,
-    //   cell: ({ row }) => (row.original.isActive ? 'Active' : 'Inactive')
-    // }
+    {
+      accessorKey: 'isActive',
+      header: 'Status',
+      enableSorting: true,
+      cell: ({ row }) => (row.original.isActive ? 'Active' : 'Inactive')
+    }
   ];
 
   const table = useReactTable({
@@ -111,7 +158,7 @@ function ClientCatalog() {
   return (
     <>
       <Typography variant="h4" sx={{ mb: 1 }}>Client Catalog</Typography>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'right', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <TextField
           label="Search"
           value={search}
@@ -123,7 +170,8 @@ function ClientCatalog() {
         <Button
           variant="contained"
           endIcon={<PersonAdd />}
-          onClick={() => setOpenModal(true)}
+          onClick={() => { setEditClient(null); setOpenModal(true); }}
+          disabled={loading}
           sx={{ mt: 2 }}
         >
           Add Client
@@ -132,17 +180,13 @@ function ClientCatalog() {
       {isMobile ? (
         <ClientCatalogSx
           clients={clients}
-          setClients={setClients}
           search={search}
-          setSearch={setSearch}
-          openModal={openModal}
-          setOpenModal={setOpenModal}
           loading={loading}
-          setLoading={setLoading}
           handleToggleActive={handleToggleActive}
           showSnackbar={showSnackbar}
-          token={token}
-        />) : (
+          handleEditClient={handleEditClient}
+        />
+      ) : (
         <TableContainer>
           <Table>
             <TableHead>
@@ -169,7 +213,9 @@ function ClientCatalog() {
               ))}
             </TableHead>
             <TableBody>
-              {table.getRowModel().rows.length > 0 ? (
+              {loading || !clients ? (
+                <TableRowsLoader colsNum={6} rowsNum={10} />
+              ) : clients.length > 0 ? (
                 table.getRowModel().rows.map(row => (
                   <TableRow key={row.id}>
                     {row.getVisibleCells().map(cell => (
@@ -180,11 +226,7 @@ function ClientCatalog() {
                   </TableRow>
                 ))
               ) : (
-                <TableRow>
-                  <TableCell colSpan={columns.length} style={{ textAlign: 'center' }}>
-                    No records found
-                  </TableCell>
-                </TableRow>
+                <NoRecordRow />
               )}
             </TableBody>
           </Table>
@@ -192,8 +234,33 @@ function ClientCatalog() {
       )}
       <ClientCatalogAdd
         open={openModal}
-        onClose={() => {setOpenModal(false);getClients()}}
+        onClose={() => { setOpenModal(false); setEditClient(null); getClients(); }}
+        loading={loading}
+        setLoading={setLoading}
+        onAddSuccess={getClients}
+        editClient={editClient}
       />
+      <Dialog
+        open={confirmOpen}
+        onClose={handleCancelToggle}
+        aria-labelledby="confirm-toggle-title"
+        aria-describedby="confirm-toggle-description"
+      >
+        <DialogTitle id="confirm-toggle-title">
+          Confirm Action
+        </DialogTitle>
+        <DialogContent id="confirm-toggle-description">
+          Are you sure you want to {clients.find(c => c._id === clientToToggle)?.isActive ? 'disable' : 'enable'} this client?
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={handleCancelToggle} color="primary">
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleConfirmToggle} color="error" autoFocus>
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

@@ -178,6 +178,9 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
             size: 'small',
           },
           styleOverrides: {
+            root: {
+              fontFamily: 'DM Sans, sans-serif',
+            },
             contained: ({ theme }) => ({
               '&:hover': {
                 backgroundColor: theme.palette.primary.dark,
@@ -249,6 +252,27 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
                 fontSize: '.85rem',
               }),
             }),
+          },
+        },
+        MuiDialogTitle: {
+          styleOverrides: {
+            root: {
+              fontFamily: 'DM Sans, sans-serif',
+            },
+          },
+        },
+        MuiDialogContent: {
+          styleOverrides: {
+            root: {
+              fontFamily: 'DM Sans, sans-serif',
+            },
+          },
+        },
+        MuiDialogActions: {
+          styleOverrides: {
+            root: {
+              fontFamily: 'DM Sans, sans-serif',
+            },
           },
         },
       },

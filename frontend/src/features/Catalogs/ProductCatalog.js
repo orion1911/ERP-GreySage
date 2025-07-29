@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TextField, Button, Typography, Box } from '@mui/material';
-import { PersonAdd } from '@mui/icons-material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TextField, Button, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, useTheme } from '@mui/material';
+import { PersonAdd, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 import ProductCatalogSx from './ProductCatalogSx';
 import ProductCatalogAdd from './ProductCatalogAdd';
 
 function ProductCatalog() {
   const { showSnackbar, isMobile } = useOutletContext();
+  const theme = useTheme();
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState('');
   const [openModal, setOpenModal] = useState(false);
-  const token = localStorage.getItem('token');
+  const [editProduct, setEditProduct] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [productToToggle, setProductToToggle] = useState(null);
 
   const getFitStyles = () => {
     setLoading(true);
@@ -35,14 +38,21 @@ function ProductCatalog() {
 
   useEffect(() => {
     getFitStyles();
-  }, [search, token]);
+  }, [search]);
 
   const handleToggleActive = (id) => {
+    setProductToToggle(id);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmToggle = () => {
+    if (!productToToggle) return;
     setLoading(true);
-    apiService.fitStyles.toggleFitstyleActive(id)
+    apiService.fitStyles.toggleFitstyleActive(productToToggle)
       .then(() => {
         setLoading(false);
         getFitStyles();
+        setConfirmOpen(false);
       })
       .catch(err => {
         setLoading(false);
@@ -54,7 +64,18 @@ function ProductCatalog() {
         } else {
           showSnackbar(err.response?.data?.error || 'An error occurred');
         }
+        setConfirmOpen(false);
       });
+  };
+
+  const handleCancelToggle = () => {
+    setConfirmOpen(false);
+    setProductToToggle(null);
+  };
+
+  const handleEditProduct = (product) => {
+    setEditProduct(product);
+    setOpenModal(true);
   };
 
   const columns = [
@@ -73,15 +94,28 @@ function ProductCatalog() {
       header: 'Actions',
       enableSorting: false,
       cell: ({ row }) => (
-        <Button
-          variant="contained"
-          color="warning"
-          size="small"
-          disabled={loading}
-          onClick={() => handleToggleActive(row.original._id)}
-        >
-          {row.original.isActive ? 'Disable' : 'Enable'}
-        </Button>
+        <Stack direction="row" spacing={1} justifyContent='center'>
+          <Button
+            variant="contained"
+            color="error"
+            size="small"
+            disabled={loading}
+            onClick={() => handleToggleActive(row.original._id)}
+            startIcon={<DeleteIcon />}
+          >
+            {row.original.isActive ? 'Disable' : 'Enable'}
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            disabled={loading}
+            onClick={() => handleEditProduct(row.original)}
+            startIcon={<EditIcon />}
+          >
+            Edit
+          </Button>
+        </Stack>
       )
     },
     {
@@ -121,7 +155,7 @@ function ProductCatalog() {
           variant="contained"
           size='small'
           endIcon={<PersonAdd />}
-          onClick={() => setOpenModal(true)}
+          onClick={() => { setEditProduct(null); setOpenModal(true); }}
           disabled={loading}
           sx={{ mt: 2 }}
         >
@@ -131,16 +165,11 @@ function ProductCatalog() {
       {isMobile ? (
         <ProductCatalogSx
           products={products}
-          setProducts={setProducts}
           search={search}
-          setSearch={setSearch}
-          openModal={openModal}
-          setOpenModal={setOpenModal}
           loading={loading}
-          setLoading={setLoading}
           handleToggleActive={handleToggleActive}
           showSnackbar={showSnackbar}
-          token={token}
+          handleEditProduct={handleEditProduct}
         />
       ) : (
         <TableContainer>
@@ -192,11 +221,33 @@ function ProductCatalog() {
       )}
       <ProductCatalogAdd
         open={openModal}
-        onClose={() => setOpenModal(false)}
+        onClose={() => { setOpenModal(false); setEditProduct(null); }}
         loading={loading}
         setLoading={setLoading}
         onAddSuccess={getFitStyles}
+        editProduct={editProduct}
       />
+      <Dialog
+        open={confirmOpen}
+        onClose={handleCancelToggle}
+        aria-labelledby="confirm-toggle-title"
+        aria-describedby="confirm-toggle-description"
+      >
+        <DialogTitle id="confirm-toggle-title">
+          Confirm Action
+        </DialogTitle>
+        <DialogContent id="confirm-toggle-description">
+          Are you sure you want to {products.find(p => p._id === productToToggle)?.isActive ? 'disable' : 'enable'} this fit style?
+        </DialogContent>
+        <DialogActions>
+          <Button variant='contained' onClick={handleCancelToggle} color="primary">
+            Cancel
+          </Button>
+          <Button variant='contained' onClick={handleConfirmToggle} color="error" autoFocus>
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

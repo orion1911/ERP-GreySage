@@ -12,7 +12,11 @@ const {
   toggleFabricVendorActive,
   toggleStitchingVendorActive,
   toggleWashingVendorActive,
-  toggleFinishingVendorActive
+  toggleFinishingVendorActive,
+  updateFabricVendor,
+  updateStitchingVendor,
+  updateWashingVendor,
+  updateFinishingVendor
 } = require('../controllers/vendorController');
 const { authenticateToken } = require('../middleware/auth');
 
@@ -28,5 +32,9 @@ router.put('/fabric-vendors/:id/toggle-active', authenticateToken, toggleFabricV
 router.put('/stitching-vendors/:id/toggle-active', authenticateToken, toggleStitchingVendorActive);
 router.put('/washing-vendors/:id/toggle-active', authenticateToken, toggleWashingVendorActive);
 router.put('/finishing-vendors/:id/toggle-active', authenticateToken, toggleFinishingVendorActive);
+router.patch('/fabric-vendors/:id', authenticateToken, updateFabricVendor);
+router.patch('/stitching-vendors/:id', authenticateToken, updateStitchingVendor);
+router.patch('/washing-vendors/:id', authenticateToken, updateWashingVendor);
+router.patch('/finishing-vendors/:id', authenticateToken, updateFinishingVendor);
 
 module.exports = router;

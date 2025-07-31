@@ -147,7 +147,8 @@ function StitchingGridSx({
                         setSelectedLot({
                           lotNumber: record.lotId?.lotNumber || '',
                           lotId: record.lotId?._id || '',
-                          invoiceNumber: record.lotId?.invoiceNumber || ''
+                          invoiceNumber: record.lotId?.invoiceNumber || '',
+                          lotQuantity: record.quantity
                         });
                         setOpenWashingModal(true);
                       }}

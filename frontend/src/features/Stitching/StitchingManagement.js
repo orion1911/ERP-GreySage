@@ -192,6 +192,7 @@ function StitchingManagement() {
           lotNumber={selectedWashingRecord?.lotId?.lotNumber || selectedLot?.lotNumber || ''}
           lotId={selectedWashingRecord?.lotId?._id || selectedLot?.lotId || ''}
           invoiceNumber={selectedWashingRecord?.lotId?.invoiceNumber || selectedLot?.invoiceNumber || ''}
+          lotQuantity={selectedLot?.lotQuantity || ''}
           vendors={washingVendors}
           onAddWashing={handleAddWashing}
           editRecord={selectedWashingRecord}

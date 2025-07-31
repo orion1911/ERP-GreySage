@@ -202,7 +202,8 @@ function StitchingGrid({
                 setSelectedLot({
                   lotNumber: row.original.lotId?.lotNumber || '',
                   lotId: row.original.lotId?._id || '',
-                  invoiceNumber: row.original.lotId?.invoiceNumber || ''
+                  invoiceNumber: row.original.lotId?.invoiceNumber || '',
+                  lotQuantity: row.original.quantity
                 });
                 setOpenWashingModal(true);
               }}

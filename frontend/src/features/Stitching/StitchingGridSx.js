@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, Add } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
@@ -24,7 +24,8 @@ function StitchingGridSx({
   filterAnchorEl,
   setFilterAnchorEl,
   filterStatus,
-  setFilterStatus
+  setFilterStatus,
+  searchTerm
 }) {
   const theme = useTheme();
   const [mobileExpandedRows, setMobileExpandedRows] = useState({});
@@ -44,9 +45,37 @@ function StitchingGridSx({
       ...prev,
       [rowId]: !prev[rowId]
     }));
-    // Trigger parent toggle to keep expandedRows in sync for desktop
     toggleRowExpansion(rowId);
   };
+
+  // Apply filtering based on searchTerm and filterStatus
+  const filteredRecords = useMemo(() => {
+    if (!processedRecords || !Array.isArray(processedRecords)) return processedRecords;
+    let result = processedRecords;
+    
+    // Apply search term filter
+    if (searchTerm) {
+      result = result.filter(record =>
+        record.lotId?.lotNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        record.lotId?.invoiceNumber?.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+        record.vendorId?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Apply status filter
+    if (filterStatus) {
+      result = result.filter(record => {
+        if (filterStatus === 'completed') {
+          return !!record.stitchOutDate; // Records with a stitchOutDate
+        } else if (filterStatus === 'pending') {
+          return !record.stitchOutDate; // Records without a stitchOutDate
+        }
+        return true; // 'all' or unknown filter
+      });
+    }
+
+    return result;
+  }, [processedRecords, searchTerm, filterStatus]);
 
   return (
     <Box sx={{ pt: 1 }}>
@@ -87,14 +116,16 @@ function StitchingGridSx({
               onClose={() => setFilterAnchorEl(null)}
             >
               <MenuItem onClick={() => { setFilterStatus(''); setFilterAnchorEl(null); }}>All</MenuItem>
+              <MenuItem onClick={() => { setFilterStatus('completed'); setFilterAnchorEl(null); }}>Completed</MenuItem>
+              <MenuItem onClick={() => { setFilterStatus('pending'); setFilterAnchorEl(null); }}>Pending</MenuItem>
             </Menu>
           </Stack>
         </Grid>
       </Grid>
-      {!processedRecords ? (
+      {!filteredRecords ? (
         <OrderCardsLoader type="stitching" />
-      ) : processedRecords.length > 0 ? (
-        processedRecords.map((record) => (
+      ) : filteredRecords.length > 0 ? (
+        filteredRecords.map((record) => (
           <Card key={record._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
             <CardContent>
               <Stack>
@@ -181,7 +212,6 @@ function StitchingGridSx({
                   </Grid>
                   <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left', pt: 1 }}>
                     <Typography variant="body2">
-                      {/* <strong>Washing Records</strong><br /> */}
                       <WashingGrid
                         washingRecords={washingRecords && washingRecords[record.lotId?._id] || []}
                         lotId={record.lotId?._id}
@@ -198,35 +228,6 @@ function StitchingGridSx({
                       />
                     </Typography>
                   </Grid>
-                  {/* <Grid size={{ xs: 12, sm: 12 }}>
-                    <Button
-                      variant="contained"
-                      startIcon={<EditIcon />}
-                      onClick={() => onEditStitching(record)}
-                      size="small"
-                      sx={{ mt: 1 }}
-                      fullWidth
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="contained"
-                      startIcon={<Add />}
-                      onClick={() => {
-                        setSelectedLot({
-                          lotNumber: record.lotId?.lotNumber || '',
-                          lotId: record.lotId?._id || '',
-                          invoiceNumber: record.lotId?.invoiceNumber || ''
-                        });
-                        setOpenWashingModal(true);
-                      }}
-                      size="small"
-                      sx={{ mt: 1 }}
-                      fullWidth
-                    >
-                      Add Washing
-                    </Button>
-                  </Grid> */}
                 </Grid>
               </Collapse>
             </CardContent>

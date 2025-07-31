@@ -254,7 +254,7 @@ function StitchingGrid({
     <TableContainer>
       <Table>
         <TableHead>
-          <TableRow sx={{ backgroundColor: theme.palette.background.paper }}>
+          {/* <TableRow sx={{ backgroundColor: theme.palette.background.paper }}>
             <TableCell colSpan={columns.length} sx={{ p: 0.5 }}>
               <Grid container spacing={2} sx={{ justifyContent: 'flex-end' }}>
                 <Grid item xs={12} sm={6} md={4}>
@@ -298,7 +298,7 @@ function StitchingGrid({
                 </Grid>
               </Grid>
             </TableCell>
-          </TableRow>
+          </TableRow> */}
           {table.getHeaderGroups().map(headerGroup => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map(colHeader => (

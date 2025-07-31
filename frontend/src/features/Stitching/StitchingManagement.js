@@ -23,7 +23,6 @@ function StitchingManagement() {
   const [selectedWashingRecord, setSelectedWashingRecord] = useState(null);
   const [totalStitchedQuantity, setTotalStitchedQuantity] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
-  const token = localStorage.getItem('token');
 
   const fetchData = async () => {
     try {
@@ -51,7 +50,7 @@ function StitchingManagement() {
 
   useEffect(() => {
     fetchData();
-  }, [orderId, token]);
+  }, [orderId, washingRecords]);
 
   useEffect(() => {
     washingRecords ? setHasWashing(true) : setHasWashing(false)
@@ -118,7 +117,7 @@ function StitchingManagement() {
   };
 
   const handleUpdateWashOut = (lotId, id, washOutDate) => {
-    apiService.washing.updateWashingStatus(id, { washOutDate })
+    apiService.washing.updateWashingStatus(id, washOutDate)
       .then(res => {
         setWashingRecords(prev => ({
           ...prev,

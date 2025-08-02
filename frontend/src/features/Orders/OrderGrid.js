@@ -6,6 +6,7 @@ import { Edit as EditIcon, CheckCircle, Cancel, ShoppingCartCheckout, ContentCut
 import OrderGridSx from './OrderGridSx';
 import OrderGridMd from './OrderGridMd';
 import { getFormattedDate } from '../../components/Validators';
+import OrderStatusChip from '../../components/OrderStatusChip';
 
 function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
     const navigate = useNavigate();
@@ -163,26 +164,7 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
             accessorKey: 'status',
             header: 'Status',
             enableSorting: true,
-            cell: ({ row }) => {
-                const status = row.original.status;
-                const label = statusLabels[status] || 'Unknown';
-                const icon = statusIcons[status] || null;
-                return (
-                    <Chip
-                        icon={icon}
-                        label={label}
-                        color={
-                            status === 1 ? 'primary' :
-                                status === 2 ? 'primary' :
-                                    status === 3 ? 'primary' :
-                                        status === 4 ? 'primary' :
-                                            status === 5 ? 'primary' :
-                                                status === 6 ? 'secondary' : 'default'
-                        }
-                        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    />
-                );
-            },
+            cell: ({ row }) => <OrderStatusChip status={row.original.status} />,
         },
         {
             accessorKey: 'actions',

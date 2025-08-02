@@ -2,16 +2,14 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useTheme } from '@mui/material/styles';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, Button, IconButton, Tooltip, Typography, Stack, Grid, Select, MenuItem, Menu } from '@mui/material';
-import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon, ArrowUpward, ArrowDownward, FilterList } from '@mui/icons-material';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { MorphDateTextField } from '../../components/MuiCustom';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, IconButton, Tooltip, Badge } from '@mui/material';
+import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon } from '@mui/icons-material';
 import WashingGrid from '../Washing/WashingGrid';
 import StitchingGridSx from './StitchingGridSx';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
+import OrderStatusChip from '../../components/OrderStatusChip';
+
 
 function StitchingGrid({
   stitchingRecords,
@@ -34,23 +32,14 @@ function StitchingGrid({
   const [filterAnchorEl, setFilterAnchorEl] = useState(null);
   const [filterStatus, setFilterStatus] = useState('');
 
-  // Initialize expandedRows and fetch washing records
+  // Fetch washing records without auto-expanding rows
   useEffect(() => {
     if (stitchingRecords && Array.isArray(stitchingRecords)) {
-      // Fetch washing records for all records
       stitchingRecords.forEach(record => {
         if (record.lotId?._id && !(washingRecords && washingRecords[record.lotId._id])) {
           fetchWashingRecords(record.lotId._id);
         }
       });
-      // Set rows to expanded only where washing records are available
-      const newExpanded = {};
-      stitchingRecords.forEach(record => {
-        if (record._id && washingRecords && washingRecords[record.lotId?._id] && washingRecords[record.lotId._id].length > 0) {
-          newExpanded[record._id] = true;
-        }
-      });
-      setExpandedRows(newExpanded);
     }
   }, [stitchingRecords, washingRecords, fetchWashingRecords]);
 
@@ -126,11 +115,41 @@ function StitchingGrid({
             size="small"
             sx={{
               outline: 'none',
-              "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
+              "&.MuiButtonBase-root:hover": { bgcolor: "transparent" },
+              // ...(washingRecords && washingRecords[row.original.lotId?._id]?.length > 0 && {
+              //   animation: 'blink 1s infinite',
+              //   ...blinkKeyframes
+              // })
             }}
             onClick={() => toggleRowExpansion(row.original._id)}
           >
-            {expandedRows[row.original._id] ? <><LocalLaundryService fontSize='small' /><ExpandMore /></> : <><LocalLaundryService fontSize='small' /><ChevronRight /></>}
+            {expandedRows[row.original._id] ?
+              <>
+                <LocalLaundryService fontSize='small' />
+                <ExpandMore />
+              </> :
+              <>
+                <Badge
+                  color="warning"
+                  overlap="circular"
+                  variant="dot"
+                  sx={{
+                    '& .MuiBadge-badge': {
+                      width: '10px',
+                      height: '10px',
+                      animation: 'blink 1.4s ease-in-out infinite',
+                      '@keyframes blink': {
+                        '0%': { opacity: 1 },
+                        '50%': { opacity: 0.2 },
+                        '100%': { opacity: 1 },
+                      },
+                    },
+                  }}
+                >
+                  <LocalLaundryService fontSize="small" />
+                </Badge>
+                <ChevronRight />
+              </>}
           </IconButton>
         </Tooltip>
       )
@@ -171,6 +190,12 @@ function StitchingGrid({
       accessorKey: 'rate',
       header: 'RATE',
       enableSorting: true
+    },
+    {
+      accessorKey: 'status',
+      header: 'STATUS',
+      enableSorting: true,
+      cell: ({ row }) => <OrderStatusChip status={row.original.status} />,
     },
     {
       accessorKey: 'stitchOutDate',
@@ -255,51 +280,6 @@ function StitchingGrid({
     <TableContainer>
       <Table>
         <TableHead>
-          {/* <TableRow sx={{ backgroundColor: theme.palette.background.paper }}>
-            <TableCell colSpan={columns.length} sx={{ p: 0.5 }}>
-              <Grid container spacing={2} sx={{ justifyContent: 'flex-end' }}>
-                <Grid item xs={12} sm={6} md={4}>
-                  <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                    <Select
-                      variant="standard"
-                      size="small"
-                      value={sortBy}
-                      onChange={(e) => {
-                        setSortBy(e.target.value);
-                        setSortDirection('asc');
-                      }}
-                    >
-                      <MenuItem value="lotNumber">Sort By Lot Number</MenuItem>
-                      <MenuItem value="invoiceNumber">Sort By Invoice Number</MenuItem>
-                      <MenuItem value="date">Sort By Date</MenuItem>
-                      <MenuItem value="vendorName">Sort By Vendor</MenuItem>
-                      <MenuItem value="quantity">Sort By Quantity</MenuItem>
-                      <MenuItem value="quantityShort">Sort By Quantity Short</MenuItem>
-                      <MenuItem value="rate">Sort By Rate</MenuItem>
-                    </Select>
-                    <IconButton
-                      onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
-                      sx={{ ml: 1 }}
-                    >
-                      {sortDirection === 'asc' ? <ArrowUpward /> : <ArrowDownward />}
-                    </IconButton>
-                    <IconButton
-                      onClick={(e) => setFilterAnchorEl(e.currentTarget)}
-                    >
-                      <FilterList />
-                    </IconButton>
-                    <Menu
-                      anchorEl={filterAnchorEl}
-                      open={Boolean(filterAnchorEl)}
-                      onClose={() => setFilterAnchorEl(null)}
-                    >
-                      <MenuItem onClick={() => { setFilterStatus(''); setFilterAnchorEl(null); }}>All</MenuItem>
-                    </Menu>
-                  </Stack>
-                </Grid>
-              </Grid>
-            </TableCell>
-          </TableRow> */}
           {table.getHeaderGroups().map(headerGroup => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map(colHeader => (

@@ -4,6 +4,7 @@ import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownw
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
 import WashingGrid from '../Washing/WashingGrid';
+import OrderStatusChip from '../../components/OrderStatusChip';
 
 function StitchingGridSx({
   processedRecords,
@@ -130,12 +131,15 @@ function StitchingGridSx({
             <CardContent>
               <Stack>
                 <Grid container spacing={1} sx={{ textAlign: 'center' }}>
-                  <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'left' }}>
+                  <Grid size={{ xs: 3, sm: 3 }} sx={{ textAlign: 'left' }}>
                     <Typography variant="subtitle1" fontWeight="bold">
                       {record.lotId?.lotNumber || 'N/A'}
                     </Typography>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'right' }}>
+                  <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'center'}}>
+                    <OrderStatusChip status={record.status} />
+                  </Grid>
+                  <Grid size={{ xs: 5, sm: 5 }} sx={{ textAlign: 'right' }}>
                     <IconButton
                       onClick={() => onEditStitching(record)}
                       size="small"

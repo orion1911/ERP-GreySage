@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { Stitching, Order, Lot } = require('../mongodb_schema');
+const { Stitching, Order, Lot, Finishing, Washing } = require('../mongodb_schema');
 const { updateVendorBalance } = require('../services/vendorBalanceService');
 const { logAction } = require('../utils/logger');
 
@@ -288,10 +288,38 @@ const getStitching = async (req, res) => {
   } else if (orderId) {
     query.orderId = orderId;
   } else if (invoiceNumber) {
-    query.lotId = { $in: await Lot.find({ invoiceNumber: parseInt(invoiceNumber, 10) }).distinct('_id') };
+    const parsedInvoiceNumber = parseInt(invoiceNumber, 10);
+    if (isNaN(parsedInvoiceNumber)) {
+      return res.status(400).json({ error: 'Invoice number must be a valid number' });
+    }
+    query.lotId = { $in: await Lot.find({ invoiceNumber: parsedInvoiceNumber }).distinct('_id') };
   }
-  const stitchingRecords = await Stitching.find(query).populate('lotId orderId vendorId');
-  res.json(stitchingRecords);
+  // const stitchingRecords = await Stitching.find(query).populate('lotId orderId vendorId');
+  const stitchingRecords = await Stitching.find(query).populate('lotId orderId vendorId').lean();
+
+  if (!stitchingRecords || stitchingRecords.length === 0) {
+    return res.status(404).json({ error: 'No Stitching Records Found' });
+  }
+
+  // Map stitching records to include status
+  const recordsWithStatus = await Promise.all(
+    stitchingRecords.map(async (record) => {
+      // Check if lotId exists in Finishing
+      const finishingRecord = await Finishing.findOne({ lotId: record.lotId._id }).lean();
+      if (finishingRecord) {
+        return { ...record, status: 4 }; // Finishing
+      }
+      // Check if lotId exists in Washing
+      const washingRecord = await Washing.findOne({ lotId: record.lotId._id }).lean();
+      if (washingRecord) {
+        return { ...record, status: 3 }; // Washing
+      }
+      // Default to Stitching
+      return { ...record, status: 2 }; // Stitching
+    })
+  );
+
+  res.json(recordsWithStatus);
 };
 
 module.exports = { createStitching, updateStitching, updateStitchingStatus, getStitching };

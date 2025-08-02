@@ -28,6 +28,7 @@ const OrderStatusChip = ({ status }) => {
     <Chip
       icon={icon}
       label={label}
+      size='small'
       color={
         status === 1 ? 'primary' :
         status === 2 ? 'primary' :

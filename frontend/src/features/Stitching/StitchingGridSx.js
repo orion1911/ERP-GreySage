@@ -53,7 +53,7 @@ function StitchingGridSx({
   const filteredRecords = useMemo(() => {
     if (!processedRecords || !Array.isArray(processedRecords)) return processedRecords;
     let result = processedRecords;
-    
+
     // Apply search term filter
     if (searchTerm) {
       result = result.filter(record =>
@@ -127,46 +127,45 @@ function StitchingGridSx({
         <OrderCardsLoader type="stitching" />
       ) : filteredRecords.length > 0 ? (
         filteredRecords.map((record) => (
-          <Card key={record._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+          <Card key={record._id} variant="outlined" sx={{ p: 1.3, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
             <CardContent>
-              <Stack>
-                <Grid container spacing={1} sx={{ textAlign: 'center' }}>
-                  <Grid size={{ xs: 3, sm: 3 }} sx={{ textAlign: 'left' }}>
-                    <Typography variant="subtitle1" fontWeight="bold">
-                      {record.lotId?.lotNumber || 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'center'}}>
-                    <OrderStatusChip status={record.status} />
-                  </Grid>
-                  <Grid size={{ xs: 5, sm: 5 }} sx={{ textAlign: 'right' }}>
-                    <IconButton
-                      onClick={() => onEditStitching(record)}
-                      size="small"
-                    >
-                      <EditIcon fontSize='small' />
-                    </IconButton>
-                    <IconButton
-                      onClick={() => {
-                        setSelectedLot({
-                          lotNumber: record.lotId?.lotNumber || '',
-                          lotId: record.lotId?._id || '',
-                          invoiceNumber: record.lotId?.invoiceNumber || '',
-                          lotQuantity: record.quantity
-                        });
-                        setOpenWashingModal(true);
-                      }}
-                      size="small"
-                    >
-                      <Add fontSize='small' />
-                      <LocalLaundryService fontSize='small' />
-                    </IconButton>
-                    <IconButton onClick={() => toggleMobileRowExpansion(record._id)} size="small">
-                      <ExpandMoreIcon sx={{ transform: mobileExpandedRows[record._id] ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-                    </IconButton>
-                  </Grid>
+              <Grid container spacing={1} sx={{ textAlign: 'center' }}>
+                <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                  <Typography variant="subtitle1" fontWeight="bold">
+                    {record.lotId?.lotNumber || 'N/A'}
+                  </Typography>
                 </Grid>
-              </Stack>
+                <Grid size={{ xs: 4, sm: 4 }} sx={{ mt: 0.5 }}>
+                  <OrderStatusChip status={record.status} />
+                </Grid>
+                <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'right' }}>
+                  <IconButton
+                    onClick={() => onEditStitching(record)}
+                    size="small"
+                    sx={{ padding: 0 }}
+                  >
+                    <EditIcon fontSize='small' />
+                  </IconButton>
+                  <IconButton
+                    onClick={() => {
+                      setSelectedLot({
+                        lotNumber: record.lotId?.lotNumber || '',
+                        lotId: record.lotId?._id || '',
+                        invoiceNumber: record.lotId?.invoiceNumber || '',
+                        lotQuantity: record.quantity
+                      });
+                      setOpenWashingModal(true);
+                    }}
+                    size="small"
+                  >
+                    <Add fontSize='small' />
+                    <LocalLaundryService fontSize='small' />
+                  </IconButton>
+                  <IconButton onClick={() => toggleMobileRowExpansion(record._id)} size="small">
+                    <ExpandMoreIcon sx={{ transform: mobileExpandedRows[record._id] ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                  </IconButton>
+                </Grid>
+              </Grid>
               <Stack spacing={1} sx={{ mt: 1 }}>
                 <Grid container spacing={1} sx={{ textAlign: 'center' }}>
                   <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>

@@ -129,7 +129,7 @@ function StitchingGrid({
                 <ExpandMore />
               </> :
               <>
-                <Badge
+                {washingRecords && washingRecords[row.original.lotId?._id]?.length > 0 ? <Badge
                   color="warning"
                   overlap="circular"
                   variant="dot"
@@ -147,7 +147,7 @@ function StitchingGrid({
                   }}
                 >
                   <LocalLaundryService fontSize="small" />
-                </Badge>
+                </Badge> : <LocalLaundryService fontSize="small" />}
                 <ChevronRight />
               </>}
           </IconButton>
@@ -294,7 +294,7 @@ function StitchingGrid({
                   style={{
                     cursor: isColumnSortable(colHeader.column) ? 'pointer' : 'default',
                     textAlign: 'center',
-                    width: colHeader.column.id === 'toggleWashing' ? '20px' : 'auto'
+                    width: colHeader.column.id === 'toggleWashing' ? 20 : (colHeader.column.id === 'status' ? 110 : 'auto')
                   }}
                 >
                   {flexRender(getHeaderContent(colHeader.column), colHeader.getContext())}
@@ -306,7 +306,7 @@ function StitchingGrid({
         </TableHead>
         <TableBody>
           {!processedRecords ? (
-            <TableRowsLoader colsNum={10} rowsNum={10} />
+            <TableRowsLoader colsNum={11} rowsNum={10} />
           ) : processedRecords.length > 0 ? (
             table.getRowModel().rows.map(row => (
               <React.Fragment key={row.id}>
@@ -316,7 +316,6 @@ function StitchingGrid({
                       key={cell.id}
                       style={{
                         textAlign: 'center',
-                        width: cell.column.id === 'toggleWashing' ? '20px' : 'auto',
                         padding: cell.column.id === 'toggleWashing' ? 0 : 'auto'
                       }}
                     >
@@ -326,7 +325,7 @@ function StitchingGrid({
                 </TableRow>
                 {expandedRows[row.original._id] && (
                   <TableRow>
-                    <TableCell colSpan={10} sx={{ p: 0 }}>
+                    <TableCell colSpan={12} sx={{ p: 0 }}>
                       <WashingGrid
                         washingRecords={washingRecords && washingRecords[row.original.lotId?._id] || []}
                         hasWashing={hasWashing}

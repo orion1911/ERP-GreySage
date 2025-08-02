@@ -92,13 +92,14 @@ function StitchingGridSx({
                 setSortDirection('asc');
               }}
             >
-              <MenuItem value="lotNumber">Sort By Lot Number</MenuItem>
-              <MenuItem value="invoiceNumber">Sort By Invoice Number</MenuItem>
-              <MenuItem value="date">Sort By Date</MenuItem>
-              <MenuItem value="vendorName">Sort By Vendor</MenuItem>
-              <MenuItem value="quantity">Sort By Quantity</MenuItem>
-              <MenuItem value="quantityShort">Sort By Quantity Short</MenuItem>
-              <MenuItem value="rate">Sort By Rate</MenuItem>
+              <MenuItem value="lotNumber">Lot #</MenuItem>
+              <MenuItem value="invoiceNumber">Invoice #</MenuItem>
+              <MenuItem value="status">Status</MenuItem>
+              <MenuItem value="date">Date</MenuItem>
+              <MenuItem value="vendorName">Vendor</MenuItem>
+              <MenuItem value="quantity">Quantity</MenuItem>
+              <MenuItem value="quantityShort">QTY Short</MenuItem>
+              <MenuItem value="rate">Rate</MenuItem>
             </Select>
             <IconButton
               onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
@@ -136,7 +137,7 @@ function StitchingGridSx({
                   </Typography>
                 </Grid>
                 <Grid size={{ xs: 4, sm: 4 }} sx={{ mt: 0.5 }}>
-                  <OrderStatusChip status={record.status} />
+                  <OrderStatusChip status={record.lotId?.status} />
                 </Grid>
                 <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'right' }}>
                   <IconButton

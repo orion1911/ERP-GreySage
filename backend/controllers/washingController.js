@@ -23,34 +23,36 @@ const createWashing = async (req, res) => {
     return res.status(400).json({ error: 'Invoice number must be a valid number' });
   }
 
-  // Start a MongoDB session and transaction
+  // Validate invoiceNumber and orderId
+  const lot = await Lot.findOne({ invoiceNumber: parsedInvoiceNumber, orderId });
+  if (!lot) {
+    return res.status(400).json({ error: 'Invalid invoiceNumber or orderId' });
+  }
+
+  // Validate existing washing entry against the lot
+  const existingWashing = await Washing.findOne({ lotId: lot._id });
+  if (existingWashing) {
+    return res.status(400).json({ error: 'Washing record already exists for this lot' });
+  }
+
+  // Validate washDetails quantities against StitchingSchema quantity
+  const stitching = await Stitching.findOne({ lotId: lot._id });
+  if (!stitching) {
+    return res.status(400).json({ error: 'Stitching record not found for this lot' });
+  }
+
+  const order = await Order.findById(orderId);
+  if (!order) return res.status(400).json({ error: 'Order not found' });
+
+  const totalWashQuantity = washDetails.reduce((sum, item) => sum + parseInt(item.quantity || 0), 0);
+  if (totalWashQuantity !== stitching.quantity) {
+    return res.status(400).json({ error: `Total quantity in washDetails (${totalWashQuantity}) must equal the stitching quantity (${stitching.quantity})` });
+  }
+
   session = await mongoose.startSession();
 
   try {
     session.startTransaction();
-
-    // Validate invoiceNumber and orderId
-    const lot = await Lot.findOne({ invoiceNumber: parsedInvoiceNumber, orderId }).session(session);
-    if (!lot) {
-      throw new Error('Invalid invoiceNumber or orderId');
-    }
-
-    // Validate existing washing entry against the lot
-    const existingWashing = await Washing.findOne({ lotId: lot._id }).session(session);
-    if (existingWashing) {
-      throw new Error('Washing record already exists for this lot');
-    }
-
-    // Validate washDetails quantities against StitchingSchema quantity
-    const stitching = await Stitching.findOne({ lotId: lot._id }).session(session);
-    if (!stitching) {
-      throw new Error('Stitching record not found for this lot');
-    }
-
-    const totalWashQuantity = washDetails.reduce((sum, item) => sum + parseInt(item.quantity || 0), 0);
-    if (totalWashQuantity !== stitching.quantity) {
-      throw new Error(`Total quantity in washDetails (${totalWashQuantity}) must equal the stitching quantity (${stitching.quantity})`);
-    }
 
     // Create the Washing record within the transaction
     washing = new Washing({
@@ -68,15 +70,14 @@ const createWashing = async (req, res) => {
     await washing.save({ session });
 
     // Update the Order status to 3 (Order in Washing) within the transaction
-    const order = await Order.findById(orderId).session(session);
-    if (!order) {
-      throw new Error('Order not found');
-    }
-    if (order.status < 3) {
-      order.status = 3;
-      order.statusHistory.push({ status: 3, changedAt: new Date() });
-      await order.save({ session });
-    }
+    // if (order.status < 3) {
+    //   order.status = 3;
+    //   order.statusHistory.push({ status: 3, changedAt: new Date() });
+    //   await order.save({ session });
+    // }
+    lot.status = 3;
+    lot.statusHistory.push({ status: 3, changedAt: new Date() });
+    await lot.save({ session });
 
     // Update stitchOutDate in Stitching record if null or empty
     if (!stitching.stitchOutDate) {
@@ -146,7 +147,7 @@ const updateWashing = async (req, res) => {
   if (washDetails) washing.washDetails = washDetails;
 
   try {
-    const updatedWashing = await washing.save();
+    await washing.save();
     const populatedWashing = await Washing.findById(id).populate('lotId orderId vendorId');
     // await logAction(req.user.userId, 'update_washing', 'Washing', updatedWashing._id, 'Washing record updated');
     res.json(populatedWashing);

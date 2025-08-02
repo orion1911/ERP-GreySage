@@ -119,6 +119,8 @@ const createStitching = async (req, res) => {
       invoiceNumber,
       orderId,
       date,
+      status: 2,
+      statusHistory: [{ status: 2, changedAt: new Date() }],
       description,
       createdAt: new Date(),
     });
@@ -142,7 +144,7 @@ const createStitching = async (req, res) => {
     // Update the Order status to 2 (Order in Stitching) within the transaction
     if (order.status < 2) {
       order.status = 2;
-      order.statusHistory.push({ status: 2, changedAt: new Date() });
+      // order.statusHistory.push({ status: 2, changedAt: new Date() });
       await order.save({ session });
     }
 
@@ -236,43 +238,11 @@ const updateStitching = async (req, res) => {
 };
 
 const updateStitchingStatus = async (req, res) => {
-  const { id, lotNumber, orderId, invoiceNumber, vendorId, quantity, quantityShort, rate, date, stitchOutDate, description } = req.body;
+  const { id, stitchOutDate } = req.body;
 
   // Check totalQuantity against existing stitching entries
   const stitch = await Stitching.findById(id);
   if (!stitch) return res.status(404).json({ error: 'Stitching record not found for update operation' });
-
-  if (quantity && quantity !== stitch.quantity) {
-    const order = await Order.findById(orderId || stitch.orderId);
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-
-    const existingStitchings = await Stitching.find({ orderId: orderId || stitch.orderId });
-    const totalStitchedQuantity = existingStitchings.reduce((sum, stitching) => sum + stitching.quantity, 0) - stitch.quantity + quantity;
-    if (totalStitchedQuantity > order.totalQuantity) {
-      return res.status(400).json({ error: `Total stitched quantity (${totalStitchedQuantity}) exceeds order's totalQuantity (${order.totalQuantity})` });
-    }
-  }
-
-  // Validate lotNumber if provided
-  if (lotNumber) {
-    await validateLotNumber(lotNumber, stitch.lotId);
-  }
-
-  // Validate lotNumber and invoiceNumber uniqueness
-  if (lotNumber || invoiceNumber) {
-    const lotQuery = { _id: { $ne: stitch.lotId } };
-    if (lotNumber) lotQuery.lotNumber = lotNumber;
-    if (invoiceNumber) lotQuery.invoiceNumber = invoiceNumber;
-    const existingLot = await Lot.findOne(lotQuery);
-    if (existingLot) {
-      if (lotNumber && existingLot.lotNumber === lotNumber) {
-        return res.status(400).json({ error: 'Lot number already exists' });
-      }
-      if (invoiceNumber && existingLot.invoiceNumber === invoiceNumber) {
-        return res.status(400).json({ error: 'Invoice number already exists' });
-      }
-    }
-  }
 
   const stitching = await Stitching.findByIdAndUpdate(id, { stitchOutDate }, { new: true, runValidators: true });
   if (!stitching) return res.status(404).json({ error: 'Stitching record not found' });
@@ -301,25 +271,25 @@ const getStitching = async (req, res) => {
     return res.status(404).json({ error: 'No Stitching Records Found' });
   }
 
-  // Map stitching records to include status
-  const recordsWithStatus = await Promise.all(
-    stitchingRecords.map(async (record) => {
-      // Check if lotId exists in Finishing
-      const finishingRecord = await Finishing.findOne({ lotId: record.lotId._id }).lean();
-      if (finishingRecord) {
-        return { ...record, status: 4 }; // Finishing
-      }
-      // Check if lotId exists in Washing
-      const washingRecord = await Washing.findOne({ lotId: record.lotId._id }).lean();
-      if (washingRecord) {
-        return { ...record, status: 3 }; // Washing
-      }
-      // Default to Stitching
-      return { ...record, status: 2 }; // Stitching
-    })
-  );
+  // // Map stitching records to include status
+  // const recordsWithStatus = await Promise.all(
+  //   stitchingRecords.map(async (record) => {
+  //     // Check if lotId exists in Finishing
+  //     const finishingRecord = await Finishing.findOne({ lotId: record.lotId._id }).lean();
+  //     if (finishingRecord) {
+  //       return { ...record, status: 4 }; // Finishing
+  //     }
+  //     // Check if lotId exists in Washing
+  //     const washingRecord = await Washing.findOne({ lotId: record.lotId._id }).lean();
+  //     if (washingRecord) {
+  //       return { ...record, status: 3 }; // Washing
+  //     }
+  //     // Default to Stitching
+  //     return { ...record, status: 2 }; // Stitching
+  //   })
+  // );
 
-  res.json(recordsWithStatus);
+  res.json(stitchingRecords);
 };
 
 module.exports = { createStitching, updateStitching, updateStitchingStatus, getStitching };

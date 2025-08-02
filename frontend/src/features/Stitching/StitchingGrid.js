@@ -81,6 +81,9 @@ function StitchingGrid({
       } else if (sortKey === 'rate') {
         valueA = a.rate || 0;
         valueB = b.rate || 0;
+      } else if (sortKey === 'status') {
+        valueA = a.status || 0;
+        valueB = b.status || 0;
       }
       if (typeof valueA === 'string' && typeof valueB === 'string') {
         return direction === 'asc' ? valueA.localeCompare(valueB) : valueB.localeCompare(valueB);
@@ -195,7 +198,7 @@ function StitchingGrid({
       accessorKey: 'status',
       header: 'STATUS',
       enableSorting: true,
-      cell: ({ row }) => <OrderStatusChip status={row.original.status} />,
+      cell: ({ row }) => <OrderStatusChip status={row.original.lotId?.status} />,
     },
     {
       accessorKey: 'stitchOutDate',

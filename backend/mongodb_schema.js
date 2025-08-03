@@ -91,7 +91,6 @@ const OrderSchema = new mongoose.Schema({
   description: { type: String },
   attachments: [{ fileName: String, url: String }],
   status: { type: Number, enum: [1, 2, 3, 4, 5, 6], default: 1 },
-  statusHistory: [{ status: Number, changedAt: { type: Date, default: Date.now } }],
   createdAt: { type: Date, default: Date.now }
 });
 OrderSchema.index({ clientId: 1, date: 1 }); // Compound index for client-specific date queries
@@ -104,6 +103,8 @@ const LotSchema = new mongoose.Schema({
   invoiceNumber: { type: Number, required: true, unique: true },
   orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
   date: { type: Date, required: true },
+  status: { type: Number, enum: [2, 3, 4, 5, 6], default: 2 },
+  statusHistory: [{ status: Number, changedAt: { type: Date, default: Date.now } }],
   description: { type: String },
   createdAt: { type: Date, default: Date.now }
 });

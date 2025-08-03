@@ -43,7 +43,7 @@ const createOrder = async (req, res) => {
     description,
     attachments: attachments || [],
     status: 1,
-    statusHistory: [{ status: 1, changedAt: new Date() }],
+    // statusHistory: [{ status: 1, changedAt: new Date() }],
     createdAt: new Date()
   });
 
@@ -96,10 +96,10 @@ const updateOrder = async (req, res) => {
   if (threadColors) order.threadColors = threadColors;
   if (description) order.description = description;
   if (attachments) order.attachments = attachments || [];
-  if (status && status !== order.status) {
-    order.status = status;
-    order.statusHistory.push({ status, changedAt: new Date() });
-  }
+  // if (status && status !== order.status) {
+  //   order.status = status;
+  //   order.statusHistory.push({ status, changedAt: new Date() });
+  // }
 
   try {
     await order.save();
@@ -117,7 +117,7 @@ const updateOrderStatus = async (req, res) => {
   if (!order) return res.status(404).json({ error: 'Order not found' });
 
   order.status = status;
-  order.statusHistory.push({ status, changedAt: new Date() });
+  // order.statusHistory.push({ status, changedAt: new Date() });
   await order.save();
   //await logAction(req.user.userId, 'update_order_status', 'Order', order._id, `Order status updated to ${status}`);
   res.json(order);

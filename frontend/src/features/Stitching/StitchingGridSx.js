@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu } from '@mui/material';
-import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, Add } from '@mui/icons-material';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Box, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, Divider } from '@mui/material';
+import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, ContentCut, Add, MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
 import WashingGrid from '../Washing/WashingGrid';
 import OrderStatusChip from '../../components/OrderStatusChip';
+import { grey } from '@mui/material/colors';
 
 function StitchingGridSx({
   processedRecords,
@@ -30,6 +31,8 @@ function StitchingGridSx({
 }) {
   const theme = useTheme();
   const [mobileExpandedRows, setMobileExpandedRows] = useState({});
+  const [menuAnchorEl, setMenuAnchorEl] = useState(null);
+  const [selectedRecordId, setSelectedRecordId] = useState(null);
 
   useEffect(() => {
     if (processedRecords && Array.isArray(processedRecords)) {
@@ -77,6 +80,32 @@ function StitchingGridSx({
 
     return result;
   }, [processedRecords, searchTerm, filterStatus]);
+
+  const handleMenuOpen = (event, recordId) => {
+    setMenuAnchorEl(event.currentTarget);
+    setSelectedRecordId(recordId);
+  };
+
+  const handleMenuClose = () => {
+    setMenuAnchorEl(null);
+    setSelectedRecordId(null);
+  };
+
+  const handleEditStitching = (record) => {
+    onEditStitching(record);
+    handleMenuClose();
+  };
+
+  const handleAddWashing = (record) => {
+    setSelectedLot({
+      lotNumber: record.lotId?.lotNumber || '',
+      lotId: record.lotId?._id || '',
+      invoiceNumber: record.lotId?.invoiceNumber || '',
+      lotQuantity: record.quantity
+    });
+    setOpenWashingModal(true);
+    handleMenuClose();
+  };
 
   return (
     <Box sx={{ pt: 1 }}>
@@ -140,31 +169,38 @@ function StitchingGridSx({
                   <OrderStatusChip status={record.lotId?.status} />
                 </Grid>
                 <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'right' }}>
-                  <IconButton
-                    onClick={() => onEditStitching(record)}
-                    size="small"
-                    sx={{ padding: 0 }}
-                  >
-                    <EditIcon fontSize='small' />
-                  </IconButton>
-                  <IconButton
-                    onClick={() => {
-                      setSelectedLot({
-                        lotNumber: record.lotId?.lotNumber || '',
-                        lotId: record.lotId?._id || '',
-                        invoiceNumber: record.lotId?.invoiceNumber || '',
-                        lotQuantity: record.quantity
-                      });
-                      setOpenWashingModal(true);
-                    }}
-                    size="small"
-                  >
-                    <Add fontSize='small' />
-                    <LocalLaundryService fontSize='small' />
-                  </IconButton>
                   <IconButton onClick={() => toggleMobileRowExpansion(record._id)} size="small">
                     <ExpandMoreIcon sx={{ transform: mobileExpandedRows[record._id] ? 'rotate(180deg)' : 'rotate(0deg)' }} />
                   </IconButton>
+                  <IconButton
+                    onClick={(e) => handleMenuOpen(e, record._id)}
+                    size="small"
+                    sx={{ padding: 0 }}
+                  >
+                    <MoreVertIcon fontSize='small' />
+                  </IconButton>
+                  <Menu
+                    anchorEl={menuAnchorEl}
+                    open={Boolean(menuAnchorEl) && selectedRecordId === record._id}
+                    onClose={handleMenuClose}
+                    slotProps={{
+                      paper: {
+                        sx: {
+                          backgroundColor: `${theme.palette.background.paper} !important`,
+                          boxShadow: theme.shadows[3],
+                        }
+                      }
+                    }}
+                  >
+                    <MenuItem dense divider onClick={() => handleEditStitching(record)}>
+                      <EditIcon fontSize='small' sx={{ mr: 1 }} />
+                      <ContentCut fontSize='small' sx={{ mr: 1 }} />
+                    </MenuItem>
+                    <MenuItem dense divider sx={{ }} onClick={() => handleAddWashing(record)}>
+                      <Add fontSize='small' sx={{ mr: 1 }} />
+                      <LocalLaundryService fontSize='small' sx={{ mr: 1 }} />
+                    </MenuItem>
+                  </Menu>
                 </Grid>
               </Grid>
               <Stack spacing={1} sx={{ mt: 1 }}>

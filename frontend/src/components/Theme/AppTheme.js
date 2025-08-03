@@ -254,6 +254,13 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
             }),
           },
         },
+        MuiTypography: {
+          styleOverrides: {
+            root: {
+              fontFamily: 'DM Sans, sans-serif'
+            }
+          }
+        },
         MuiDialogTitle: {
           styleOverrides: {
             root: {

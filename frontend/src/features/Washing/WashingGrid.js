@@ -80,19 +80,19 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
                     <TableCell width="50%" sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
                       <Grid container spacing={0.5} sx={{ mt: 1.5, mb: 1.5 }}>
                         {wr.washDetails.map((wd, index) => (
-                          <>
+                          <React.Fragment key={index}>
                             <Grid size={{ sm: 2, md: 2 }}><Chip color="success" size="small" label={wd.washColor} /></Grid>
                             <Grid size={{ sm: 2, md: 2 }}><Chip color="success" size="small" label={`QTY: ${wd.quantity}`} /></Grid>
                             <Grid size={{ sm: 2, md: 2 }}><Chip color="warning" size="small" label={`SHORT: ${wd.quantityShort ?? 0}`} /></Grid>
                             <Grid size={{ sm: 6, md: 6 }}><Chip color="success" size="small" label={wd.washCreation} /></Grid>
                             {index != wr.washDetails.length - 1 && <Grid size={{ sm: 12, md: 12 }}><Divider fullWidth /></Grid>}
-                          </>
+                          </React.Fragment>
                         ))}
                       </Grid>
                     </TableCell>
                     <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
-                      {wr.washOutDate ?? getFormattedDate(wr.washOutDate)}
-                      {/* {wr.washOutDate ? (
+                      {/* {wr.washOutDate ?? getFormattedDate(wr.washOutDate)} */}
+                      {wr.washOutDate ? (
                         getFormattedDate(wr.washOutDate)
                       ) : (
                         <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -104,7 +104,7 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
                             sx={{ width: 165 }}
                           />
                         </LocalizationProvider>
-                      )} */}
+                      )}
                     </TableCell>
                     <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
                       <IconButton onClick={() => onEditWashing(wr)}>

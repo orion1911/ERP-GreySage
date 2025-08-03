@@ -10,7 +10,7 @@ import { MorphDateTextField } from '../../components/MuiCustom';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 
-function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumber, vendors, onAddWashing, editRecord }) {
+function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumber, lotQuantity, vendors, onAddWashing, editRecord }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
 
   const isEditMode = !!editRecord;
@@ -104,13 +104,19 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
           p: 4,
         }}
       >
-
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" id="add-washing-modal">{isEditMode ? 'Edit Washing' : 'Add Washing'}</Typography>
-          <IconButton id="close-wash-modal" onClick={onClose}>
-            <CloseIcon />
-          </IconButton>
-        </Box>
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 10, md: 10 }}>
+            <Typography variant="h6" id="add-washing-modal">
+              {isEditMode ? 'Edit Washing' : 'Add Washing'}
+            </Typography>
+            <Typography variant="caption">Lot Quantity <b>{lotQuantity}</b></Typography>
+          </Grid>
+          <Grid size={{ xs: 2, md: 2 }} sx={{ textAlign: 'right' }}>
+            <IconButton id="close-wash-modal" onClick={onClose}>
+              <CloseIcon />
+            </IconButton>
+          </Grid>
+        </Grid>
         <form onSubmit={handleSubmit(onSubmit)}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 6, md: 6 }}>

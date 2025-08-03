@@ -36,13 +36,13 @@ function WashingGridSx({
   return (
     <>
       <strong>Washing Records</strong><br />
-      <Divider fullWidth />
+      <Divider />
       <Box sx={{ pt: 1 }}>
         {!processedRecords ? (
           <OrderCardsLoader type="washing" />
         ) : processedRecords.length > 0 ? (
-          processedRecords.map((record) => (
-            <Stack spacing={1} sx={{ mt: 1 }}>
+          processedRecords.map((record, index) => (
+            <Stack key={index} spacing={1} sx={{ mt: 1 }}>
               <Grid container spacing={1} sx={{ textAlign: 'center' }}>
                 <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
                   <Typography variant="body2">
@@ -57,10 +57,28 @@ function WashingGridSx({
                   </Typography>
                 </Grid>
                 <Grid size={{ xs: 4, sm: 4 }}>
-                  <Typography variant="body2">
-                    <strong>Wash Out</strong><br />
-                    {getFormattedDate(record.washOutDate)}
-                  </Typography>
+                  {record.washOutDate ? (
+                    <Typography variant="body2">
+                      <strong>Wash Out</strong><br />
+                      {getFormattedDate(record.washOutDate)}
+                    </Typography>
+                  ) : (
+                    <>
+                      <Typography variant="body2">
+                        <strong>Wash Out</strong><br />
+                      </Typography>
+                      <LocalizationProvider dateAdapter={AdapterDayjs}>
+                        <DatePicker
+                          value={null}
+                          onChange={(e) => handleUpdateWashOut(lotId, record._id, e)}
+                          format='DD-MMM-YYYY'
+                          slots={{ textField: MorphDateTextField }}
+                          slotProps={{ textField: { variant: 'standard', size: 'small' } }}
+                          sx={{ width: 165 }}
+                        />
+                      </LocalizationProvider>
+                    </>
+                  )}
                 </Grid>
                 <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>
                   <Typography variant="body2">
@@ -73,7 +91,7 @@ function WashingGridSx({
                           <Grid size={{ xs: 8, sm: 8 }}><Chip color="success" size="small" label={wd.washCreation} /></Grid>
                           <Grid size={{ xs: 4, sm: 4 }}><Chip color="success" size="small" label={`QTY: ${wd.quantity}`} /></Grid>
                           <Grid size={{ xs: 8, sm: 8 }}><Chip color="warning" size="small" label={`QTY SHORT: ${wd.quantityShort ?? 0}`} /></Grid>
-                          <Grid size={{ xs: 12, sm: 12 }}><Divider fullWidth /></Grid>
+                          <Grid size={{ xs: 12, sm: 12 }}><Divider /></Grid>
                         </>
                       ))}
                     </Grid>

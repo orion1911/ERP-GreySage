@@ -27,7 +27,7 @@ import OrderManagement from './features/Orders/OrderManagement';
 import StitchingManagement from './features/Stitching/StitchingManagement';
 // import './3dBackground.js'; // Import the 3D background script
 import Appbar from './components/Navbar/Appbar';
-import AnimatedBackground from './AnimatedBackground';
+// import AnimatedBackground from './AnimatedBackground';
 // import WashingManagement from './features/Washing/WashingManagement';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {

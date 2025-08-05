@@ -282,6 +282,13 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
             },
           },
         },
+        MuiMenu: {
+          styleOverrides: {
+            MuiPaper: ({ theme }) => ({
+              backgroundColor: theme.palette.background.default,
+            }),
+          },
+        },
       },
     });
   }, [darkMode, variant]);

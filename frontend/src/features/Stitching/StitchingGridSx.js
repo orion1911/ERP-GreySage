@@ -121,14 +121,14 @@ function StitchingGridSx({
                 setSortDirection('asc');
               }}
             >
-              <MenuItem value="lotNumber">Lot #</MenuItem>
-              <MenuItem value="invoiceNumber">Invoice #</MenuItem>
-              <MenuItem value="status">Status</MenuItem>
-              <MenuItem value="date">Date</MenuItem>
-              <MenuItem value="vendorName">Vendor</MenuItem>
-              <MenuItem value="quantity">Quantity</MenuItem>
-              <MenuItem value="quantityShort">QTY Short</MenuItem>
-              <MenuItem value="rate">Rate</MenuItem>
+              <MenuItem dense value="lotNumber">Lot #</MenuItem>
+              <MenuItem dense value="invoiceNumber">Invoice #</MenuItem>
+              <MenuItem dense value="status">Status</MenuItem>
+              <MenuItem dense value="date">Date</MenuItem>
+              <MenuItem dense value="vendorName">Vendor</MenuItem>
+              <MenuItem dense value="quantity">Quantity</MenuItem>
+              <MenuItem dense value="quantityShort">QTY Short</MenuItem>
+              <MenuItem dense value="rate">Rate</MenuItem>
             </Select>
             <IconButton
               onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
@@ -146,9 +146,9 @@ function StitchingGridSx({
               open={Boolean(filterAnchorEl)}
               onClose={() => setFilterAnchorEl(null)}
             >
-              <MenuItem onClick={() => { setFilterStatus(''); setFilterAnchorEl(null); }}>All</MenuItem>
-              <MenuItem onClick={() => { setFilterStatus('completed'); setFilterAnchorEl(null); }}>Completed</MenuItem>
-              <MenuItem onClick={() => { setFilterStatus('pending'); setFilterAnchorEl(null); }}>Pending</MenuItem>
+              <MenuItem dense onClick={() => { setFilterStatus(''); setFilterAnchorEl(null); }}>All</MenuItem>
+              <MenuItem dense onClick={() => { setFilterStatus('completed'); setFilterAnchorEl(null); }}>Completed</MenuItem>
+              <MenuItem dense onClick={() => { setFilterStatus('pending'); setFilterAnchorEl(null); }}>Pending</MenuItem>
             </Menu>
           </Stack>
         </Grid>
@@ -186,19 +186,21 @@ function StitchingGridSx({
                     slotProps={{
                       paper: {
                         sx: {
-                          backgroundColor: `${theme.palette.background.paper} !important`,
                           boxShadow: theme.shadows[3],
                         }
+                      },
+                      list: {
+                        sx: { py: 0 }
                       }
                     }}
                   >
-                    <MenuItem dense divider onClick={() => handleEditStitching(record)}>
-                      <EditIcon fontSize='small' sx={{ mr: 1 }} />
-                      <ContentCut fontSize='small' sx={{ mr: 1 }} />
+                    <MenuItem dense divider sx={{ p: 1, justifyContent: 'center' }} onClick={() => handleEditStitching(record)}>
+                      <EditIcon fontSize='small' sx={{ mr: 0.4, fontSize: '16px' }} />
+                      <ContentCut fontSize='small' sx={{ fontSize: '15px' }} />
                     </MenuItem>
-                    <MenuItem dense divider sx={{ }} onClick={() => handleAddWashing(record)}>
-                      <Add fontSize='small' sx={{ mr: 1 }} />
-                      <LocalLaundryService fontSize='small' sx={{ mr: 1 }} />
+                    <MenuItem dense divider sx={{ p: 1, justifyContent: 'center' }} onClick={() => handleAddWashing(record)}>
+                      <Add fontSize='small' sx={{ mr: 0.4, fontSize: '16px' }} />
+                      <LocalLaundryService fontSize='small' sx={{ fontSize: '15px' }} />
                     </MenuItem>
                   </Menu>
                 </Grid>

@@ -44,13 +44,13 @@ const SignInContainer = styled(Stack)(({ theme }) => ({
   minHeight: '100%',
   padding: theme.spacing(4),
   position: 'relative',
-  background: `linear-gradient(135deg, hsl(243.33deg 100% 7.06%) 0%, hsl(240deg 86.15% 25.49%) 36%, hsl(215.12deg 95.35% 33.73%) 60%, hsl(174deg 100% 45.1%) 100%)`,
-  ...theme.applyStyles('dark', {
-    background: `linear-gradient(135deg, hsl(243.33deg 100% 7.06%) 0%, hsl(240deg 86.15% 25.49%) 36%, hsl(215.12deg 95.35% 33.73%) 60%, hsl(174deg 100% 45.1%) 100%)`,
-  }),
-  ...theme.applyStyles('light', {
-    background: `linear-gradient(135deg, ${theme.palette.primary.light} 0%, ${theme.palette.background.default} 80%)`,
-  }),
+  // background: `linear-gradient(135deg, hsl(243.33deg 100% 7.06%) 0%, hsl(240deg 86.15% 25.49%) 36%, hsl(215.12deg 95.35% 33.73%) 60%, hsl(174deg 100% 45.1%) 100%)`,
+  // ...theme.applyStyles('dark', {
+  //   background: `linear-gradient(135deg, hsl(243.33deg 100% 7.06%) 0%, hsl(240deg 86.15% 25.49%) 36%, hsl(215.12deg 95.35% 33.73%) 60%, hsl(174deg 100% 45.1%) 100%)`,
+  // }),
+  // ...theme.applyStyles('light', {
+  //   background: `linear-gradient(135deg, ${theme.palette.primary.light} 0%, ${theme.palette.background.default} 80%)`,
+  // }),
 }));
 
 export default function Login({ variant, setVariant }) {
@@ -162,14 +162,17 @@ export default function Login({ variant, setVariant }) {
           </FormControl> */}
           <ThemeToggle />
         </Box>
-        <Card variant="outlined" data-signin="true">
+        <Card variant="outlined" data-signin="true" className="glass-container"
+          sx={{
+            width: '28%',
+          }}
+        >
           <Typography
             component="h1"
             variant="h4"
             sx={{
-              width: '100%',
               fontSize: 'clamp(2rem, 10vw, 2.15rem)',
-              color: theme.palette.text.primary,
+              // color: theme.palette.error.contrastText,
               mb: 2,
             }}
           >
@@ -187,13 +190,14 @@ export default function Login({ variant, setVariant }) {
             }}
           >
             <FormControl>
-              <FormLabel htmlFor="email" sx={{ color: theme.palette.text.primary, mb: 1 }}>
+              {/* <FormLabel htmlFor="email" sx={{ color: theme.palette.primary.contrastText, mb: 1 }}>
                 Email
-              </FormLabel>
+              </FormLabel> */}
               <TextField
                 error={emailError}
                 helperText={emailErrorMessage}
                 id="email"
+                label="Email"
                 type="email"
                 name="email"
                 value={form.email}
@@ -203,8 +207,22 @@ export default function Login({ variant, setVariant }) {
                 autoFocus
                 required
                 fullWidth
-                variant="outlined"
-                color={emailError ? 'error' : 'primary'}
+                variant="standard"
+                color={emailError ? 'error' : theme.palette.error.contrastText}
+                // sx={{
+                //   '& .MuiFormLabel-root': {
+                //     color: `${theme.palette.error.contrastText} !important`,
+                //   },
+                //   '& .MuiInputBase-input': {
+                //     color: theme.palette.error.contrastText,
+                //   },
+                //   '& .MuiInput-underline:before': {
+                //     borderBottomColor: theme.palette.divider,
+                //   },
+                //   // '&:hover .MuiInput-underline:before': {
+                //   //   borderBottomColor: theme.palette.primary.contrastText,
+                //   // },
+                // }}
               // sx={{
               //   '& .MuiInputBase-input': {
               //     color: theme.palette.text.primary,
@@ -219,12 +237,10 @@ export default function Login({ variant, setVariant }) {
               />
             </FormControl>
             <FormControl>
-              <FormLabel htmlFor="password" sx={{ color: theme.palette.text.primary, mb: 1 }}>
-                Password
-              </FormLabel>
               <TextField
                 error={passwordError}
                 helperText={passwordErrorMessage}
+                label="Password"
                 id="password"
                 name="password"
                 value={form.password}
@@ -234,28 +250,33 @@ export default function Login({ variant, setVariant }) {
                 autoComplete="current-password"
                 required
                 fullWidth
-                variant="outlined"
-                color={passwordError ? 'error' : 'primary'}
-              // sx={{
-              //   '& .MuiInputBase-input': {
-              //     color: theme.palette.text.primary,
-              //   },
-              //   '& .MuiOutlinedInput-notchedOutline': {
-              //     borderColor: theme.palette.divider,
-              //   },
-              //   '&:hover .MuiOutlinedInput-notchedOutline': {
-              //     borderColor: theme.palette.text.secondary,
-              //   },
-              // }}
+                variant="standard"
+                color={passwordError ? 'error' : theme.palette.error.contrastText}
+                // sx={{
+                //   '& .MuiFormLabel-root': {
+                //     color: `${theme.palette.error.contrastText} !important`,
+                //   },
+                //   '& .MuiInputBase-input': {
+                //     color: theme.palette.error.contrastText,
+                //   },
+                //   '& .MuiInput-underline:before': {
+                //     borderBottomColor: theme.palette.divider,
+                //   },
+                //   // '&:hover .MuiInput-underline:before': {
+                //   //   borderBottomColor: theme.palette.primary.contrastText,
+                //   // },
+                // }}
               />
             </FormControl>
             <FormControlLabel
-              control={<Checkbox sx={{ mt: 0, mb: 0 }} value="remember" color="primary" />}
+              control={<Checkbox sx={{ mt: 2, mb: 2 }} value="remember" color="primary" />}
               label="Remember me"
-              sx={{ color: theme.palette.text.primary }}
+              // sx={{ color: theme.palette.error.contrastText }}
             />
             <ForgotPassword open={open} handleClose={handleClose} />
-            <Button type="submit" fullWidth variant="contained" size='medium' loading={loading} loadingPosition="end">
+            <Button type="submit" fullWidth variant="contained" size='medium' loading={loading} loadingPosition="end"
+              sx={{ mb: 2 }}
+            >
               Sign in
             </Button>
 

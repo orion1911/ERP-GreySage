@@ -133,71 +133,68 @@ function StitchingManagement() {
 
   return (
     <>
-      {/* <Paper sx={{ p: 3 }}> */}
-      <>
-        <Typography variant="h4" sx={{ mb: 1 }}>Stitching Management</Typography>
-        {!order ? (<Skeleton animation="wave" variant="text" sx={{ marginBottom: 2, width: '60%' }} />) : (
-          <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
-            <Link
-              component="button"
-              onClick={() => navigate('/orders')}
-              sx={{ fontWeight: 'bold', textAlign: 'left', textDecoration: 'none !important' }}
-              underline="none"
-            >
-              {order.orderId}
-            </Link>
-            <Typography>Total QTY: <b>{order.totalQuantity}</b></Typography>
-            {/* <Typography>Stitched Quantity: <b>{totalStitchedQuantity}</b></Typography> */}
-            <Typography>Remaining QTY: <b>{order.totalQuantity - totalStitchedQuantity}</b></Typography>
-          </Box>
-        )}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-          <TextField
-            label="Search Stitching"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            fullWidth
-            variant="standard"
-            sx={{ maxWidth: '190px' }}
-          />
-          <Button variant="contained" endIcon={<ContentCut />} onClick={() => { setSelectedRecord(null); setOpenStitchingModal(true); }} sx={{ mt: 2 }}>
-            Add
-          </Button>
+      <Typography variant="h4" sx={{ mb: 1 }}>Stitching Management</Typography>
+      {!order ? (<Skeleton animation="wave" variant="text" sx={{ marginBottom: 2, width: '60%' }} />) : (
+        <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
+          <Link
+            component="button"
+            onClick={() => navigate('/orders')}
+            sx={{ fontSize: '14px', fontWeight: 'bold', textAlign: 'left', textDecoration: 'none !important' }}
+            underline="none"
+          >
+            {order.orderId}
+          </Link>
+          <Typography>Total QTY: <b>{order.totalQuantity}</b></Typography>
+          {/* <Typography>Stitched Quantity: <b>{totalStitchedQuantity}</b></Typography> */}
+          <Typography>Remaining QTY: <b>{order.totalQuantity - totalStitchedQuantity}</b></Typography>
         </Box>
-        <StitchingGrid
-          stitchingRecords={stitchingRecords}
-          washingRecords={washingRecords}
-          hasWashing={hasWashing}
-          fetchWashingRecords={fetchWashingRecords}
-          handleUpdateStitchOut={handleUpdateStitchOut}
-          handleUpdateWashOut={handleUpdateWashOut}
-          setOpenWashingModal={setOpenWashingModal}
-          setSelectedLot={setSelectedLot}
-          searchTerm={searchTerm}
-          onEditStitching={handleEditStitching}
-          onEditWashing={handleEditWashing}
+      )}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+        <TextField
+          label="Search Stitching"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          fullWidth
+          variant="standard"
+          sx={{ maxWidth: '190px' }}
         />
-        <AddStitchingModal
-          open={openStitchingModal}
-          onClose={() => { setOpenStitchingModal(false); setSelectedRecord(null); }}
-          orderId={orderId}
-          vendors={stitchingVendors}
-          onAddStitching={handleAddStitching}
-          editRecord={selectedRecord}
-        />
-        <AddWashingModal
-          open={openWashingModal}
-          onClose={() => { setOpenWashingModal(false); setSelectedWashingRecord(null); }}
-          orderId={orderId}
-          lotNumber={selectedWashingRecord?.lotId?.lotNumber || selectedLot?.lotNumber || ''}
-          lotId={selectedWashingRecord?.lotId?._id || selectedLot?.lotId || ''}
-          invoiceNumber={selectedWashingRecord?.lotId?.invoiceNumber || selectedLot?.invoiceNumber || ''}
-          lotQuantity={selectedLot?.lotQuantity || ''}
-          vendors={washingVendors}
-          onAddWashing={handleAddWashing}
-          editRecord={selectedWashingRecord}
-        />
-      </>
+        <Button variant="contained" endIcon={<ContentCut />} onClick={() => { setSelectedRecord(null); setOpenStitchingModal(true); }} sx={{ mt: 2 }}>
+          Add
+        </Button>
+      </Box>
+      <StitchingGrid
+        stitchingRecords={stitchingRecords}
+        washingRecords={washingRecords}
+        hasWashing={hasWashing}
+        fetchWashingRecords={fetchWashingRecords}
+        handleUpdateStitchOut={handleUpdateStitchOut}
+        handleUpdateWashOut={handleUpdateWashOut}
+        setOpenWashingModal={setOpenWashingModal}
+        setSelectedLot={setSelectedLot}
+        searchTerm={searchTerm}
+        onEditStitching={handleEditStitching}
+        onEditWashing={handleEditWashing}
+      />
+      <AddStitchingModal
+        open={openStitchingModal}
+        onClose={() => { setOpenStitchingModal(false); setSelectedRecord(null); }}
+        orderId={orderId}
+        vendors={stitchingVendors}
+        onAddStitching={handleAddStitching}
+        editRecord={selectedRecord}
+      />
+      <AddWashingModal
+        open={openWashingModal}
+        onClose={() => { setOpenWashingModal(false); setSelectedWashingRecord(null); }}
+        orderId={orderId}
+        lotNumber={selectedWashingRecord?.lotId?.lotNumber || selectedLot?.lotNumber || ''}
+        lotId={selectedWashingRecord?.lotId?._id || selectedLot?.lotId || ''}
+        invoiceNumber={selectedWashingRecord?.lotId?.invoiceNumber || selectedLot?.invoiceNumber || ''}
+        lotQuantity={selectedLot?.lotQuantity || ''}
+        vendors={washingVendors}
+        onAddWashing={handleAddWashing}
+        editRecord={selectedWashingRecord}
+      />
     </>
   );
 }

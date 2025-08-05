@@ -43,10 +43,12 @@ function App(conf) {
         updateSize();
         window.addEventListener('resize', updateSize, false);
 
-        document.addEventListener('mousemove', e => {
-            mouse.x = (e.clientX / width) * 2 - 1;
-            mouse.y = -(e.clientY / height) * 2 + 1;
-        });
+        if (!('ontouchstart' in window || navigator.maxTouchPoints > 0)) {
+            document.addEventListener('mousemove', e => {
+                mouse.x = (e.clientX / width) * 2 - 1;
+                mouse.y = -(e.clientY / height) * 2 + 1;
+            });
+        }
 
         initScene();
         initGui();

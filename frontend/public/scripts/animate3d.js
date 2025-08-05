@@ -41,11 +41,11 @@ function App(conf) {
         // cameraCtrl = new THREE.OrbitControls(camera); //3d interaction
 
         updateSize();
-        // window.addEventListener('resize', updateSize, false);
+        window.addEventListener('resize', updateSize, false);
 
         document.addEventListener('mousemove', e => {
-          mouse.x = (e.clientX / width) * 2 - 1;
-          mouse.y = -(e.clientY / height) * 2 + 1;
+            mouse.x = (e.clientX / width) * 2 - 1;
+            mouse.y = -(e.clientY / height) * 2 + 1;
         });
 
         initScene();
@@ -201,13 +201,15 @@ function App(conf) {
 
     function updateSize() {
         width = window.innerWidth;
-        cx = width / 2;
         height = window.innerHeight;
+        cx = width / 2;
         cy = height / 2;
+
         if (renderer && camera) {
             renderer.setSize(width, height);
             camera.aspect = width / height;
             camera.updateProjectionMatrix();
+
             const wsize = getRendererSize();
             wWidth = wsize[0];
             wHeight = wsize[1];

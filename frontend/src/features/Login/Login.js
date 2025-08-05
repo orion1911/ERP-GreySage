@@ -53,7 +53,7 @@ const SignInContainer = styled(Stack)(({ theme }) => ({
   // }),
 }));
 
-export default function Login({ variant, setVariant }) {
+export default function Login({ isMobile, variant, setVariant }) {
   const theme = useTheme();
   const [loading, setLoading] = React.useState(false);
 
@@ -164,15 +164,15 @@ export default function Login({ variant, setVariant }) {
         </Box>
         <Card variant="outlined" data-signin="true" className="glass-container"
           sx={{
-            width: '28%',
+            width: isMobile ? '90%' : '28%',
           }}
         >
           <Typography
-            component="h1"
-            variant="h4"
+            // component="h1"
+            variant="h1"
             sx={{
               fontSize: 'clamp(2rem, 10vw, 2.15rem)',
-              // color: theme.palette.error.contrastText,
+              color: theme.palette.primary.contrastText,
               mb: 2,
             }}
           >
@@ -208,32 +208,21 @@ export default function Login({ variant, setVariant }) {
                 required
                 fullWidth
                 variant="standard"
-                color={emailError ? 'error' : theme.palette.error.contrastText}
-                // sx={{
-                //   '& .MuiFormLabel-root': {
-                //     color: `${theme.palette.error.contrastText} !important`,
-                //   },
-                //   '& .MuiInputBase-input': {
-                //     color: theme.palette.error.contrastText,
-                //   },
-                //   '& .MuiInput-underline:before': {
-                //     borderBottomColor: theme.palette.divider,
-                //   },
-                //   // '&:hover .MuiInput-underline:before': {
-                //   //   borderBottomColor: theme.palette.primary.contrastText,
-                //   // },
-                // }}
-              // sx={{
-              //   '& .MuiInputBase-input': {
-              //     color: theme.palette.text.primary,
-              //   },
-              //   '& .MuiOutlinedInput-notchedOutline': {
-              //     borderColor: theme.palette.divider,
-              //   },
-              //   '&:hover .MuiOutlinedInput-notchedOutline': {
-              //     borderColor: theme.palette.text.secondary,
-              //   },
-              // }}
+                color={emailError ? 'error' : theme.palette.primary.contrastText}
+                sx={{
+                  '& .MuiFormLabel-root': {
+                    color: `${theme.palette.primary.contrastText} !important`,
+                  },
+                  '& .MuiInputBase-input': {
+                    color: theme.palette.primary.contrastText,
+                  },
+                  '& .MuiInput-underline:before': {
+                    borderBottomColor: theme.palette.divider,
+                  },
+                  // '&:hover .MuiInput-underline:before': {
+                  //   borderBottomColor: theme.palette.primary.contrastText,
+                  // },
+                }}
               />
             </FormControl>
             <FormControl>
@@ -251,27 +240,31 @@ export default function Login({ variant, setVariant }) {
                 required
                 fullWidth
                 variant="standard"
-                color={passwordError ? 'error' : theme.palette.error.contrastText}
-                // sx={{
-                //   '& .MuiFormLabel-root': {
-                //     color: `${theme.palette.error.contrastText} !important`,
-                //   },
-                //   '& .MuiInputBase-input': {
-                //     color: theme.palette.error.contrastText,
-                //   },
-                //   '& .MuiInput-underline:before': {
-                //     borderBottomColor: theme.palette.divider,
-                //   },
-                //   // '&:hover .MuiInput-underline:before': {
-                //   //   borderBottomColor: theme.palette.primary.contrastText,
-                //   // },
-                // }}
+                color={passwordError ? 'error' : theme.palette.primary.contrastText}
+                sx={{
+                  '& .MuiFormLabel-root': {
+                    color: `${theme.palette.primary.contrastText} !important`,
+                  },
+                  '& .MuiInputBase-input': {
+                    color: theme.palette.primary.contrastText,
+                  },
+                  '& .MuiInput-underline:before': {
+                    borderBottomColor: theme.palette.divider,
+                  },
+                  // '&:hover .MuiInput-underline:before': {
+                  //   borderBottomColor: theme.palette.primary.contrastText,
+                  // },
+                }}
               />
             </FormControl>
             <FormControlLabel
-              control={<Checkbox sx={{ mt: 2, mb: 2 }} value="remember" color="primary" />}
+              control={<Checkbox sx={{
+                mt: 2, mb: 2, '& .MuiFormLabel-root': {
+                  color: `${theme.palette.primary.contrastText} !important`,
+                },
+              }} value="remember" />}
               label="Remember me"
-              // sx={{ color: theme.palette.error.contrastText }}
+            // sx={{ color: theme.palette.error.contrastText }}
             />
             <ForgotPassword open={open} handleClose={handleClose} />
             <Button type="submit" fullWidth variant="contained" size='medium' loading={loading} loadingPosition="end"

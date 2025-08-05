@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <link rel="icon" href="%PUBLIC_URL%/assets/favicon/favicon.ico" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <meta name="theme-color" content="#000000" />
   <meta name="description" content="Greysage" />
   <title>Greysage</title>
@@ -21,16 +21,23 @@
   <!-- codepen/three.js/OrbitControls.js -->
   <!-- <script src="frontend/public/scripts/OrbitControls.js"></script> -->
   <style>
-    canvas {
-      position: absolute;
-      left: 0;
-      top: 0;
-      right: 0;
-      bottom: 0;
-      z-index: -9999;
-      pointer-events: none;
-      /* Add this line */
-    }
+  html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
+}
+
+canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  pointer-events: none;
+  display: block;
+}
   </style>
 </head>
 <body style="margin: 0;">

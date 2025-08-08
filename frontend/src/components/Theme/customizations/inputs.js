@@ -11,10 +11,10 @@ import { gray, brand } from '../themePrimitives';
 
 export const inputsCustomizations = {
   MuiButtonBase: {
-    defaultProps: {
-      disableTouchRipple: true,
-      disableRipple: true,
-    },
+    // defaultProps: {
+    //   disableTouchRipple: true,
+    //   disableRipple: true,
+    // },
     styleOverrides: {
       root: ({ theme }) => ({
         boxSizing: 'border-box',

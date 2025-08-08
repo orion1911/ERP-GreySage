@@ -6,36 +6,44 @@ import apiService from '../../services/apiService';
 import StitchingGrid from './StitchingGrid';
 import AddStitchingModal from './AddStitchingModal';
 import AddWashingModal from '../Washing/AddWashingModal';
+import AddFinishingModal from '../Finishing/AddFinishingModal';
 
 function StitchingManagement() {
   const { orderId } = useParams();
   const navigate = useNavigate();
   const [stitchingRecords, setStitchingRecords] = useState();
   const [washingRecords, setWashingRecords] = useState();
+  const [finishingRecords, setFinishingRecords] = useState(); // Added for Finishing
   const [hasWashing, setHasWashing] = useState(false);
+  const [hasFinishing, setHasFinishing] = useState(false); // Added for Finishing
   const [order, setOrder] = useState(null);
   const [stitchingVendors, setStitchingVendors] = useState([]);
   const [washingVendors, setWashingVendors] = useState([]);
+  const [finishingVendors, setFinishingVendors] = useState([]); // Added for Finishing
   const [openStitchingModal, setOpenStitchingModal] = useState(false);
   const [openWashingModal, setOpenWashingModal] = useState(false);
+  const [openFinishingModal, setOpenFinishingModal] = useState(false); // Added for Finishing
   const [selectedLot, setSelectedLot] = useState(null);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [selectedWashingRecord, setSelectedWashingRecord] = useState(null);
+  const [selectedFinishingRecord, setSelectedFinishingRecord] = useState(null); // Added for Finishing
   const [totalStitchedQuantity, setTotalStitchedQuantity] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
 
   const fetchData = async () => {
     try {
-      const [stitchingRes, orderRes, stitchingVendorsRes, washingVendorsRes] = await Promise.all([
+      const [stitchingRes, orderRes, stitchingVendorsRes, washingVendorsRes, finishingVendorsRes] = await Promise.all([
         apiService.stitching.getStitching('', orderId, ''),
         apiService.orders.getOrderById(orderId),
         apiService.stitchingVendors.getStitchingVendors(),
-        apiService.washingVendors.getWashingVendors()
+        apiService.washingVendors.getWashingVendors(),
+        apiService.finishingVendors.getFinishingVendors() // Added for Finishing
       ]);
       setTimeout(() => setStitchingRecords(stitchingRes), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
       setTimeout(() => setOrder(orderRes), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
       setStitchingVendors(stitchingVendorsRes);
       setWashingVendors(washingVendorsRes);
+      setFinishingVendors(finishingVendorsRes); // Added for Finishing
       const total = stitchingRes.reduce((sum, record) => sum + record.quantity, 0);
       setTotalStitchedQuantity(total);
     } catch (err) {
@@ -50,11 +58,12 @@ function StitchingManagement() {
 
   useEffect(() => {
     fetchData();
-  }, [orderId, washingRecords]);
+  }, [orderId]);
 
   useEffect(() => {
-    washingRecords ? setHasWashing(true) : setHasWashing(false)
-  }, [washingRecords])
+    washingRecords ? setHasWashing(true) : setHasWashing(false);
+    finishingRecords ? setHasFinishing(true) : setHasFinishing(false); // Added for Finishing
+  }, [washingRecords, finishingRecords]);
 
   const fetchWashingRecords = async (lotId) => {
     try {
@@ -65,9 +74,17 @@ function StitchingManagement() {
     }
   };
 
+  const fetchFinishingRecords = async (lotId) => { // Added for Finishing
+    try {
+      const finishingRes = await apiService.finishing.getFinishing('', lotId, '');
+      setFinishingRecords(prev => ({ ...prev, [lotId]: finishingRes }));
+    } catch (err) {
+      alert(err.response?.error || 'An error occurred while fetching finishing records');
+    }
+  };
+
   const handleAddStitching = (newStitching) => {
     if (selectedRecord && selectedRecord._id === newStitching._id) {
-      // Update existing record
       setStitchingRecords(stitchingRecords.map(record =>
         record._id === newStitching._id ? newStitching : record
       ));
@@ -76,7 +93,6 @@ function StitchingManagement() {
         0
       ));
     } else {
-      // Add new record
       setStitchingRecords([...stitchingRecords, newStitching]);
       setTotalStitchedQuantity(prev => prev + Number(newStitching.quantity));
     }
@@ -98,7 +114,6 @@ function StitchingManagement() {
 
   const handleAddWashing = (lotId, newWashing) => {
     if (selectedWashingRecord && selectedWashingRecord._id === newWashing._id) {
-      // Update existing washing record
       setWashingRecords(prev => ({
         ...prev,
         [lotId]: prev[lotId].map(record =>
@@ -106,7 +121,6 @@ function StitchingManagement() {
         )
       }));
     } else {
-      // Add new washing record
       setWashingRecords(prev => ({
         ...prev,
         [lotId]: [...(prev[lotId] || []), newWashing]
@@ -131,6 +145,39 @@ function StitchingManagement() {
     setOpenWashingModal(true);
   };
 
+  const handleAddFinishing = (lotId, newFinishing) => { // Added for Finishing
+    if (selectedFinishingRecord && selectedFinishingRecord._id === newFinishing._id) {
+      setFinishingRecords(prev => ({
+        ...prev,
+        [lotId]: prev[lotId].map(record =>
+          record._id === newFinishing._id ? newFinishing : record
+        )
+      }));
+    } else {
+      setFinishingRecords(prev => ({
+        ...prev,
+        [lotId]: [...(prev[lotId] || []), newFinishing]
+      }));
+    }
+    setSelectedFinishingRecord(null);
+    setOpenFinishingModal(false);
+  };
+
+  const handleUpdateFinishOut = (lotId, id, finishOutDate) => { // Added for Finishing
+    apiService.finishing.updateFinishingStatus(id, finishOutDate)
+      .then(res => {
+        setFinishingRecords(prev => ({
+          ...prev,
+          [lotId]: prev[lotId].map(record => record._id === id ? res : record)
+        }));
+      });
+  };
+
+  const handleEditFinishing = (record) => { // Added for Finishing
+    setSelectedFinishingRecord(record);
+    setOpenFinishingModal(true);
+  };
+
   return (
     <>
       <Typography variant="h4" sx={{ mb: 1 }}>Stitching Management</Typography>
@@ -145,7 +192,6 @@ function StitchingManagement() {
             {order.orderId}
           </Link>
           <Typography>Total QTY: <b>{order.totalQuantity}</b></Typography>
-          {/* <Typography>Stitched Quantity: <b>{totalStitchedQuantity}</b></Typography> */}
           <Typography>Remaining QTY: <b>{order.totalQuantity - totalStitchedQuantity}</b></Typography>
         </Box>
       )}
@@ -165,15 +211,21 @@ function StitchingManagement() {
       <StitchingGrid
         stitchingRecords={stitchingRecords}
         washingRecords={washingRecords}
+        finishingRecords={finishingRecords} // Added for Finishing
         hasWashing={hasWashing}
+        hasFinishing={hasFinishing} // Added for Finishing
         fetchWashingRecords={fetchWashingRecords}
+        fetchFinishingRecords={fetchFinishingRecords} // Added for Finishing
         handleUpdateStitchOut={handleUpdateStitchOut}
         handleUpdateWashOut={handleUpdateWashOut}
+        handleUpdateFinishOut={handleUpdateFinishOut} // Added for Finishing
         setOpenWashingModal={setOpenWashingModal}
+        setOpenFinishingModal={setOpenFinishingModal} // Added for Finishing
         setSelectedLot={setSelectedLot}
         searchTerm={searchTerm}
         onEditStitching={handleEditStitching}
         onEditWashing={handleEditWashing}
+        onEditFinishing={handleEditFinishing} // Added for Finishing
       />
       <AddStitchingModal
         open={openStitchingModal}
@@ -194,6 +246,18 @@ function StitchingManagement() {
         vendors={washingVendors}
         onAddWashing={handleAddWashing}
         editRecord={selectedWashingRecord}
+      />
+      <AddFinishingModal // Added for Finishing
+        open={openFinishingModal}
+        onClose={() => { setOpenFinishingModal(false); setSelectedFinishingRecord(null); }}
+        orderId={orderId}
+        lotNumber={selectedFinishingRecord?.lotId?.lotNumber || selectedLot?.lotNumber || ''}
+        lotId={selectedFinishingRecord?.lotId?._id || selectedLot?.lotId || ''}
+        invoiceNumber={selectedFinishingRecord?.lotId?.invoiceNumber || selectedLot?.invoiceNumber || ''}
+        lotQuantity={selectedLot?.lotQuantity || ''}
+        vendors={finishingVendors}
+        onAddFinishing={handleAddFinishing}
+        editRecord={selectedFinishingRecord}
       />
     </>
   );

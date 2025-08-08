@@ -65,7 +65,7 @@ function ProductCatalogSx({
             >
               <MenuItem value="name">Sort By Design</MenuItem>
               <MenuItem value="description">Sort By Description</MenuItem>
-              <MenuItem value="isActive">Sort By Status</MenuItem>
+              {/* <MenuItem value="isActive">Sort By Status</MenuItem> */}
             </Select>
             <IconButton
               onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}

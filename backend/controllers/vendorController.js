@@ -2,6 +2,16 @@ const { FabricVendor, StitchingVendor, WashingVendor, FinishingVendor } = requir
 const { logAction } = require('../utils/logger');
 
 const createVendor = async (req, res, Model, vendorType) => {
+  
+  const name = req.body.name;
+  const normalizedName = name.replace(/\s\s+/g, ' ').trim();
+
+  // Construct a regex to match the normalized term, allowing for any amount of whitespace
+  // between characters in the stored field
+  const regex = new RegExp(normalizedName.split('').join('\\s*'), 'i'); // 'i' for case-insensitive
+  const vendorExist = await Model.findOne({ name: { $regex: regex } });
+  if (vendorExist) return res.status(400).json({ error: `${vendorExist.name} vendor already exists` });
+
   const vendor = new Model(req.body);
   await vendor.save();
   // await logAction(req.user.userId, `create_${vendorType}_vendor`, vendorType, vendor._id, `Created ${vendorType} vendor: ${vendor.name}`);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TextField, Button, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, useTheme } from '@mui/material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, useTheme } from '@mui/material';
 import { PersonAdd, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import apiService from '../../services/apiService';
@@ -103,26 +103,12 @@ function FinishingVendorCatalog() {
       enableSorting: false,
       cell: ({ row }) => (
         <Stack direction="row" spacing={1} justifyContent='center'>
-          <Button
-            variant="contained"
-            color="error"
-            size="small"
-            disabled={loading}
-            onClick={() => handleToggleActive(row.original._id)}
-            startIcon={<DeleteIcon />}
-          >
-            {row.original.isActive ? 'Disable' : 'Enable'}
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            size="small"
-            disabled={loading}
-            onClick={() => handleEditVendor(row.original)}
-            startIcon={<EditIcon />}
-          >
-            Edit
-          </Button>
+          <IconButton disabled={loading} onClick={() => handleToggleActive(row.original._id)} size="small">
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+          <IconButton disabled={loading} onClick={() => handleEditVendor(row.original)} size="small">
+            <EditIcon fontSize="small" />
+          </IconButton>
         </Stack>
       )
     },

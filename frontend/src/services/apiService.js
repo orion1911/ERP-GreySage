@@ -241,7 +241,16 @@ const apiService = {
       }
     },
 
-    updateFinishing: async (id, finishOutDate) => {
+    updateFinishing: async (id, finishingData) => {
+      try {
+        const response = await axiosInstance.post(`api/finishing-update/${id}`, finishingData);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    updateFinishingStatus: async (id, finishOutDate) => {
       try {
         const response = await axiosInstance.put(`api/finishing/${id}`, { finishOutDate });
         return response.data;
@@ -250,10 +259,10 @@ const apiService = {
       }
     },
 
-    getFinishing: async (search = '') => {
+    getFinishing: async (search = '', lotId = '', invoiceNumber = '') => {
       try {
         const response = await axiosInstance.get('api/finishing', {
-          params: { search },
+          params: { search, lotId, invoiceNumber },
         });
         return response.data;
       } catch (error) {

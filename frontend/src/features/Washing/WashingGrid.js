@@ -62,6 +62,7 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
           <Table sx={{ backgroundColor: theme.palette.background.default }}>
             <TableHead>
               <TableRow>
+                <TableCell align='center' sx={{ paddingTop: 0.3, paddingBottom: 0.3 }}></TableCell>
                 <TableCell align='center' sx={{ paddingTop: 0.3, paddingBottom: 0.3 }}>DATE</TableCell>
                 <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>VENDOR</TableCell>
                 <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>WASH DETAIL</TableCell>
@@ -75,6 +76,7 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
               ) : processedRecords.length > 0 ? (
                 processedRecords.map((wr, idx) => (
                   <TableRow key={wr._id}>
+                    <TableCell></TableCell>
                     <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>{getFormattedDate(wr.date)}</TableCell>
                     <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>{wr.vendorId?.name || 'N/A'}</TableCell>
                     <TableCell width="50%" sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
@@ -108,7 +110,7 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
                     </TableCell>
                     <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
                       <IconButton onClick={() => onEditWashing(wr)}>
-                        <EditIcon />
+                        <EditIcon fontSize='small' />
                       </IconButton>
                     </TableCell>
                   </TableRow>

@@ -150,7 +150,7 @@ function App(conf) {
             color.set('hsl.s', TMath.randFloat(0, 1)).set('hsl.l', 0.7 + TMath.randFloat(0, 0.3)).hex(),
             0xffffff,
         ];
-        console.log(colors);
+        // console.log(colors);
         cscale = chroma.scale(colors);
     }
 

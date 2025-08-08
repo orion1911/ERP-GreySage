@@ -68,8 +68,8 @@ function FinishingVendorCatalogSx({
             >
               <MenuItem value="name">Sort By Name</MenuItem>
               <MenuItem value="contact">Sort By Contact</MenuItem>
-              <MenuItem value="address">Sort By Address</MenuItem>
-              <MenuItem value="isActive">Sort By Status</MenuItem>
+              {/* <MenuItem value="address">Sort By Address</MenuItem>
+              <MenuItem value="isActive">Sort By Status</MenuItem> */}
             </Select>
             <IconButton
               onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}

@@ -19,7 +19,7 @@ UserSchema.index({ email: 1 });
 
 // Client Schema: Includes clientCode
 const ClientSchema = new mongoose.Schema({
-  name: { type: String, required: true },
+  name: { type: String, required: true, trim: true },
   clientCode: { type: String, required: true, unique: true },
   contact: { type: String },
   email: { type: String },
@@ -31,7 +31,7 @@ ClientSchema.index({ name: 1 }, { unique: true }); // Unique index on name
 
 // FitStyle Schema: Lookup replacing Product
 const FitStyleSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true },
+  name: { type: String, required: true, unique: true, trim: true },
   description: { type: String },
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
@@ -40,7 +40,7 @@ FitStyleSchema.index({ name: 1 }, { unique: true }); // Unique index on name
 
 // FabricVendor Schema: Lookup for fabric vendors
 const FabricVendorSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true },
+  name: { type: String, required: true, unique: true, trim: true },
   contact: { type: String },
   address: { type: String },
   isActive: { type: Boolean, default: true },
@@ -49,7 +49,7 @@ const FabricVendorSchema = new mongoose.Schema({
 
 // StitchingVendor Schema: Lookup for stitching vendors
 const StitchingVendorSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true },
+  name: { type: String, required: true, unique: true, trim: true },
   contact: { type: String },
   address: { type: String },
   isActive: { type: Boolean, default: true },
@@ -58,7 +58,7 @@ const StitchingVendorSchema = new mongoose.Schema({
 
 // WashingVendor Schema: Lookup for washing vendors
 const WashingVendorSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true },
+  name: { type: String, required: true, unique: true, trim: true },
   contact: { type: String },
   address: { type: String },
   isActive: { type: Boolean, default: true },
@@ -67,7 +67,7 @@ const WashingVendorSchema = new mongoose.Schema({
 
 // FinishingVendor Schema: Lookup for finishing vendors
 const FinishingVendorSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true },
+  name: { type: String, required: true, unique: true, trim: true },
   contact: { type: String },
   address: { type: String },
   isActive: { type: Boolean, default: true },

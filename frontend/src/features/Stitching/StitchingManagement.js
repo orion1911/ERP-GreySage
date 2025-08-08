@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { Container, Paper, Typography, Box, Button, TextField, Skeleton, Link } from '@mui/material';
 import { ContentCut } from '@mui/icons-material';
 import apiService from '../../services/apiService';
@@ -11,6 +11,8 @@ import AddFinishingModal from '../Finishing/AddFinishingModal';
 function StitchingManagement() {
   const { orderId } = useParams();
   const navigate = useNavigate();
+  const { showSnackbar } = useOutletContext();
+
   const [stitchingRecords, setStitchingRecords] = useState();
   const [washingRecords, setWashingRecords] = useState();
   const [finishingRecords, setFinishingRecords] = useState(); // Added for Finishing
@@ -47,12 +49,8 @@ function StitchingManagement() {
       const total = stitchingRes.reduce((sum, record) => sum + record.quantity, 0);
       setTotalStitchedQuantity(total);
     } catch (err) {
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        alert('Session expired. Please log in again.');
-        window.location.href = '/login';
-      } else {
-        alert(err.response?.error || 'An error occurred');
-      }
+      console.log(err.response);
+      showSnackbar(err);
     }
   };
 

@@ -40,12 +40,8 @@ function ProductCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess, e
       })
       .catch(err => {
         setLoading(false);
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          showSnackbar('Session expired. Please log in again.');
-          window.location.href = '/login';
-        } else {
-          showSnackbar(err.response?.data?.error || 'An error occurred');
-        }
+        console.log(err);
+        showSnackbar(err);
       });
   };
 

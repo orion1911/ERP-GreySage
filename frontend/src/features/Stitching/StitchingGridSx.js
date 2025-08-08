@@ -1,24 +1,30 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Box, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, Divider } from '@mui/material';
-import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, ContentCut, Add, MoreVert as MoreVertIcon } from '@mui/icons-material';
+import { Box, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu } from '@mui/material';
+import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, ContentCut, Add, MoreVert as MoreVertIcon, AutoAwesome } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
 import WashingGrid from '../Washing/WashingGrid';
+import FinishingGrid from '../Finishing/FinishingGrid'; // Added for Finishing
 import OrderStatusChip from '../../components/OrderStatusChip';
-import { grey } from '@mui/material/colors';
+
 
 function StitchingGridSx({
   processedRecords,
   washingRecords,
+  finishingRecords,
   fetchWashingRecords,
+  fetchFinishingRecords,
   handleUpdateStitchOut,
   handleUpdateWashOut,
+  handleUpdateFinishOut,
   setOpenWashingModal,
+  setOpenFinishingModal,
   setSelectedLot,
   expandedRows,
   toggleRowExpansion,
   onEditStitching,
   onEditWashing,
+  onEditFinishing,
   sortBy,
   setSortBy,
   sortDirection,
@@ -37,12 +43,17 @@ function StitchingGridSx({
   useEffect(() => {
     if (processedRecords && Array.isArray(processedRecords)) {
       processedRecords.forEach(record => {
-        if (record.lotId?._id && !(washingRecords && washingRecords[record.lotId._id])) {
-          fetchWashingRecords(record.lotId._id);
+        if (record.lotId?._id) {
+          if (!(washingRecords && washingRecords[record.lotId._id])) {
+            fetchWashingRecords(record.lotId._id);
+          }
+          if (!(finishingRecords && finishingRecords[record.lotId._id])) { // Added for Finishing
+            fetchFinishingRecords(record.lotId._id);
+          }
         }
       });
     }
-  }, [processedRecords, washingRecords, fetchWashingRecords]);
+  }, [processedRecords, washingRecords, finishingRecords, fetchWashingRecords, fetchFinishingRecords]);
 
   const toggleMobileRowExpansion = (rowId) => {
     setMobileExpandedRows(prev => ({
@@ -107,10 +118,21 @@ function StitchingGridSx({
     handleMenuClose();
   };
 
+  const handleAddFinishing = (record) => { // Added for Finishing
+    setSelectedLot({
+      lotNumber: record.lotId?.lotNumber || '',
+      lotId: record.lotId?._id || '',
+      invoiceNumber: record.lotId?.invoiceNumber || '',
+      lotQuantity: record.quantity
+    });
+    setOpenFinishingModal(true);
+    handleMenuClose();
+  };
+
   return (
     <Box sx={{ pt: 1 }}>
       <Grid container spacing={2} sx={{ mb: 2, justifyContent: 'flex-end' }}>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
             <Select
               variant="standard"
@@ -166,7 +188,7 @@ function StitchingGridSx({
                   </Typography>
                 </Grid>
                 <Grid size={{ xs: 4, sm: 4 }} sx={{ mt: 0.5 }}>
-                  <OrderStatusChip status={record.lotId?.status} />
+                    <OrderStatusChip status={record.lotId?.status} />
                 </Grid>
                 <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'right' }}>
                   <IconButton onClick={() => toggleMobileRowExpansion(record._id)} size="small">
@@ -201,6 +223,10 @@ function StitchingGridSx({
                     <MenuItem dense divider sx={{ p: 1, justifyContent: 'center' }} onClick={() => handleAddWashing(record)}>
                       <Add fontSize='small' sx={{ mr: 0.4, fontSize: '16px' }} />
                       <LocalLaundryService fontSize='small' sx={{ fontSize: '15px' }} />
+                    </MenuItem>
+                    <MenuItem dense divider sx={{ p: 1, justifyContent: 'center' }} onClick={() => handleAddFinishing(record)}>
+                      <Add fontSize='small' sx={{ mr: 0.4, fontSize: '16px' }} />
+                      <AutoAwesome fontSize='small' sx={{ fontSize: '15px' }} />
                     </MenuItem>
                   </Menu>
                 </Grid>
@@ -271,6 +297,24 @@ function StitchingGridSx({
                       />
                     </Typography>
                   </Grid>
+                  {finishingRecords && finishingRecords[record.lotId?._id]?.length > 0 && (<Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left', pt: 1 }}>
+                    <Typography variant="body2">
+                      <FinishingGrid
+                        finishingRecords={finishingRecords && finishingRecords[record.lotId?._id] || []}
+                        lotId={record.lotId?._id}
+                        handleUpdateFinishOut={handleUpdateFinishOut}
+                        onEditFinishing={onEditFinishing}
+                        sortBy={sortBy}
+                        setSortBy={setSortBy}
+                        sortDirection={sortDirection}
+                        setSortDirection={setSortDirection}
+                        filterAnchorEl={filterAnchorEl}
+                        setFilterAnchorEl={setFilterAnchorEl}
+                        filterStatus={filterStatus}
+                        setFilterStatus={setFilterStatus}
+                      />
+                    </Typography>
+                  </Grid>)}
                 </Grid>
               </Collapse>
             </CardContent>

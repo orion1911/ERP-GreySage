@@ -44,12 +44,11 @@ const AdminLayout = () => (
   </ProtectedRoute>
 );
 
-const AuthenticatedLayout = ({ variant, setVariant }) => {
-  LicenseInfo.setLicenseKey(process.env.REACT_APP_MUI_LICENSE_KEY);
+const AuthenticatedLayout = ({ isMobile, variant, setVariant }) => {
   const theme = useTheme();
+  
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
-
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // Mobile breakpoint (<600px)
+  
   const [collapsed, setCollapsed] = React.useState(isMobile); // Default to collapsed on mobile
   const drawerWidth = collapsed ? 60 : 240;
 
@@ -195,8 +194,13 @@ const AuthenticatedLayout = ({ variant, setVariant }) => {
 };
 
 function App() {
+  LicenseInfo.setLicenseKey(process.env.REACT_APP_MUI_LICENSE_KEY);
+
   const [variant, setVariant] = React.useState('purple');
   const [darkMode, setDarkMode] = React.useState(false);
+
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // Mobile breakpoint (<600px)
 
   return (
     <>
@@ -204,9 +208,9 @@ function App() {
       <AppTheme variant={variant} setVariant={setVariant} setDarkMode={setDarkMode}>
         <BrowserRouter>
           <Routes>
-            <Route path="/login" element={<Login variant={variant} setVariant={setVariant} />} />
-            <Route path="/register" element={<Register />} />
-            <Route element={<AuthenticatedLayout variant={variant} setVariant={setVariant} />}>
+            <Route path="/login" element={<Login isMobile={isMobile} variant={variant} setVariant={setVariant} />} />
+            <Route path="/register" element={<Register isMobile={isMobile} variant={variant} setVariant={setVariant} />} />
+            <Route element={<AuthenticatedLayout isMobile={isMobile} variant={variant} setVariant={setVariant} />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/orders" element={<OrderManagement />} />
               <Route path="/stitching/:orderId" element={<StitchingManagement />} />

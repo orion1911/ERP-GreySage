@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useNavigate } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { useTheme } from '@mui/material/styles';
 import Box from '@mui/material/Box';
@@ -30,6 +30,7 @@ AreaGradient.propTypes = {
 function StatCard({ title, value, interval, trend, data, labels }) {
   const theme = useTheme();
   const { isMobile, showSnackbar } = useOutletContext();
+  const navigate = useNavigate();
 
   const trendColors = {
     up:
@@ -58,8 +59,8 @@ function StatCard({ title, value, interval, trend, data, labels }) {
 
   return (
     <Card variant="outlined" sx={{ flexGrow: 1 }}>
-      <CardContent>
-        <Typography component="h2" variant="subtitle2" gutterBottom>
+      <CardContent onClick={() => {title.includes('Open Order') && navigate('/orders');}}>
+        <Typography component="h2" variant="subtitle2" gutterBottom sx={{ cursor: title.includes('Open Order') && 'pointer' }}>
           {title.split('/')[0]}{!isMobile && title.split('/')[1]}
         </Typography>
         {isMobile && <Typography variant="subtitle2" gutterBottom>

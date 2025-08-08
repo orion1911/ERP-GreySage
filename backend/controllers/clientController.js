@@ -19,6 +19,15 @@ const getNextClientCodeNumber = async () => {
 
 const createClient = async (req, res) => {
   const { name, clientCodePrefix, contact, email, address } = req.body;
+
+  const normalizedName = name.replace(/\s\s+/g, ' ').trim();
+
+  // Construct a regex to match the normalized term, allowing for any amount of whitespace
+  // between characters in the stored field
+  const regex = new RegExp(normalizedName.split('').join('\\s*'), 'i'); // 'i' for case-insensitive
+  const clientExist = await Client.findOne({ name: { $regex: regex } });
+  if (clientExist) return res.status(400).json({ error: `${clientExist.name} client already exists` });
+
   const prefix = clientCodePrefix || generateClientCodePrefix(name);
   const number = await getNextClientCodeNumber();
   const clientCode = `${prefix}-${number}`;

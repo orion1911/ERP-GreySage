@@ -267,9 +267,9 @@ const getStitching = async (req, res) => {
   // const stitchingRecords = await Stitching.find(query).populate('lotId orderId vendorId');
   const stitchingRecords = await Stitching.find(query).populate('lotId orderId vendorId').lean();
 
-  if (!stitchingRecords || stitchingRecords.length === 0) {
-    return res.status(404).json({ error: 'No Stitching Records Found' });
-  }
+  // if (!stitchingRecords || stitchingRecords.length === 0) {
+  //   return res.status(404).json({ error: 'No Stitching Records Found' });
+  // }
 
   // // Map stitching records to include status
   // const recordsWithStatus = await Promise.all(

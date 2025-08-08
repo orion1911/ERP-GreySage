@@ -82,9 +82,9 @@ function ClientCatalogSx({
             >
               <MenuItem value="name">Sort By Name</MenuItem>
               <MenuItem value="clientCode">Sort By Client Code</MenuItem>
-              <MenuItem value="contact">Sort By Contact</MenuItem>
+              {/* <MenuItem value="contact">Sort By Contact</MenuItem>
               <MenuItem value="email">Sort By Email</MenuItem>
-              <MenuItem value="address">Sort By Address</MenuItem>
+              <MenuItem value="address">Sort By Address</MenuItem> */}
               <MenuItem value="isActive">Sort By Status</MenuItem>
             </Select>
             <IconButton

@@ -11,7 +11,7 @@ function ThemeToggle() {
 
   return (
     <IconButton onClick={toggleDarkMode} color="inherit">
-      {theme.palette.mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
+      {theme.palette.mode === 'dark' ? <Brightness7Icon fontSize='small' /> : <Brightness4Icon fontSize='small' />}
     </IconButton>
   );
 }

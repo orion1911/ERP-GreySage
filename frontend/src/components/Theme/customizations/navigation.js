@@ -9,19 +9,19 @@ import UnfoldMoreRoundedIcon from '@mui/icons-material/UnfoldMoreRounded';
 import { gray, brand } from '../themePrimitives';
 
 export const navigationCustomizations = {
-  MuiAppBar: {
-    styleOverrides: {
-      root: ({ theme }) => ({
-        ...(theme.palette.mode === 'light' && {
-          color: gray[50], // Explicitly set to light color for contrast against dark purple
-          backgroundColor: theme.palette.primary.main,
-        }),
-        ...theme.applyStyles('dark', {
-          color: theme.palette.text.primary,
-        }),
-      }),
-    },
-  },
+  // MuiAppBar: {
+  //   styleOverrides: {
+  //     root: ({ theme }) => ({
+  //       ...(theme.palette.mode === 'light' && {
+  //         color: gray[50], // Explicitly set to light color for contrast against dark purple
+  //         backgroundColor: theme.palette.primary.main,
+  //       }),
+  //       ...theme.applyStyles('dark', {
+  //         color: theme.palette.text.primary,
+  //       }),
+  //     }),
+  //   },
+  // },
   MuiButton: {
     styleOverrides: {
       root: ({ theme }) => ({

@@ -1,37 +1,73 @@
-import * as React from 'react';
-import Stack from '@mui/material/Stack';
-import NotificationsRoundedIcon from '@mui/icons-material/NotificationsRounded';
-// import CustomDatePicker from './CustomDatePicker';
-import NavbarBreadcrumbs from './AppbarBreadcrumbs';
-// import MenuButton from './MenuButton';
-// import ColorModeIconDropdown from '../../shared-theme/ColorModeIconDropdown';
+import React from 'react';
+import { AppBar, Toolbar, IconButton, FormControl, Select, MenuItem, Box } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { Menu as MenuIcon, PowerSettingsNew as LogoutIcon } from '@mui/icons-material';
+import ThemeToggle from '../Theme/ThemeToggle';
 
-// import Search from './Search';
+function Appbar({ variant, setVariant, isMobile, handleDrawerToggle }) {
+  const navigate = useNavigate();
 
-export default function Appbar() {
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    navigate('/login');
+  };
+
+  const handleVariantChange = (event) => {
+    const newVariant = event.target.value;
+    console.log('Appbar: Changing variant to', newVariant);
+    setVariant(newVariant);
+  };
+
   return (
-    <Stack
-      direction="row"
+    <AppBar
+      position="absolute"
       sx={{
-        // display: { xs: 'none', md: 'flex' },
-        display: { xs: 'flex', md: 'flex' },
-        width: '100%',
-        alignItems: { xs: 'flex-start', md: 'center' },
-        justifyContent: 'space-between',
-        maxWidth: { sm: '100%', md: '1700px' },
-        pt: 1.5,
+        top: 0,
+        right: 0,
+        width: isMobile ? 'auto' : '200px',
+        mr: isMobile ? 1 : 1.3,
+        boxShadow: 'none',
+        backgroundColor: 'transparent !important',
+        background: 'none',
+        zIndex: 1200,
       }}
-      spacing={2}
     >
-      <NavbarBreadcrumbs />
-      {/* <Stack direction="row" sx={{ gap: 1 }}>
-        <Search />
-        <CustomDatePicker />
-        <MenuButton showBadge aria-label="Open notifications">
-          <NotificationsRoundedIcon />
-        </MenuButton>
-        <ColorModeIconDropdown />
-      </Stack> */}
-    </Stack>
+      <Toolbar sx={{ justifyContent: 'flex-end', p: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {isMobile && (
+            <IconButton
+              onClick={handleDrawerToggle}
+              sx={{ color: 'inherit' }}
+            >
+              <MenuIcon />
+            </IconButton>
+          )}
+          {/* <FormControl size="small" sx={{ minWidth: isMobile ? 40 : 85 }}>
+            <Select
+              value={variant}
+              onChange={handleVariantChange}
+              sx={{
+                backgroundColor: 'background.paper',
+                borderRadius: 1,
+              }}
+            >
+              <MenuItem value="purple">Purple</MenuItem>
+              <MenuItem value="earthy">Earthy</MenuItem>
+              <MenuItem value="monochrome">Mono</MenuItem>
+            </Select>
+          </FormControl> */}
+          <ThemeToggle />
+          <IconButton
+            onClick={handleLogout}
+            color='inherit'
+          >
+            <LogoutIcon fontSize='small' />
+          </IconButton>
+        </Box>
+      </Toolbar>
+    </AppBar>
   );
 }
+
+export default Appbar;

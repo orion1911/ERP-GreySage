@@ -1,37 +1,95 @@
-import * as React from 'react';
-import Stack from '@mui/material/Stack';
-import NotificationsRoundedIcon from '@mui/icons-material/NotificationsRounded';
-// import CustomDatePicker from './CustomDatePicker';
-import NavbarBreadcrumbs from './AppbarBreadcrumbs';
-// import MenuButton from './MenuButton';
-// import ColorModeIconDropdown from '../../shared-theme/ColorModeIconDropdown';
+import React, { useState, useEffect } from 'react';
+import { AppBar, Toolbar, IconButton, Box } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { Menu as MenuIcon, PowerSettingsNew as LogoutIcon, Close as CloseIcon } from '@mui/icons-material';
+import { motion } from 'motion/react';
+import ThemeToggle from '../Theme/ThemeToggle';
 
-// import Search from './Search';
+function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }) {
+  const navigate = useNavigate();
+  const [isVisible, setIsVisible] = useState(true);
 
-export default function Appbar() {
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    navigate('/login');
+  };
+
+  const handleMenuClick = () => {
+    handleDrawerToggle(); // Toggle sidebar, which updates collapsed
+  };
+
+  useEffect(() => {
+    if (!collapsed) {
+      setIsVisible(true); // Ensure visible before expanding
+    }
+  }, [collapsed]);
+
+  const handleAnimationComplete = () => {
+    if (collapsed) {
+      setIsVisible(false); // Hide after collapse animation completes
+    }
+  };
+
   return (
-    <Stack
-      direction="row"
-      sx={{
-        // display: { xs: 'none', md: 'flex' },
-        display: { xs: 'flex', md: 'flex' },
-        width: '100%',
-        alignItems: { xs: 'flex-start', md: 'center' },
-        justifyContent: 'space-between',
-        maxWidth: { sm: '100%', md: '1700px' },
-        pt: 1.5,
-      }}
-      spacing={2}
+    <motion.div
+      initial={{ width: isMobile ? 48 : '200px' }}
+      animate={{ width: isMobile ? (!collapsed ? 150 : 48) : '200px' }}
+      transition={{ duration: 0.225, ease: 'easeInOut' }}
     >
-      <NavbarBreadcrumbs />
-      {/* <Stack direction="row" sx={{ gap: 1 }}>
-        <Search />
-        <CustomDatePicker />
-        <MenuButton showBadge aria-label="Open notifications">
-          <NotificationsRoundedIcon />
-        </MenuButton>
-        <ColorModeIconDropdown />
-      </Stack> */}
-    </Stack>
+      <AppBar
+        position="absolute"
+        sx={{
+          top: 0,
+          right: 0,
+          width: '100%',
+          mr: isMobile ? 1 : 1.3,
+          boxShadow: 'none',
+          backgroundColor: 'transparent !important',
+          background: 'none',
+          zIndex: 1200,
+        }}
+      >
+        <Toolbar sx={{ justifyContent: 'flex-end', p: 1 }}>
+          {isMobile ? (
+            <Box sx={{ display: 'flex', flexDirection: 'row-reverse', gap: 1, alignItems: 'center' }}>
+              <IconButton
+                onClick={handleMenuClick}
+                color='inherit'
+              >
+                {collapsed ? <MenuIcon /> : <CloseIcon />}
+              </IconButton>
+              <motion.div
+                initial={{ x: 40, opacity: 0 }}
+                animate={{ x: collapsed ? 40 : 0, opacity: collapsed ? 0 : 1 }}
+                transition={{ duration: 0.225, ease: 'easeInOut' }}
+                onAnimationComplete={handleAnimationComplete}
+                style={{ visibility: isVisible || !collapsed ? 'visible' : 'hidden', display: 'flex', gap: 1 }}
+              >
+                <ThemeToggle />
+                <IconButton
+                  onClick={handleLogout}
+                  color='inherit'
+                >
+                  <LogoutIcon fontSize="small" />
+                </IconButton>
+              </motion.div>
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <ThemeToggle />
+              <IconButton
+                onClick={handleLogout}
+                color='inherit'
+              >
+                <LogoutIcon fontSize="small" />
+              </IconButton>
+            </Box>
+          )}
+        </Toolbar>
+      </AppBar>
+    </motion.div>
   );
 }
+
+export default Appbar;

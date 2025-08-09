@@ -1,8 +1,7 @@
 import * as React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Typography, FormControl, Select, MenuItem, Divider } from '@mui/material';
+import { Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Typography, Divider } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import ThemeToggle from '../Theme/ThemeToggle';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ReceiptIcon from '@mui/icons-material/Receipt';
@@ -11,13 +10,12 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import GroupIcon from '@mui/icons-material/Group';
 import AuditIcon from '@mui/icons-material/History';
-import LogoutIcon from '@mui/icons-material/Logout';
 import DryCleaningIcon from '@mui/icons-material/DryCleaning';
 import ContentCutIcon from '@mui/icons-material/ContentCut';
 import LaundryIcon from '@mui/icons-material/LocalLaundryService';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { ShoppingCart as ShoppingCartIcon, Leaderboard as LeaderboardIcon } from '@mui/icons-material';
-import { motion } from 'motion/react'; // Import motion from @motionone/dom
+import { motion } from 'motion/react';
 
 function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerToggle, isMobile }) {
   const user = JSON.parse(localStorage.getItem('user'));
@@ -41,8 +39,6 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
     if (item.path) {
       navigate(item.path);
       isMobile && setCollapsed(true);
-    } else if (item.onClick) {
-      item.onClick();
     }
   };
 
@@ -63,14 +59,13 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
       { label: 'Users', path: '/users', icon: <GroupIcon /> },
       { label: 'Audit Logs', path: '/audit-logs', icon: <AuditIcon /> },
     ] : []),
-    { label: 'Logout', onClick: handleLogout, icon: <LogoutIcon /> },
   ];
 
   return (
     <Box
       sx={{
         width: drawerWidth,
-        height: '100%', // Inherit full height from viewport
+        height: '100vh', // Full viewport height
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between', // Push ThemeToggle to bottom
@@ -109,9 +104,9 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
           <ListItem key={index} disablePadding sx={{ overflowX: 'hidden' }}>
             <motion.div
               whileHover={{
-                y: [0, -2, 0], // Move up 4px and back to original position
+                y: [0, -2, 0],
                 x: [0, 2, 0],
-                transition: { duration: 0.3, easing: "ease-in-out" }, // Smooth ease-in-out transition
+                transition: { duration: 0.3, easing: "ease-in-out" },
               }}
               style={{ width: '100%', overflowX: 'hidden' }}
             >
@@ -161,7 +156,7 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
             <MenuItem value="monochrome">Mono</MenuItem>
           </Select>
         </FormControl> */}
-        <ThemeToggle />
+        {/* <ThemeToggle /> */}
       </Box>
     </Box>
   );

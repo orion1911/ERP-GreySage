@@ -149,6 +149,7 @@ const AuthenticatedLayout = ({ isMobile, variant, setVariant }) => {
             setVariant={setVariant}
             isMobile={isMobile}
             handleDrawerToggle={handleDrawerToggle}
+            collapsed={collapsed} // Pass collapsed state to sync Appbar
           />
           <SnackBar
             open={snackbar.open}

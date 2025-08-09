@@ -1,13 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppBar, Toolbar, IconButton, Box } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { Menu as MenuIcon, PowerSettingsNew as LogoutIcon, Close as CloseIcon } from '@mui/icons-material';
 import { motion } from 'motion/react';
 import ThemeToggle from '../Theme/ThemeToggle';
 
-function Appbar({ variant, setVariant, isMobile, handleDrawerToggle }) {
+function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }) {
   const navigate = useNavigate();
-  const [expanded, setExpanded] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
 
   const handleLogout = () => {
@@ -17,15 +16,17 @@ function Appbar({ variant, setVariant, isMobile, handleDrawerToggle }) {
   };
 
   const handleMenuClick = () => {
-    if (!expanded) {
-      setIsVisible(true); // Ensure visible before expanding
-    }
-    setExpanded(!expanded); // Toggle Appbar expansion
-    handleDrawerToggle(); // Toggle sidebar
+    handleDrawerToggle(); // Toggle sidebar, which updates collapsed
   };
 
+  useEffect(() => {
+    if (!collapsed) {
+      setIsVisible(true); // Ensure visible before expanding
+    }
+  }, [collapsed]);
+
   const handleAnimationComplete = () => {
-    if (!expanded) {
+    if (collapsed) {
       setIsVisible(false); // Hide after collapse animation completes
     }
   };
@@ -33,7 +34,7 @@ function Appbar({ variant, setVariant, isMobile, handleDrawerToggle }) {
   return (
     <motion.div
       initial={{ width: isMobile ? 48 : '200px' }}
-      animate={{ width: isMobile ? (expanded ? 150 : 48) : '200px' }}
+      animate={{ width: isMobile ? (!collapsed ? 150 : 48) : '200px' }}
       transition={{ duration: 0.225, ease: 'easeInOut' }}
     >
       <AppBar
@@ -54,16 +55,16 @@ function Appbar({ variant, setVariant, isMobile, handleDrawerToggle }) {
             <Box sx={{ display: 'flex', flexDirection: 'row-reverse', gap: 1, alignItems: 'center' }}>
               <IconButton
                 onClick={handleMenuClick}
-                sx={{ color: 'inherit' }}
+                color='inherit'
               >
-                {expanded ? <CloseIcon /> : <MenuIcon />}
+                {collapsed ? <MenuIcon /> : <CloseIcon />}
               </IconButton>
               <motion.div
                 initial={{ x: 40, opacity: 0 }}
-                animate={{ x: expanded ? 0 : 40, opacity: expanded ? 1 : 0 }}
+                animate={{ x: collapsed ? 40 : 0, opacity: collapsed ? 0 : 1 }}
                 transition={{ duration: 0.225, ease: 'easeInOut' }}
                 onAnimationComplete={handleAnimationComplete}
-                style={{ visibility: isVisible || expanded ? 'visible' : 'hidden', display: 'flex', gap: 1 }}
+                style={{ visibility: isVisible || !collapsed ? 'visible' : 'hidden', display: 'flex', gap: 1 }}
               >
                 <ThemeToggle />
                 <IconButton

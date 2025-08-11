@@ -12,8 +12,7 @@ import { getFormattedDate } from '../../components/Validators';
 import OrderStatusChip from '../../components/OrderStatusChip';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { MorphDateTextField } from '../../components/MuiCustom';
+import { MorphDateIconField } from '../../components/MuiCustom';
 
 function StitchingGrid({
   stitchingRecords,
@@ -280,12 +279,9 @@ function StitchingGrid({
           getFormattedDate(row.original.stitchOutDate)
         ) : (
           <LocalizationProvider dateAdapter={AdapterDayjs}>
-            <DatePicker
+            <MorphDateIconField
               value={null}
               onChange={(e) => handleUpdateStitchOut(row.original._id, e)}
-              format='DD-MMM-YYYY'
-              slots={{ textField: MorphDateTextField }}
-              sx={{ width: 165 }}
             />
           </LocalizationProvider>
         )
@@ -299,7 +295,7 @@ function StitchingGrid({
           <Tooltip title="Edit Stitching" placement='bottom' arrow>
             <IconButton
               sx={{
-                mr: 1,
+                mr: 0.2,
                 outline: 'none',
                 "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
               }}
@@ -311,7 +307,7 @@ function StitchingGrid({
           <Tooltip title="Add Washing" placement='bottom' arrow>
             <IconButton
               sx={{
-                mr: 1,
+                mr: 0.2,
                 outline: 'none',
                 "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
               }}
@@ -461,7 +457,7 @@ function StitchingGrid({
                         />
                       </TableCell>
                     </TableRow>
-                    <TableRow>
+                    {finishingRecords && finishingRecords[row.original.lotId?._id].length > 0 && (<TableRow>
                       <TableCell colSpan={12} sx={{ p: 0 }}>
                         <FinishingGrid
                           finishingRecords={finishingRecords && finishingRecords[row.original.lotId?._id] || []}
@@ -479,7 +475,7 @@ function StitchingGrid({
                           setFilterStatus={setFilterStatus}
                         />
                       </TableCell>
-                    </TableRow>
+                    </TableRow>)}
                   </>
                 )}
               </React.Fragment>

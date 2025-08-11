@@ -14,7 +14,7 @@ import DryCleaningIcon from '@mui/icons-material/DryCleaning';
 import ContentCutIcon from '@mui/icons-material/ContentCut';
 import LaundryIcon from '@mui/icons-material/LocalLaundryService';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import { ShoppingCart as ShoppingCartIcon, Leaderboard as LeaderboardIcon } from '@mui/icons-material';
+import { ShoppingCart as ShoppingCartIcon, Leaderboard as LeaderboardIcon, ContentCut } from '@mui/icons-material';
 import { motion } from 'motion/react';
 
 function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerToggle, isMobile }) {
@@ -47,6 +47,7 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', icon: <LeaderboardIcon /> },
     { label: 'Orders', path: '/orders', icon: <ShoppingCartIcon /> },
+    { label: 'Stitching', path: '/making', icon: <ContentCut /> },
     { label: 'Invoices', path: '/invoices', icon: <ReceiptIcon /> },
     { label: 'Clients', path: '/clients', icon: <PeopleIcon /> },
     { label: 'Fit Style', path: '/products', icon: <InventoryIcon /> },
@@ -120,7 +121,7 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
                   overflowX: 'hidden',
                   whiteSpace: 'nowrap'
                 }}
-                disabled={item.path === '/invoices'}
+                disabled={item.path === '/invoices' || item.path === '/reports' || item.path === '/audit-logs' || item.path === '/users'}
               >
                 <ListItemIcon
                   sx={{

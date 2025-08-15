@@ -11,7 +11,7 @@ import { NoRecordRow, TableRowsLoader } from '../../components/Skeleton/Skeleton
 import { getFormattedDate } from '../../components/Validators';
 import WashingGridSx from './WashingGridSx';
 
-function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, onEditWashing, sortBy, setSortBy, sortDirection, setSortDirection, filterAnchorEl, setFilterAnchorEl, filterStatus, setFilterStatus }) {
+function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, onEditWashing, sortBy, setSortBy, sortDirection, setSortDirection, filterAnchorEl, setFilterAnchorEl, filterStatus, setFilterStatus, readOnly = false }) {
   const theme = useTheme();
   const { isMobile } = useOutletContext();
 
@@ -53,6 +53,7 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
       setFilterAnchorEl={setFilterAnchorEl}
       filterStatus={filterStatus}
       setFilterStatus={setFilterStatus}
+      readOnly={readOnly}
     />
   ) : (
     <>
@@ -67,7 +68,7 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
                 <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>VENDOR</TableCell>
                 <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>WASH DETAIL</TableCell>
                 <TableCell align='center' sx={{ whiteSpace: 'nowrap', paddingTop: 0, paddingBottom: 0 }}>WASH OUT</TableCell>
-                <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>ACTIONS</TableCell>
+                {!readOnly && <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>ACTIONS</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -97,6 +98,7 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
                       {wr.washOutDate ? (
                         getFormattedDate(wr.washOutDate)
                       ) : (
+                        !readOnly &&
                         <LocalizationProvider dateAdapter={AdapterDayjs}>
                           <DatePicker
                             value={null}
@@ -108,11 +110,11 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
                         </LocalizationProvider>
                       )}
                     </TableCell>
-                    <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
+                    {!readOnly && <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
                       <IconButton onClick={() => onEditWashing(wr)}>
                         <EditIcon fontSize='small' />
                       </IconButton>
-                    </TableCell>
+                    </TableCell>}
                   </TableRow>
                 ))
               ) : (

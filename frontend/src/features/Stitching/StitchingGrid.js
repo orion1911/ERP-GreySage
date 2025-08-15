@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, Link as RouterLink } from 'react-router-dom';
 import { useTheme } from '@mui/material/styles';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, IconButton, Tooltip, Badge } from '@mui/material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, IconButton, Tooltip, Badge, Link } from '@mui/material';
 import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon, AutoAwesome } from '@mui/icons-material';
 import WashingGrid from '../Washing/WashingGrid';
 import FinishingGrid from '../Finishing/FinishingGrid'; // Added for Finishing
@@ -17,21 +17,22 @@ import { MorphDateIconField } from '../../components/MuiCustom';
 function StitchingGrid({
   stitchingRecords,
   washingRecords,
-  finishingRecords, // Added for Finishing
+  finishingRecords,
   hasWashing,
-  hasFinishing, // Added for Finishing
+  hasFinishing,
   fetchWashingRecords,
-  fetchFinishingRecords, // Added for Finishing
+  fetchFinishingRecords,
   handleUpdateStitchOut,
   handleUpdateWashOut,
-  handleUpdateFinishOut, // Added for Finishing
+  handleUpdateFinishOut,
   setOpenWashingModal,
-  setOpenFinishingModal, // Added for Finishing
+  setOpenFinishingModal,
   setSelectedLot,
   searchTerm,
   onEditStitching,
   onEditWashing,
-  onEditFinishing // Added for Finishing
+  onEditFinishing,
+  readOnly = false
 }) {
   const theme = useTheme();
   const { isMobile } = useOutletContext();
@@ -123,7 +124,8 @@ function StitchingGrid({
   const processedRecords = useMemo(() => {
     let filtered = stitchingRecords;
     filtered = filterData(filtered, searchTerm);
-    return sortData(filtered, sortBy, sortDirection);
+    var res = sortData(filtered, sortBy, sortDirection);
+    return res || [];
   }, [stitchingRecords, searchTerm, sortBy, sortDirection]);
 
   const columns = [
@@ -224,6 +226,22 @@ function StitchingGrid({
     //   )
     // },
     {
+      accessorKey: 'orderId',
+      header: 'ORDER ID',
+      enableSorting: false,
+      enableHiding: true,
+      cell: ({ row }) => (
+        <Link
+          component={RouterLink}
+          to={`/stitching/${row.original.orderId?._id || ''}`}
+          underline="none"
+          sx={{ fontWeight: 'bold', cursor: 'pointer' }}
+        >
+          {row.original.orderId?.orderId || '—'}
+        </Link>
+      ),
+    },
+    {
       accessorKey: 'lotNumber',
       header: 'LOT #',
       cell: ({ row }) => row.original.lotId?.lotNumber || 'N/A',
@@ -278,12 +296,13 @@ function StitchingGrid({
         row.original.stitchOutDate ? (
           getFormattedDate(row.original.stitchOutDate)
         ) : (
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
-            <MorphDateIconField
-              value={null}
-              onChange={(e) => handleUpdateStitchOut(row.original._id, e)}
-            />
-          </LocalizationProvider>
+          !readOnly && (
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <MorphDateIconField
+                value={null}
+                onChange={(e) => handleUpdateStitchOut(row.original._id, e)}
+              />
+            </LocalizationProvider>)
         )
       ),
     },
@@ -291,61 +310,62 @@ function StitchingGrid({
       accessorKey: 'actions',
       header: 'ACTIONS',
       cell: ({ row }) => (
-        <Box sx={{ display: 'flex', gap: 0, justifyContent: 'center' }}>
-          <Tooltip title="Edit Stitching" placement='bottom' arrow>
-            <IconButton
-              sx={{
-                mr: 0.2,
-                outline: 'none',
-                "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
-              }}
-              onClick={() => onEditStitching(row.original)}
-            >
-              <EditIcon fontSize='small' />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Add Washing" placement='bottom' arrow>
-            <IconButton
-              sx={{
-                mr: 0.2,
-                outline: 'none',
-                "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
-              }}
-              onClick={() => {
-                setSelectedLot({
-                  lotNumber: row.original.lotId?.lotNumber || '',
-                  lotId: row.original.lotId?._id || '',
-                  invoiceNumber: row.original.lotId?.invoiceNumber || '',
-                  lotQuantity: row.original.quantity
-                });
-                setOpenWashingModal(true);
-              }}
-            >
-              <Add fontSize='small' />
-              <LocalLaundryService fontSize='small' />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Add Finishing" placement='bottom' arrow>
-            <IconButton
-              sx={{
-                outline: 'none',
-                "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
-              }}
-              onClick={() => {
-                setSelectedLot({
-                  lotNumber: row.original.lotId?.lotNumber || '',
-                  lotId: row.original.lotId?._id || '',
-                  invoiceNumber: row.original.lotId?.invoiceNumber || '',
-                  lotQuantity: row.original.quantity
-                });
-                setOpenFinishingModal(true);
-              }}
-            >
-              <Add fontSize='small' />
-              <AutoAwesome fontSize='small' />
-            </IconButton>
-          </Tooltip>
-        </Box>
+        readOnly ? null : (
+          <Box sx={{ display: 'flex', gap: 0, justifyContent: 'center' }}>
+            <Tooltip title="Edit Stitching" placement='bottom' arrow>
+              <IconButton
+                sx={{
+                  mr: 0.2,
+                  outline: 'none',
+                  "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
+                }}
+                onClick={() => onEditStitching(row.original)}
+              >
+                <EditIcon fontSize='small' />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Add Washing" placement='bottom' arrow>
+              <IconButton
+                sx={{
+                  mr: 0.2,
+                  outline: 'none',
+                  "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
+                }}
+                onClick={() => {
+                  setSelectedLot({
+                    lotNumber: row.original.lotId?.lotNumber || '',
+                    lotId: row.original.lotId?._id || '',
+                    invoiceNumber: row.original.lotId?.invoiceNumber || '',
+                    lotQuantity: row.original.quantity
+                  });
+                  setOpenWashingModal(true);
+                }}
+              >
+                <Add fontSize='small' />
+                <LocalLaundryService fontSize='small' />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Add Finishing" placement='bottom' arrow>
+              <IconButton
+                sx={{
+                  outline: 'none',
+                  "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
+                }}
+                onClick={() => {
+                  setSelectedLot({
+                    lotNumber: row.original.lotId?.lotNumber || '',
+                    lotId: row.original.lotId?._id || '',
+                    invoiceNumber: row.original.lotId?.invoiceNumber || '',
+                    lotQuantity: row.original.quantity
+                  });
+                  setOpenFinishingModal(true);
+                }}
+              >
+                <Add fontSize='small' />
+                <AutoAwesome fontSize='small' />
+              </IconButton>
+            </Tooltip>
+          </Box>)
       )
     }
   ];
@@ -356,7 +376,13 @@ function StitchingGrid({
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    state: { globalFilter: searchTerm }
+    state: {
+      globalFilter: searchTerm,
+      columnVisibility: {
+        actions: !readOnly, // Hide the 'actions' column when readOnly is true
+        orderId: readOnly
+      },
+    }
   });
 
   const getHeaderContent = (column) => column.columnDef && column.columnDef.header ? column.columnDef.header : column.id;
@@ -388,6 +414,7 @@ function StitchingGrid({
       setFilterAnchorEl={setFilterAnchorEl}
       filterStatus={filterStatus}
       setFilterStatus={setFilterStatus}
+      readOnly={readOnly}
     />
   ) : (
     <TableContainer>
@@ -454,6 +481,7 @@ function StitchingGrid({
                           setFilterAnchorEl={setFilterAnchorEl}
                           filterStatus={filterStatus}
                           setFilterStatus={setFilterStatus}
+                          readOnly={readOnly}
                         />
                       </TableCell>
                     </TableRow>
@@ -473,6 +501,7 @@ function StitchingGrid({
                           setFilterAnchorEl={setFilterAnchorEl}
                           filterStatus={filterStatus}
                           setFilterStatus={setFilterStatus}
+                          readOnly={readOnly}
                         />
                       </TableCell>
                     </TableRow>)}

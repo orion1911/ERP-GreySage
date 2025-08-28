@@ -6,7 +6,7 @@ import StitchingGrid from '../Stitching/StitchingGrid';
 
 export default function LotsManagement() {
   const { showSnackbar } = useOutletContext();
-  const [stitchingRecords, setStitchingRecords] = useState([]);
+  const [stitchingRecords, setStitchingRecords] = useState();
   const [washingRecords, setWashingRecords] = useState({});
   const [finishingRecords, setFinishingRecords] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
@@ -14,7 +14,7 @@ export default function LotsManagement() {
   const fetchAllLots = async () => {
     try {
       const res = await apiService.stitching.getStitching();
-      setStitchingRecords(res);
+      setTimeout(() => setStitchingRecords(res), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
     } catch (err) {
       console.log(err);
       showSnackbar(err);

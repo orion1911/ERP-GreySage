@@ -3,14 +3,14 @@ const simplex = new SimplexNoise();
 function App(conf) {
     conf = {
         fov: 75,
-        cameraZ: 150,
+        cameraZ: 180,
         background: 0x000000,
         tubeRadius: 3,
         resY: 10,
         resX: 4,
-        noiseCoef: 50,
-        timeCoef: 50,
-        mouseCoef: 50,
+        noiseCoef: 45,
+        timeCoef: 25,
+        mouseCoef: 20,
         heightCoef: 20,
         ambientColor: 0xcccccc,
         lightIntensity: 1,

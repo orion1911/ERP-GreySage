@@ -21,7 +21,8 @@ function WashingGridSx({
   filterAnchorEl,
   setFilterAnchorEl,
   filterStatus,
-  setFilterStatus
+  setFilterStatus,
+  readOnly = false
 }) {
   const theme = useTheme();
   const [expandedRows, setExpandedRows] = React.useState({});
@@ -67,6 +68,7 @@ function WashingGridSx({
                       <Typography variant="body2">
                         <strong>Wash Out</strong><br />
                       </Typography>
+                      {!readOnly &&
                       <LocalizationProvider dateAdapter={AdapterDayjs}>
                         <DatePicker
                           value={null}
@@ -76,7 +78,7 @@ function WashingGridSx({
                           slotProps={{ textField: { variant: 'standard', size: 'small' } }}
                           sx={{ width: 165 }}
                         />
-                      </LocalizationProvider>
+                      </LocalizationProvider>}
                     </>
                   )}
                 </Grid>
@@ -97,7 +99,7 @@ function WashingGridSx({
                     </Grid>
                   </Typography>
                 </Grid>
-                <Grid size={{ xs: 12, sm: 12 }}>
+                {!readOnly && <Grid size={{ xs: 12, sm: 12 }}>
                   <Button
                     variant="contained"
                     startIcon={<EditIcon />}
@@ -108,7 +110,7 @@ function WashingGridSx({
                   >
                     Edit Washing
                   </Button>
-                </Grid>
+                </Grid>}
               </Grid>
             </Stack>
           ))

@@ -42,7 +42,7 @@ function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }
         sx={{
           top: 0,
           right: 0,
-          width: '100%',
+          width: '30%',
           mr: isMobile ? 1 : 1.3,
           boxShadow: 'none',
           backgroundColor: 'transparent !important',

@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { LicenseInfo } from '@mui/x-license';
-import { Box, Stack, Container, useMediaQuery, useTheme, IconButton } from '@mui/material';
-import { Menu as MenuIcon } from '@mui/icons-material';
+import { Box, Stack, Container, useMediaQuery, useTheme } from '@mui/material';
 import { SnackBar } from './components/SnackBar';
 import "@fontsource/dm-sans";
 import "@fontsource/dm-sans/700.css";
@@ -10,6 +9,7 @@ import "@fontsource/dm-sans/400-italic.css";
 import "@fontsource/dm-sans/700-italic.css";
 import AppTheme from './components/Theme/AppTheme';
 import Sidebar from './components/Navbar/Sidebar';
+import Appbar from './components/Navbar/Appbar';
 import Login from './features/Login/Login';
 import Register from './features/Login/Register';
 import UserManagement from './features/Admin/UserManagement';
@@ -25,10 +25,7 @@ import WashingVendorCatalog from './features/Catalogs/WashingVendorCatalog';
 import FinishingVendorCatalog from './features/Catalogs/FinishingVendorCatalog';
 import OrderManagement from './features/Orders/OrderManagement';
 import StitchingManagement from './features/Stitching/StitchingManagement';
-// import './3dBackground.js'; // Import the 3D background script
-import Appbar from './components/Navbar/Appbar';
-// import AnimatedBackground from './AnimatedBackground';
-// import WashingManagement from './features/Washing/WashingManagement';
+import LotsManagement from './features/Stitching/LotsManagement';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem('token');
@@ -49,14 +46,13 @@ const AuthenticatedLayout = ({ isMobile, variant, setVariant }) => {
   
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
   
-  const [collapsed, setCollapsed] = React.useState(isMobile); // Default to collapsed on mobile
+  const [collapsed, setCollapsed] = React.useState(isMobile); // Ensure collapsed by default in mobile
   const drawerWidth = collapsed ? 60 : 240;
 
   const handleDrawerToggle = () => {
-    setCollapsed(!collapsed); // Toggle collapse state for both mobile and desktop
+    setCollapsed(!collapsed);
   };
 
-  // Handle click outside to collapse navbar on mobile
   React.useEffect(() => {
     const handleClickOutside = (event) => {
       if (isMobile && !collapsed) {
@@ -88,7 +84,7 @@ const AuthenticatedLayout = ({ isMobile, variant, setVariant }) => {
       else if (error.response && error.response.data && error.response.data.error) {
         message = error.response.data.error;
       } else {
-        message = 'An unexpected API error occurred';
+        message = error.response.data || 'An error occurred';
       }
     }
     if (severity === 'sessionError') {
@@ -96,9 +92,7 @@ const AuthenticatedLayout = ({ isMobile, variant, setVariant }) => {
     }
     setSnackbar({ open: true, message: message, severity: severity });
 
-    snackbarTimeout = setTimeout(() => {
-      setSnackbar((prev) => ({ ...prev, open: false }));
-    }, 4000); // Match autoHideDuration in SnackBar.js
+    snackbarTimeout = setTimeout(() => setSnackbar(prev => ({ ...prev, open: false })), 6000);
   };
 
   useEffect(() => {
@@ -111,25 +105,12 @@ const AuthenticatedLayout = ({ isMobile, variant, setVariant }) => {
   }, [snackbar.open])
 
   return (
-    <>
-      <ProtectedRoute>
-
-        <Box sx={{ display: 'flex', minHeight: '100vh', height: '100vh', backgroundColor: theme.palette.background.default, overflow: 'hidden' }}>
-          {isMobile && collapsed && (<Box sx={{
-            position: 'absolute', display: 'flex', top: 0, right: 0, zIndex: 99, p: 2
-          }}>
-            <IconButton
-              size="small"
-              onClick={collapsed ? handleDrawerToggle : () => setCollapsed(!collapsed)}
-              sx={{ backgroundColor: theme.palette.background.paper, boxShadow: theme.palette.mode === 'light' ? 2 : '0px 3px 1px -2px rgba(255, 255, 255, 0.2),0px 2px 2px 0px rgba(255, 255, 255, 0.14),0px 1px 5px 0px rgba(255, 255, 255, 0.12)' }}
-            >
-              {collapsed && <MenuIcon />}
-            </IconButton>
-          </Box>)}
-          <Box
-            className="navbar"
-            sx={{
-              width: isMobile && collapsed ? 0 : drawerWidth,
+    <ProtectedRoute>
+      <Box sx={{ display: 'flex', minHeight: '100vh', height: '100vh', backgroundColor: theme.palette.background.default, overflow: 'hidden' }}>
+        <Box
+          className="navbar"
+          sx={{
+            width: isMobile && collapsed ? 0 : drawerWidth,
               flexShrink: 0,
               transition: theme.transitions.create(['width'], {
                 easing: theme.transitions.easing.sharp,
@@ -142,54 +123,55 @@ const AuthenticatedLayout = ({ isMobile, variant, setVariant }) => {
               zIndex: theme.zIndex.drawer,
               boxShadow: '2px 0 5px rgba(0,0,0,0.2)', // Optional shadow
               overflowX: 'hidden', // Prevent horizontal scrollbar
-            }}
-          >
-            <Sidebar
-              variant={variant}
-              setVariant={setVariant}
-              collapsed={collapsed}
-              setCollapsed={setCollapsed}
-              handleDrawerToggle={handleDrawerToggle}
-              isMobile={isMobile}
-            />
-          </Box>
-          <Box
-            component="main"
-            sx={{
-              flexGrow: 1,
-              // p: 3,
-              width: '100%',
-              mt: 2,
-              // ml: `${drawerWidth}px`, // Offset by sidebar width
-              // ml: isMobile ? '60px' : '0', // Offset by sidebar width
-              minHeight: '100vh',
-              overflowY: 'auto', // Independent vertical scrolling
-              backgroundColor: theme.palette.background.default,
-            }}
-          >
-            <SnackBar
-              open={snackbar.open}
-              message={snackbar.message}
-              severity={snackbar.severity}
-            />
-            <Stack
-              spacing={2}
-              sx={{
-                alignItems: 'center',
-                mx: 2,
-                pb: 5,
-                // mt: { xs: 8, md: 0 },
-              }}
-            >
-              {/* <Appbar /> */}
-              <Container maxWidth={false} disableGutters={isMobile ? true : false} sx={{ mt: 4, mb: 4 }}>
-                <Outlet context={{ isMobile, drawerWidth, showSnackbar }} />
-              </Container>
-            </Stack>
-          </Box>
+          }}
+        >
+          <Sidebar
+            variant={variant}
+            setVariant={setVariant}
+            collapsed={collapsed}
+            setCollapsed={setCollapsed}
+            handleDrawerToggle={handleDrawerToggle}
+            isMobile={isMobile}
+          />
         </Box>
-      </ProtectedRoute>
-    </>
+        <Box
+          component="main"
+          sx={{
+            flexGrow: 1,
+            width: '100%',
+            mt: 2,
+            minHeight: '100vh',
+            overflowY: 'auto',
+            backgroundColor: theme.palette.background.default,
+          }}
+        >
+          <Appbar
+            variant={variant}
+            setVariant={setVariant}
+            isMobile={isMobile}
+            handleDrawerToggle={handleDrawerToggle}
+            collapsed={collapsed} // Pass collapsed state to sync Appbar
+          />
+          <SnackBar
+            open={snackbar.open}
+            message={snackbar.message}
+            severity={snackbar.severity}
+          />
+          <Stack
+            spacing={2}
+            sx={{
+              alignItems: 'center',
+              mx: 2,
+              pb: 5,
+            }}
+          >
+            <Container maxWidth={false} disableGutters={isMobile ? true : false} sx={{ mt: 4, mb: 4 }}>
+              <Outlet context={{ isMobile, drawerWidth, showSnackbar }} />
+            </Container>
+          </Stack>
+        </Box>
+      </Box>
+    </ProtectedRoute>
   );
 };
 
@@ -200,11 +182,10 @@ function App() {
   const [darkMode, setDarkMode] = React.useState(false);
 
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // Mobile breakpoint (<600px)
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   return (
     <>
-    {/* <AnimatedBackground config={{ fov: 75, tubeRadius: 2, cameraZ: 200 }} /> */}
       <AppTheme variant={variant} setVariant={setVariant} setDarkMode={setDarkMode}>
         <BrowserRouter>
           <Routes>
@@ -214,7 +195,7 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/orders" element={<OrderManagement />} />
               <Route path="/stitching/:orderId" element={<StitchingManagement />} />
-              {/* <Route path="/washing/:orderId" element={<WashingManagement />} /> */}
+              <Route path="/lots" element={<LotsManagement />} />
               <Route path="/invoices" element={<InvoiceManagement />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/clients" element={<ClientCatalog />} />

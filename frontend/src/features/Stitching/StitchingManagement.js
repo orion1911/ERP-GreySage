@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { Container, Paper, Typography, Box, Button, TextField, Skeleton, Link } from '@mui/material';
 import { ContentCut } from '@mui/icons-material';
 import apiService from '../../services/apiService';
@@ -11,22 +11,24 @@ import AddFinishingModal from '../Finishing/AddFinishingModal';
 function StitchingManagement() {
   const { orderId } = useParams();
   const navigate = useNavigate();
+  const { showSnackbar } = useOutletContext();
+
   const [stitchingRecords, setStitchingRecords] = useState();
   const [washingRecords, setWashingRecords] = useState();
-  const [finishingRecords, setFinishingRecords] = useState(); // Added for Finishing
+  const [finishingRecords, setFinishingRecords] = useState();
   const [hasWashing, setHasWashing] = useState(false);
-  const [hasFinishing, setHasFinishing] = useState(false); // Added for Finishing
+  const [hasFinishing, setHasFinishing] = useState(false);
   const [order, setOrder] = useState(null);
   const [stitchingVendors, setStitchingVendors] = useState([]);
   const [washingVendors, setWashingVendors] = useState([]);
-  const [finishingVendors, setFinishingVendors] = useState([]); // Added for Finishing
+  const [finishingVendors, setFinishingVendors] = useState([]);
   const [openStitchingModal, setOpenStitchingModal] = useState(false);
   const [openWashingModal, setOpenWashingModal] = useState(false);
-  const [openFinishingModal, setOpenFinishingModal] = useState(false); // Added for Finishing
+  const [openFinishingModal, setOpenFinishingModal] = useState(false);
   const [selectedLot, setSelectedLot] = useState(null);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [selectedWashingRecord, setSelectedWashingRecord] = useState(null);
-  const [selectedFinishingRecord, setSelectedFinishingRecord] = useState(null); // Added for Finishing
+  const [selectedFinishingRecord, setSelectedFinishingRecord] = useState(null);
   const [totalStitchedQuantity, setTotalStitchedQuantity] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -37,36 +39,33 @@ function StitchingManagement() {
         apiService.orders.getOrderById(orderId),
         apiService.stitchingVendors.getStitchingVendors(),
         apiService.washingVendors.getWashingVendors(),
-        apiService.finishingVendors.getFinishingVendors() // Added for Finishing
+        apiService.finishingVendors.getFinishingVendors()
       ]);
       setTimeout(() => setStitchingRecords(stitchingRes), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
       setTimeout(() => setOrder(orderRes), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
       setStitchingVendors(stitchingVendorsRes);
       setWashingVendors(washingVendorsRes);
-      setFinishingVendors(finishingVendorsRes); // Added for Finishing
+      setFinishingVendors(finishingVendorsRes);
       const total = stitchingRes.reduce((sum, record) => sum + record.quantity, 0);
       setTotalStitchedQuantity(total);
     } catch (err) {
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        alert('Session expired. Please log in again.');
-        window.location.href = '/login';
-      } else {
-        alert(err.response?.error || 'An error occurred');
-      }
+      console.log(err.response);
+      showSnackbar(err);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    orderId && fetchData();
   }, [orderId]);
 
   useEffect(() => {
     washingRecords ? setHasWashing(true) : setHasWashing(false);
-    finishingRecords ? setHasFinishing(true) : setHasFinishing(false); // Added for Finishing
+    finishingRecords ? setHasFinishing(true) : setHasFinishing(false);
   }, [washingRecords, finishingRecords]);
 
   const fetchWashingRecords = async (lotId) => {
     try {
+      if (!lotId) return;
       const washingRes = await apiService.washing.getWashing('', lotId, '');
       setWashingRecords(prev => ({ ...prev, [lotId]: washingRes }));
     } catch (err) {
@@ -74,8 +73,9 @@ function StitchingManagement() {
     }
   };
 
-  const fetchFinishingRecords = async (lotId) => { // Added for Finishing
+  const fetchFinishingRecords = async (lotId) => {
     try {
+      if (!lotId) return;
       const finishingRes = await apiService.finishing.getFinishing('', lotId, '');
       setFinishingRecords(prev => ({ ...prev, [lotId]: finishingRes }));
     } catch (err) {
@@ -145,7 +145,7 @@ function StitchingManagement() {
     setOpenWashingModal(true);
   };
 
-  const handleAddFinishing = (lotId, newFinishing) => { // Added for Finishing
+  const handleAddFinishing = (lotId, newFinishing) => {
     if (selectedFinishingRecord && selectedFinishingRecord._id === newFinishing._id) {
       setFinishingRecords(prev => ({
         ...prev,
@@ -163,7 +163,7 @@ function StitchingManagement() {
     setOpenFinishingModal(false);
   };
 
-  const handleUpdateFinishOut = (lotId, id, finishOutDate) => { // Added for Finishing
+  const handleUpdateFinishOut = (lotId, id, finishOutDate) => {
     apiService.finishing.updateFinishingStatus(id, finishOutDate)
       .then(res => {
         setFinishingRecords(prev => ({
@@ -173,7 +173,7 @@ function StitchingManagement() {
       });
   };
 
-  const handleEditFinishing = (record) => { // Added for Finishing
+  const handleEditFinishing = (record) => {
     setSelectedFinishingRecord(record);
     setOpenFinishingModal(true);
   };
@@ -211,21 +211,21 @@ function StitchingManagement() {
       <StitchingGrid
         stitchingRecords={stitchingRecords}
         washingRecords={washingRecords}
-        finishingRecords={finishingRecords} // Added for Finishing
+        finishingRecords={finishingRecords}
         hasWashing={hasWashing}
-        hasFinishing={hasFinishing} // Added for Finishing
+        hasFinishing={hasFinishing}
         fetchWashingRecords={fetchWashingRecords}
-        fetchFinishingRecords={fetchFinishingRecords} // Added for Finishing
+        fetchFinishingRecords={fetchFinishingRecords}
         handleUpdateStitchOut={handleUpdateStitchOut}
         handleUpdateWashOut={handleUpdateWashOut}
-        handleUpdateFinishOut={handleUpdateFinishOut} // Added for Finishing
+        handleUpdateFinishOut={handleUpdateFinishOut}
         setOpenWashingModal={setOpenWashingModal}
-        setOpenFinishingModal={setOpenFinishingModal} // Added for Finishing
+        setOpenFinishingModal={setOpenFinishingModal}
         setSelectedLot={setSelectedLot}
         searchTerm={searchTerm}
         onEditStitching={handleEditStitching}
         onEditWashing={handleEditWashing}
-        onEditFinishing={handleEditFinishing} // Added for Finishing
+        onEditFinishing={handleEditFinishing}
       />
       <AddStitchingModal
         open={openStitchingModal}
@@ -247,7 +247,7 @@ function StitchingManagement() {
         onAddWashing={handleAddWashing}
         editRecord={selectedWashingRecord}
       />
-      <AddFinishingModal // Added for Finishing
+      <AddFinishingModal
         open={openFinishingModal}
         onClose={() => { setOpenFinishingModal(false); setSelectedFinishingRecord(null); }}
         orderId={orderId}

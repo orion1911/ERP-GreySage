@@ -11,7 +11,7 @@ import { NoRecordRow, TableRowsLoader } from '../../components/Skeleton/Skeleton
 import { getFormattedDate } from '../../components/Validators';
 import FinishingGridSx from './FinishingGridSx';
 
-function FinishingGrid({ finishingRecords, hasFinishing, lotId, handleUpdateFinishOut, onEditFinishing, sortBy, setSortBy, sortDirection, setSortDirection, filterAnchorEl, setFilterAnchorEl, filterStatus, setFilterStatus }) {
+function FinishingGrid({ finishingRecords, hasFinishing, lotId, handleUpdateFinishOut, onEditFinishing, sortBy, setSortBy, sortDirection, setSortDirection, filterAnchorEl, setFilterAnchorEl, filterStatus, setFilterStatus, readOnly = false }) {
   const theme = useTheme();
   const { isMobile } = useOutletContext();
 
@@ -62,6 +62,7 @@ function FinishingGrid({ finishingRecords, hasFinishing, lotId, handleUpdateFini
       setFilterAnchorEl={setFilterAnchorEl}
       filterStatus={filterStatus}
       setFilterStatus={setFilterStatus}
+      readOnly={readOnly}
     />
   ) : (
     <>
@@ -76,7 +77,7 @@ function FinishingGrid({ finishingRecords, hasFinishing, lotId, handleUpdateFini
                 <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>QTY SHORT</TableCell>
                 <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>RATE</TableCell>
                 <TableCell align='center' sx={{ whiteSpace: 'nowrap', paddingTop: 0, paddingBottom: 0 }}>FINISH OUT</TableCell>
-                <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>ACTIONS</TableCell>
+                {!readOnly && <TableCell align='center' sx={{ paddingTop: 0, paddingBottom: 0 }}>ACTIONS</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -85,15 +86,16 @@ function FinishingGrid({ finishingRecords, hasFinishing, lotId, handleUpdateFini
               ) : processedRecords.length > 0 ? (
                 processedRecords.map((fr, idx) => (
                   <TableRow key={fr._id}>
-                    <TableCell align='center' sx={{ borderBottom: idx !== processedRecords.length - 1 && 0, paddingTop: 0, paddingBottom: 0 }}>{getFormattedDate(fr.date)}</TableCell>
-                    <TableCell align='center' sx={{ borderBottom: idx !== processedRecords.length - 1 && 0, paddingTop: 0, paddingBottom: 0 }}>{fr.vendorId?.name || 'N/A'}</TableCell>
-                    <TableCell align='center' sx={{ borderBottom: idx !== processedRecords.length - 1 && 0, paddingTop: 0, paddingBottom: 0 }}>{fr.quantity}</TableCell>
-                    <TableCell align='center' sx={{ borderBottom: idx !== processedRecords.length - 1 && 0, paddingTop: 0, paddingBottom: 0 }}>{fr.quantityShort ?? 0}</TableCell>
-                    <TableCell align='center' sx={{ borderBottom: idx !== processedRecords.length - 1 && 0, paddingTop: 0, paddingBottom: 0 }}>{fr.rate}</TableCell>
-                    <TableCell align='center' sx={{ borderBottom: idx !== processedRecords.length - 1 && 0, paddingTop: 0, paddingBottom: 0 }}>
+                    <TableCell align='center' sx={{ borderBottom: idx !== processedRecords.length - 1 && 0, paddingTop: 0.3, paddingBottom: 0.3 }}>{getFormattedDate(fr.date)}</TableCell>
+                    <TableCell align='center'>{fr.vendorId?.name || 'N/A'}</TableCell>
+                    <TableCell align='center'>{fr.quantity}</TableCell>
+                    <TableCell align='center'>{fr.quantityShort ?? 0}</TableCell>
+                    <TableCell align='center'>{fr.rate}</TableCell>
+                    <TableCell align='center'>
                       {fr.finishOutDate ? (
                         getFormattedDate(fr.finishOutDate)
                       ) : (
+                        !readOnly &&
                         <LocalizationProvider dateAdapter={AdapterDayjs}>
                           <DatePicker
                             value={null}
@@ -105,11 +107,11 @@ function FinishingGrid({ finishingRecords, hasFinishing, lotId, handleUpdateFini
                         </LocalizationProvider>
                       )}
                     </TableCell>
-                    <TableCell align='center' sx={{ borderBottom: idx !== processedRecords.length - 1 && 0, paddingTop: 0, paddingBottom: 0 }}>
+                    {!readOnly && <TableCell align='center' sx={{ borderBottom: idx !== processedRecords.length - 1 && 0, paddingTop: 0, paddingBottom: 0 }}>
                       <IconButton onClick={() => onEditFinishing(fr)}>
                         <EditIcon fontSize='small' />
                       </IconButton>
-                    </TableCell>
+                    </TableCell>}
                   </TableRow>
                 ))
               ) : (

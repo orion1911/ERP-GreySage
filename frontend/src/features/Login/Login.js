@@ -273,12 +273,13 @@ export default function Login({ isMobile, variant, setVariant }) {
             </Button>
             
           </Box>
-          <Typography variant="caption" sx={{ mb: 1, color: theme.palette.primary.contrastText, textAlign: 'center' }}>
-              {'© '}
-              <Link color={theme.palette.primary.contrastText}>
-                GREYSAGE
-              </Link>
+          <Typography variant="caption" sx={{ mb: 1, color: theme.palette.primary.contrastText, textAlign: 'center', fontSize: '0.7rem'   }}>
+              {'©   '}
               &nbsp;
+              {/* <Link color={theme.palette.primary.contrastText}> */}
+                G R E Y S A G E   
+              {/* </Link> */}
+              &nbsp;&nbsp;
               {new Date().getFullYear()}
             </Typography>
         </Card>

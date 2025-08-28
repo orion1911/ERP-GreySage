@@ -16,7 +16,7 @@ export const TableRowsLoader = ({ colsNum, rowsNum }) => {
 export const NoRecordRow = () => {
     return (
         <TableRow>
-            <TableCell sx={{ width: 155 }}>No Record Found</TableCell>
+            <TableCell colSpan='12' sx={{ width: 155 }}>No Record Found</TableCell>
         </TableRow>
     )
 }

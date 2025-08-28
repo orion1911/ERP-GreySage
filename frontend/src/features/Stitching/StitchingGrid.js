@@ -1,38 +1,38 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, Link as RouterLink } from 'react-router-dom';
 import { useTheme } from '@mui/material/styles';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, IconButton, Tooltip, Badge } from '@mui/material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, IconButton, Tooltip, Badge, Link } from '@mui/material';
 import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon, AutoAwesome } from '@mui/icons-material';
 import WashingGrid from '../Washing/WashingGrid';
-import FinishingGrid from '../Finishing/FinishingGrid'; // Added for Finishing
+import FinishingGrid from '../Finishing/FinishingGrid';
 import StitchingGridSx from './StitchingGridSx';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
 import OrderStatusChip from '../../components/OrderStatusChip';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { MorphDateTextField } from '../../components/MuiCustom';
+import { MorphDateIconField } from '../../components/MuiCustom';
 
 function StitchingGrid({
   stitchingRecords,
   washingRecords,
-  finishingRecords, // Added for Finishing
+  finishingRecords,
   hasWashing,
-  hasFinishing, // Added for Finishing
+  hasFinishing,
   fetchWashingRecords,
-  fetchFinishingRecords, // Added for Finishing
+  fetchFinishingRecords,
   handleUpdateStitchOut,
   handleUpdateWashOut,
-  handleUpdateFinishOut, // Added for Finishing
+  handleUpdateFinishOut,
   setOpenWashingModal,
-  setOpenFinishingModal, // Added for Finishing
+  setOpenFinishingModal,
   setSelectedLot,
   searchTerm,
   onEditStitching,
   onEditWashing,
-  onEditFinishing // Added for Finishing
+  onEditFinishing,
+  readOnly = false
 }) {
   const theme = useTheme();
   const { isMobile } = useOutletContext();
@@ -49,13 +49,13 @@ function StitchingGrid({
           if (!(washingRecords && washingRecords[record.lotId._id])) {
             fetchWashingRecords(record.lotId._id);
           }
-          if (!(finishingRecords && finishingRecords[record.lotId._id])) { // Added for Finishing
+          if (!(finishingRecords && finishingRecords[record.lotId._id])) {
             fetchFinishingRecords(record.lotId._id);
           }
         }
       });
     }
-  }, [stitchingRecords, washingRecords, finishingRecords, fetchWashingRecords, fetchFinishingRecords]);
+  }, [stitchingRecords]);
 
   const toggleRowExpansion = (rowId) => {
     setExpandedRows(prev => {
@@ -66,7 +66,7 @@ function StitchingGrid({
           if (!(washingRecords && washingRecords[row.lotId._id])) {
             fetchWashingRecords(row.lotId._id);
           }
-          if (!(finishingRecords && finishingRecords[row.lotId._id])) { // Added for Finishing
+          if (!(finishingRecords && finishingRecords[row.lotId._id])) {
             fetchFinishingRecords(row.lotId._id);
           }
         }
@@ -177,7 +177,7 @@ function StitchingGrid({
       )
     },
     // {
-    //   accessorKey: 'toggleFinishing', // Added for Finishing
+    //   accessorKey: 'toggleFinishing',
     //   header: ' ',
     //   cell: ({ row }) => (
     //     <Tooltip title="Show Finishing" placement='bottom' arrow>
@@ -224,6 +224,22 @@ function StitchingGrid({
     //     </Tooltip>
     //   )
     // },
+    {
+      accessorKey: 'orderId',
+      header: 'ORDER ID',
+      enableSorting: false,
+      enableHiding: true,
+      cell: ({ row }) => (
+        <Link
+          component={RouterLink}
+          to={`/stitching/${row.original.orderId?._id || ''}`}
+          underline="none"
+          sx={{ fontWeight: 'bold', cursor: 'pointer' }}
+        >
+          {row.original.orderId?.orderId || '—'}
+        </Link>
+      ),
+    },
     {
       accessorKey: 'lotNumber',
       header: 'LOT #',
@@ -279,15 +295,13 @@ function StitchingGrid({
         row.original.stitchOutDate ? (
           getFormattedDate(row.original.stitchOutDate)
         ) : (
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
-            <DatePicker
-              value={null}
-              onChange={(e) => handleUpdateStitchOut(row.original._id, e)}
-              format='DD-MMM-YYYY'
-              slots={{ textField: MorphDateTextField }}
-              sx={{ width: 165 }}
-            />
-          </LocalizationProvider>
+          !readOnly && (
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <MorphDateIconField
+                value={null}
+                onChange={(e) => handleUpdateStitchOut(row.original._id, e)}
+              />
+            </LocalizationProvider>)
         )
       ),
     },
@@ -295,61 +309,62 @@ function StitchingGrid({
       accessorKey: 'actions',
       header: 'ACTIONS',
       cell: ({ row }) => (
-        <Box sx={{ display: 'flex', gap: 0, justifyContent: 'center' }}>
-          <Tooltip title="Edit Stitching" placement='bottom' arrow>
-            <IconButton
-              sx={{
-                mr: 1,
-                outline: 'none',
-                "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
-              }}
-              onClick={() => onEditStitching(row.original)}
-            >
-              <EditIcon fontSize='small' />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Add Washing" placement='bottom' arrow>
-            <IconButton
-              sx={{
-                mr: 1,
-                outline: 'none',
-                "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
-              }}
-              onClick={() => {
-                setSelectedLot({
-                  lotNumber: row.original.lotId?.lotNumber || '',
-                  lotId: row.original.lotId?._id || '',
-                  invoiceNumber: row.original.lotId?.invoiceNumber || '',
-                  lotQuantity: row.original.quantity
-                });
-                setOpenWashingModal(true);
-              }}
-            >
-              <Add fontSize='small' />
-              <LocalLaundryService fontSize='small' />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Add Finishing" placement='bottom' arrow>
-            <IconButton
-              sx={{
-                outline: 'none',
-                "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
-              }}
-              onClick={() => {
-                setSelectedLot({
-                  lotNumber: row.original.lotId?.lotNumber || '',
-                  lotId: row.original.lotId?._id || '',
-                  invoiceNumber: row.original.lotId?.invoiceNumber || '',
-                  lotQuantity: row.original.quantity
-                });
-                setOpenFinishingModal(true);
-              }}
-            >
-              <Add fontSize='small' />
-              <AutoAwesome fontSize='small' />
-            </IconButton>
-          </Tooltip>
-        </Box>
+        readOnly ? null : (
+          <Box sx={{ display: 'flex', gap: 0, justifyContent: 'center' }}>
+            <Tooltip title="Edit Stitching" placement='bottom' arrow>
+              <IconButton
+                sx={{
+                  mr: 0.2,
+                  outline: 'none',
+                  "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
+                }}
+                onClick={() => onEditStitching(row.original)}
+              >
+                <EditIcon fontSize='small' />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Add Washing" placement='bottom' arrow>
+              <IconButton
+                sx={{
+                  mr: 0.2,
+                  outline: 'none',
+                  "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
+                }}
+                onClick={() => {
+                  setSelectedLot({
+                    lotNumber: row.original.lotId?.lotNumber || '',
+                    lotId: row.original.lotId?._id || '',
+                    invoiceNumber: row.original.lotId?.invoiceNumber || '',
+                    lotQuantity: row.original.quantity
+                  });
+                  setOpenWashingModal(true);
+                }}
+              >
+                <Add fontSize='small' />
+                <LocalLaundryService fontSize='small' />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Add Finishing" placement='bottom' arrow>
+              <IconButton
+                sx={{
+                  outline: 'none',
+                  "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
+                }}
+                onClick={() => {
+                  setSelectedLot({
+                    lotNumber: row.original.lotId?.lotNumber || '',
+                    lotId: row.original.lotId?._id || '',
+                    invoiceNumber: row.original.lotId?.invoiceNumber || '',
+                    lotQuantity: row.original.quantity
+                  });
+                  setOpenFinishingModal(true);
+                }}
+              >
+                <Add fontSize='small' />
+                <AutoAwesome fontSize='small' />
+              </IconButton>
+            </Tooltip>
+          </Box>)
       )
     }
   ];
@@ -360,7 +375,13 @@ function StitchingGrid({
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    state: { globalFilter: searchTerm }
+    state: {
+      globalFilter: searchTerm,
+      columnVisibility: {
+        actions: !readOnly, // Hide the 'actions' column when readOnly is true
+        orderId: readOnly
+      },
+    }
   });
 
   const getHeaderContent = (column) => column.columnDef && column.columnDef.header ? column.columnDef.header : column.id;
@@ -370,20 +391,20 @@ function StitchingGrid({
     <StitchingGridSx
       processedRecords={processedRecords}
       washingRecords={washingRecords}
-      finishingRecords={finishingRecords} // Added for Finishing
+      finishingRecords={finishingRecords}
       fetchWashingRecords={fetchWashingRecords}
-      fetchFinishingRecords={fetchFinishingRecords} // Added for Finishing
+      fetchFinishingRecords={fetchFinishingRecords}
       handleUpdateStitchOut={handleUpdateStitchOut}
       handleUpdateWashOut={handleUpdateWashOut}
-      handleUpdateFinishOut={handleUpdateFinishOut} // Added for Finishing
+      handleUpdateFinishOut={handleUpdateFinishOut}
       setOpenWashingModal={setOpenWashingModal}
-      setOpenFinishingModal={setOpenFinishingModal} // Added for Finishing
+      setOpenFinishingModal={setOpenFinishingModal}
       setSelectedLot={setSelectedLot}
       expandedRows={expandedRows}
       toggleRowExpansion={toggleRowExpansion}
       onEditStitching={onEditStitching}
       onEditWashing={onEditWashing}
-      onEditFinishing={onEditFinishing} // Added for Finishing
+      onEditFinishing={onEditFinishing}
       sortBy={sortBy}
       setSortBy={setSortBy}
       sortDirection={sortDirection}
@@ -392,6 +413,7 @@ function StitchingGrid({
       setFilterAnchorEl={setFilterAnchorEl}
       filterStatus={filterStatus}
       setFilterStatus={setFilterStatus}
+      readOnly={readOnly}
     />
   ) : (
     <TableContainer>
@@ -458,10 +480,11 @@ function StitchingGrid({
                           setFilterAnchorEl={setFilterAnchorEl}
                           filterStatus={filterStatus}
                           setFilterStatus={setFilterStatus}
+                          readOnly={readOnly}
                         />
                       </TableCell>
                     </TableRow>
-                    <TableRow>
+                    {finishingRecords && finishingRecords[row.original.lotId?._id].length > 0 && (<TableRow>
                       <TableCell colSpan={12} sx={{ p: 0 }}>
                         <FinishingGrid
                           finishingRecords={finishingRecords && finishingRecords[row.original.lotId?._id] || []}
@@ -477,9 +500,10 @@ function StitchingGrid({
                           setFilterAnchorEl={setFilterAnchorEl}
                           filterStatus={filterStatus}
                           setFilterStatus={setFilterStatus}
+                          readOnly={readOnly}
                         />
                       </TableCell>
-                    </TableRow>
+                    </TableRow>)}
                   </>
                 )}
               </React.Fragment>

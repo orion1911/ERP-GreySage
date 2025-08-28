@@ -21,7 +21,8 @@ function FinishingGridSx({
   filterAnchorEl,
   setFilterAnchorEl,
   filterStatus,
-  setFilterStatus
+  setFilterStatus,
+  readOnly = false
 }) {
   const theme = useTheme();
 
@@ -77,6 +78,7 @@ function FinishingGridSx({
                       <Typography variant="body2">
                         <strong>Finish Out</strong><br />
                       </Typography>
+                      {!readOnly &&
                       <LocalizationProvider dateAdapter={AdapterDayjs}>
                         <DatePicker
                           value={null}
@@ -86,11 +88,11 @@ function FinishingGridSx({
                           slotProps={{ textField: { variant: 'standard', size: 'small' } }}
                           sx={{ width: 165 }}
                         />
-                      </LocalizationProvider>
+                      </LocalizationProvider>}
                     </>
                   )}
                 </Grid>
-                <Grid size={{ xs: 12, sm: 12 }}>
+                {!readOnly && <Grid size={{ xs: 12, sm: 12 }}>
                   <Button
                     variant="contained"
                     startIcon={<EditIcon />}
@@ -101,7 +103,7 @@ function FinishingGridSx({
                   >
                     Edit Finishing
                   </Button>
-                </Grid>
+                </Grid>}
               </Grid>
             </Stack>
           ))

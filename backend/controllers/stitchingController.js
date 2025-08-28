@@ -252,20 +252,23 @@ const updateStitchingStatus = async (req, res) => {
 
 const getStitching = async (req, res) => {
   const { search, orderId, invoiceNumber } = req.query;
-  let query = {};
+  let filter = {};
   if (search) {
-    query.lotId = { $in: await Lot.find({ lotNumber: { $regex: search, $options: 'i' } }).distinct('_id') };
+    filter.lotId = { $in: await Lot.find({ lotNumber: { $regex: search, $options: 'i' } }).distinct('_id') };
   } else if (orderId) {
-    query.orderId = orderId;
+    filter.orderId = orderId;
   } else if (invoiceNumber) {
     const parsedInvoiceNumber = parseInt(invoiceNumber, 10);
     if (isNaN(parsedInvoiceNumber)) {
       return res.status(400).json({ error: 'Invoice number must be a valid number' });
     }
-    query.lotId = { $in: await Lot.find({ invoiceNumber: parsedInvoiceNumber }).distinct('_id') };
+    filter.lotId = { $in: await Lot.find({ invoiceNumber: parsedInvoiceNumber }).distinct('_id') };
   }
-  // const stitchingRecords = await Stitching.find(query).populate('lotId orderId vendorId');
-  const stitchingRecords = await Stitching.find(query).populate('lotId orderId vendorId').lean();
+
+  let query = Stitching.find(filter).populate('lotId orderId vendorId');
+  query = query.sort({ 'orderId.date': -1, 'lotId.date': -1 });
+
+  const stitchingRecords = await query.exec();
 
   // if (!stitchingRecords || stitchingRecords.length === 0) {
   //   return res.status(404).json({ error: 'No Stitching Records Found' });

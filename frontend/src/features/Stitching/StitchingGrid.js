@@ -5,7 +5,7 @@ import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel,
 import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, IconButton, Tooltip, Badge, Link } from '@mui/material';
 import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon, AutoAwesome } from '@mui/icons-material';
 import WashingGrid from '../Washing/WashingGrid';
-import FinishingGrid from '../Finishing/FinishingGrid'; // Added for Finishing
+import FinishingGrid from '../Finishing/FinishingGrid';
 import StitchingGridSx from './StitchingGridSx';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
@@ -49,13 +49,13 @@ function StitchingGrid({
           if (!(washingRecords && washingRecords[record.lotId._id])) {
             fetchWashingRecords(record.lotId._id);
           }
-          if (!(finishingRecords && finishingRecords[record.lotId._id])) { // Added for Finishing
+          if (!(finishingRecords && finishingRecords[record.lotId._id])) {
             fetchFinishingRecords(record.lotId._id);
           }
         }
       });
     }
-  }, [stitchingRecords, washingRecords, finishingRecords, fetchWashingRecords, fetchFinishingRecords]);
+  }, [stitchingRecords]);
 
   const toggleRowExpansion = (rowId) => {
     setExpandedRows(prev => {
@@ -66,7 +66,7 @@ function StitchingGrid({
           if (!(washingRecords && washingRecords[row.lotId._id])) {
             fetchWashingRecords(row.lotId._id);
           }
-          if (!(finishingRecords && finishingRecords[row.lotId._id])) { // Added for Finishing
+          if (!(finishingRecords && finishingRecords[row.lotId._id])) {
             fetchFinishingRecords(row.lotId._id);
           }
         }
@@ -124,8 +124,7 @@ function StitchingGrid({
   const processedRecords = useMemo(() => {
     let filtered = stitchingRecords;
     filtered = filterData(filtered, searchTerm);
-    var res = sortData(filtered, sortBy, sortDirection);
-    return res || [];
+    return sortData(filtered, sortBy, sortDirection);
   }, [stitchingRecords, searchTerm, sortBy, sortDirection]);
 
   const columns = [
@@ -178,7 +177,7 @@ function StitchingGrid({
       )
     },
     // {
-    //   accessorKey: 'toggleFinishing', // Added for Finishing
+    //   accessorKey: 'toggleFinishing',
     //   header: ' ',
     //   cell: ({ row }) => (
     //     <Tooltip title="Show Finishing" placement='bottom' arrow>
@@ -392,20 +391,20 @@ function StitchingGrid({
     <StitchingGridSx
       processedRecords={processedRecords}
       washingRecords={washingRecords}
-      finishingRecords={finishingRecords} // Added for Finishing
+      finishingRecords={finishingRecords}
       fetchWashingRecords={fetchWashingRecords}
-      fetchFinishingRecords={fetchFinishingRecords} // Added for Finishing
+      fetchFinishingRecords={fetchFinishingRecords}
       handleUpdateStitchOut={handleUpdateStitchOut}
       handleUpdateWashOut={handleUpdateWashOut}
-      handleUpdateFinishOut={handleUpdateFinishOut} // Added for Finishing
+      handleUpdateFinishOut={handleUpdateFinishOut}
       setOpenWashingModal={setOpenWashingModal}
-      setOpenFinishingModal={setOpenFinishingModal} // Added for Finishing
+      setOpenFinishingModal={setOpenFinishingModal}
       setSelectedLot={setSelectedLot}
       expandedRows={expandedRows}
       toggleRowExpansion={toggleRowExpansion}
       onEditStitching={onEditStitching}
       onEditWashing={onEditWashing}
-      onEditFinishing={onEditFinishing} // Added for Finishing
+      onEditFinishing={onEditFinishing}
       sortBy={sortBy}
       setSortBy={setSortBy}
       sortDirection={sortDirection}

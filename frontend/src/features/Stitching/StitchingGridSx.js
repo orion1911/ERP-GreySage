@@ -5,7 +5,7 @@ import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownw
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
 import WashingGrid from '../Washing/WashingGrid';
-import FinishingGrid from '../Finishing/FinishingGrid'; // Added for Finishing
+import FinishingGrid from '../Finishing/FinishingGrid';
 import OrderStatusChip from '../../components/OrderStatusChip';
 
 
@@ -49,7 +49,7 @@ function StitchingGridSx({
           if (!(washingRecords && washingRecords[record.lotId._id])) {
             fetchWashingRecords(record.lotId._id);
           }
-          if (!(finishingRecords && finishingRecords[record.lotId._id])) { // Added for Finishing
+          if (!(finishingRecords && finishingRecords[record.lotId._id])) {
             fetchFinishingRecords(record.lotId._id);
           }
         }
@@ -120,7 +120,7 @@ function StitchingGridSx({
     handleMenuClose();
   };
 
-  const handleAddFinishing = (record) => { // Added for Finishing
+  const handleAddFinishing = (record) => {
     setSelectedLot({
       lotNumber: record.lotId?.lotNumber || '',
       lotId: record.lotId?._id || '',

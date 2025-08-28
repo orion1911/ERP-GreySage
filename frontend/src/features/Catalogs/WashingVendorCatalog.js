@@ -30,12 +30,8 @@ function WashingVendorCatalog() {
       })
       .catch(err => {
         setLoading(false);
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          alert('Session expired. Please log in again.');
-          window.location.href = '/login';
-        } else {
-          alert(err.response?.data?.error || 'An error occurred');
-        }
+        console.log(err);
+        showSnackbar(err);
       });
   };
 
@@ -59,14 +55,8 @@ function WashingVendorCatalog() {
       })
       .catch(err => {
         setLoading(false);
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          alert('Session expired. Please log in again.');
-          window.location.href = '/login';
-        } else if (err.response?.status === 404) {
-          alert('Washing vendor not found.');
-        } else {
-          alert(err.response?.data?.error || 'An error occurred');
-        }
+        console.log(err);
+        showSnackbar(err);
         setConfirmOpen(false);
       });
   };

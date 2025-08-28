@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { TextField, Button,  Container, Typography, Box, Paper } from '@mui/material';
+import { TextField, Button, Container, Typography, Box, Paper } from '@mui/material';
 import { ShoppingCart } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 import AddOrderModal from './AddOrderModal';
@@ -27,13 +27,8 @@ function OrderManagement() {
       setClients(clientsRes);
       setFitStyles(fitStylesRes);
     } catch (err) {
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        showSnackbar('Session expired. Please log in again', 'sessionError');
-        // window.location.href = '/login';
-      } else {
-        console.log(err.response);
-        showSnackbar(err.response?.data?.error, 'error');
-      }
+      console.log(err);
+      showSnackbar(err);
     }
   };
 

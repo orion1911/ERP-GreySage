@@ -66,11 +66,8 @@ function Dashboard() {
         setSinceInceptionData(statusSummaryRes.sinceInception);
       }, process.env.REACT_APP_DATA_LOAD_TIMEOUT);
     } catch (err) {
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        showSnackbar('Session expired. Please log in again', 'sessionError');
-      } else {
-        showSnackbar(err.response?.data?.error || 'Error fetching data', 'error');
-      }
+      console.log(err);
+      showSnackbar(err);
     }
   };
 

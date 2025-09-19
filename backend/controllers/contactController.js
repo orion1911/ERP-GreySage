@@ -13,7 +13,7 @@ const generateEmailTemplate = ({ email, message }) => `
     <title>New Potential Client for G R E Y S A G E</title>
     <style>
       body { margin: 0; padding: 0; background-color: #f4f4f4; }
-      .container { background-color: #ffffff; padding: 0 20px; border-radius: 6px; max-width: 600px; margin: 20px auto; }
+      .container { background-color: #ffffff; padding: 0 20px; border-radius: 6px; max-width: 600px; margin: 20px 20px; }
       .heading { font-family: Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 2em; color: #333; }
       .text { font-family: Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 16px; color: #333; line-height: 1.6; }
       .footer-text { font-family: Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #999; margin-top: 20px; }

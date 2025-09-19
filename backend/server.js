@@ -20,6 +20,7 @@ const vendorBalanceRoutes = require('./routes/vendorBalances');
 const balancesRoutes = require('./routes/balances');
 const reportRoutes = require('./routes/reports');
 const auditLogRoutes = require('./routes/auditLogs');
+const emailRoutes = require('./routes/contact');
 
 // Middleware
 const errorHandler = require('./middleware/error');
@@ -84,6 +85,7 @@ app.use('/api', vendorBalanceRoutes);
 app.use('/api', balancesRoutes);
 app.use('/api', reportRoutes);
 app.use('/api', auditLogRoutes);
+app.use('/api', emailRoutes);
 
 // Error Handling Middleware
 app.use(errorHandler);

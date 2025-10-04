@@ -84,10 +84,6 @@ const OrderSchema = new mongoose.Schema({
   waistSize: { type: String, required: true },
   totalQuantity: { type: Number, required: true, min: 1 },
   finalTotalQuantity: { type: Number, default: 0 },
-  threadColors: [{
-    color: { type: String, required: true },
-    quantity: { type: Number, required: true, min: 1 }
-  }],
   description: { type: String },
   attachments: [{ fileName: String, url: String }],
   status: { type: Number, enum: [1, 2, 3, 4, 5, 6], default: 1 },
@@ -120,6 +116,10 @@ const StitchingSchema = new mongoose.Schema({
   quantity: { type: Number, required: true, min: 1 },
   quantityShort: { type: Number, default: 0, min: 0 },
   rate: { type: Number, required: true, min: 0 },
+  threadColors: [{
+    color: { type: String, required: true },
+    quantity: { type: Number, required: true, min: 1 }
+  }],
   description: { type: String },
   createdAt: { type: Date, default: Date.now }
 });

@@ -95,7 +95,7 @@ function OrderGridMd({ processedOrders, columns, table, sortBy, sortDirection, s
                 </TableHead>
                 <TableBody>
                     {processedOrders === undefined ? (
-                        <TableRowsLoader colsNum={11} rowsNum={10} />
+                        <TableRowsLoader colsNum={10} rowsNum={10} />
                     ) : processedOrders.length > 0 ? (
                         processedOrders.map(row => (
                             <TableRow key={row._id}>

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useOutletContext, Link as RouterLink } from 'react-router-dom';
 import { useTheme } from '@mui/material/styles';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, IconButton, Tooltip, Badge, Link } from '@mui/material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, IconButton, Tooltip, Badge, Link, Typography } from '@mui/material';
 import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon, AutoAwesome } from '@mui/icons-material';
 import WashingGrid from '../Washing/WashingGrid';
 import FinishingGrid from '../Finishing/FinishingGrid';
@@ -85,6 +85,9 @@ function StitchingGrid({
       } else if (sortKey === 'invoiceNumber') {
         valueA = a.lotId?.invoiceNumber || '';
         valueB = b.lotId?.invoiceNumber || '';
+      } else if (sortKey === 'clientName') {
+        valueA = a.orderId?.clientId?.name || '';
+        valueB = b.orderId?.clientId?.name || '';
       } else if (sortKey === 'date') {
         valueA = new Date(a.date);
         valueB = new Date(b.date);
@@ -117,6 +120,7 @@ function StitchingGrid({
       !search ||
       record.lotId?.lotNumber?.toLowerCase().includes(search.toLowerCase()) ||
       record.lotId?.invoiceNumber?.toString().toLowerCase().includes(search.toLowerCase()) ||
+      record.orderId?.clientId?.name?.toString().toLowerCase().includes(search.toLowerCase()) ||
       record.vendorId?.name?.toLowerCase().includes(search.toLowerCase())
     );
   };
@@ -253,6 +257,12 @@ function StitchingGrid({
       enableSorting: true,
     },
     {
+      accessorKey: 'clientName',
+      header: 'CLIENT',
+      cell: ({ row }) => row.original.orderId?.clientId?.name || 'N/A',
+      enableSorting: true,
+    },
+    {
       accessorKey: 'status',
       header: 'STATUS',
       cell: ({ row }) => <OrderStatusChip status={row.original.lotId?.status} />,
@@ -287,6 +297,19 @@ function StitchingGrid({
       header: 'RATE',
       cell: ({ row }) => row.original.rate,
       enableSorting: true,
+    },
+    {
+      accessorKey: 'threadColors',
+      header: 'THREADS',
+      cell: ({ row }) => (
+        <Box>
+          {row.original.threadColors.map((tc, index) => (
+            <Typography key={index} variant="body2">
+              {tc.color}, {tc.quantity} pcs
+            </Typography>
+          ))}
+        </Box>
+      ),
     },
     {
       accessorKey: 'stitchOut',
@@ -445,7 +468,7 @@ function StitchingGrid({
         </TableHead>
         <TableBody>
           {!processedRecords ? (
-            <TableRowsLoader colsNum={12} rowsNum={10} />
+            <TableRowsLoader colsNum={13} rowsNum={10} />
           ) : processedRecords.length > 0 ? (
             table.getRowModel().rows.map(row => (
               <React.Fragment key={row.id}>
@@ -465,7 +488,7 @@ function StitchingGrid({
                 {expandedRows[row.original._id] && (
                   <>
                     <TableRow>
-                      <TableCell colSpan={12} sx={{ p: 0 }}>
+                      <TableCell colSpan={13} sx={{ p: 0 }}>
                         <WashingGrid
                           washingRecords={washingRecords && washingRecords[row.original.lotId?._id] || []}
                           hasWashing={hasWashing}
@@ -485,7 +508,7 @@ function StitchingGrid({
                       </TableCell>
                     </TableRow>
                     {finishingRecords && finishingRecords[row.original.lotId?._id].length > 0 && (<TableRow>
-                      <TableCell colSpan={12} sx={{ p: 0 }}>
+                      <TableCell colSpan={13} sx={{ p: 0 }}>
                         <FinishingGrid
                           finishingRecords={finishingRecords && finishingRecords[row.original.lotId?._id] || []}
                           hasFinishing={hasFinishing}

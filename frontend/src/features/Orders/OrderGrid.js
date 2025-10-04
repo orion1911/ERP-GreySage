@@ -147,19 +147,19 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
             header: 'Final Qty',
             // enableSorting: true,
         },
-        {
-            accessorKey: 'threadColors',
-            header: 'Threads',
-            cell: ({ row }) => (
-                <Box>
-                    {row.original.threadColors.map((tc, index) => (
-                        <Typography key={index} variant="body2">
-                            {tc.color}, {tc.quantity} pcs
-                        </Typography>
-                    ))}
-                </Box>
-            ),
-        },
+        // {
+        //     accessorKey: 'threadColors',
+        //     header: 'Threads',
+        //     cell: ({ row }) => (
+        //         <Box>
+        //             {row.original.threadColors.map((tc, index) => (
+        //                 <Typography key={index} variant="body2">
+        //                     {tc.color}, {tc.quantity} pcs
+        //                 </Typography>
+        //             ))}
+        //         </Box>
+        //     ),
+        // },
         {
             accessorKey: 'status',
             header: 'Status',

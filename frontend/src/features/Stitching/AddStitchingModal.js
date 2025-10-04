@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
-import { Close as CloseIcon, Save as SaveIcon } from '@mui/icons-material';
+import { Close as CloseIcon, Delete as DeleteIcon, Save as SaveIcon, Add as AddIcon  } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -23,6 +23,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
     quantity: '',
     quantityShort: '',
     rate: '',
+    threadColors: [{ color: '', quantity: '' }],
     date: dayjs(new Date()),
     stitchOutDate: null,
     description: ''
@@ -31,6 +32,11 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
   const { control, handleSubmit, reset, setValue, formState: { errors } } = useForm({
     defaultValues,
     mode: 'onChange',
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: 'threadColors',
   });
 
   useEffect(() => {
@@ -42,6 +48,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
       setValue('quantity', editRecord.quantity || '');
       setValue('quantityShort', editRecord.quantityShort || '');
       setValue('rate', editRecord.rate || '');
+      setValue('threadColors', editRecord.threadColors?.length > 0 ? editRecord.threadColors : [{ color: '', quantity: '' }]);
       setValue('date', editRecord.date ? dayjs(editRecord.date) : dayjs(new Date()));
       setValue('stitchOutDate', editRecord.stitchOutDate ? dayjs(editRecord.stitchOutDate) : null);
       setValue('description', editRecord.description || '');
@@ -69,6 +76,12 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
   };
 
   const onSubmit = (data) => {
+    const totalThreadQuantity = data.threadColors.reduce((sum, tc) => sum + Number(tc.quantity || 0), 0);
+    if (totalThreadQuantity !== Number(data.quantity)) {
+      showSnackbar(`Sum of thread color quantities (${totalThreadQuantity}) must equal total quantity (${data.quantity})`, 'error');
+      return;
+    }
+    
     const formattedData = {
       ...data,
       lotNumber: data.lotNumber.toUpperCase().replaceAll(' ', ''),
@@ -76,6 +89,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
       quantity: parseInt(data.quantity) || '',
       quantityShort: parseInt(data.quantityShort) || '',
       rate: parseInt(data.rate) || '',
+      threadColors: data.threadColors.map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity)})),
       date: data.date.toISOString(),
       stitchOutDate: data.stitchOutDate ? data.stitchOutDate.toISOString() : null,
     };
@@ -267,6 +281,67 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                 )}
               />
             </Grid>
+            {fields.map((tc, index) => (
+              <React.Fragment key={tc.id}>
+                <Grid size={{ xs: 6, md: 4 }}>
+                  <Controller
+                    name={`threadColors[${index}].color`}
+                    control={control}
+                    rules={{ required: 'Thread Color is required' }}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e.target.value.toUpperCase());
+                        }}
+                        label="Thread Color"
+                        fullWidth
+                        margin="normal"
+                        variant="standard"
+                        error={!!errors.threadColors?.[index]?.color}
+                        helperText={errors.threadColors?.[index]?.color?.message}
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid size={{ xs: 3, md: 4 }}>
+                  <Controller
+                    name={`threadColors[${index}].quantity`}
+                    control={control}
+                    rules={{
+                      required: 'Quantity is required',
+                      pattern: {
+                        value: /^\d+$/,
+                        message: 'Only numbers allowed',
+                      },
+                    }}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        label="Quantity"
+                        fullWidth
+                        margin="normal"
+                        variant="standard"
+                        error={!!errors.threadColors?.[index]?.quantity}
+                        helperText={errors.threadColors?.[index]?.quantity?.message}
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid size={{ xs: 3, md: 4 }} sx={{ alignContent: 'center' }}>
+                  {index > 0 && (
+                    <IconButton sx={{ mt: 2 }} onClick={() => remove(index)} color="error">
+                      <DeleteIcon />
+                    </IconButton>
+                  )}
+                  {index === fields.length - 1 && (
+                    <IconButton sx={{ mt: 2 }} onClick={() => append({ color: '', quantity: '' })}>
+                      <AddIcon />
+                    </IconButton>
+                  )}
+                </Grid>
+              </React.Fragment>
+            ))}
             <Grid size={{ xs: 12 }}>
               <Controller
                 name="description"

@@ -264,24 +264,23 @@ export default function Login({ isMobile, variant, setVariant }) {
             {/* <FormLabel sx={{ color: theme.palette.primary.contrastText, mb: 1 }}>
               Email
             </FormLabel> */}
-            
+
             <ForgotPassword open={open} handleClose={handleClose} />
             <Button type="submit" fullWidth variant="contained" size='medium' loading={loading} loadingPosition="end"
               sx={{ mt: 1, mb: 1 }}
             >
               Sign in
             </Button>
-            
           </Box>
-          <Typography variant="caption" sx={{ mb: 1, color: theme.palette.primary.contrastText, textAlign: 'center', fontSize: '0.7rem'   }}>
-              {'©   '}
-              &nbsp;
-              {/* <Link color={theme.palette.primary.contrastText}> */}
-                G R E Y S A G E   
-              {/* </Link> */}
-              &nbsp;&nbsp;
-              {new Date().getFullYear()}
-            </Typography>
+          <Typography variant="caption" sx={{ mb: 1, color: theme.palette.primary.contrastText, textAlign: 'center', fontSize: '0.7rem', cursor: 'pointer' }}>
+            {'©   '}
+            &nbsp;
+            <Link color={theme.palette.primary.contrastText} href="https://greysageco.vercel.app" target="_blank">
+              G R E Y S A G E
+            </Link>
+            &nbsp;&nbsp;
+            {new Date().getFullYear()}
+          </Typography>
         </Card>
       </SignInContainer>
     </>

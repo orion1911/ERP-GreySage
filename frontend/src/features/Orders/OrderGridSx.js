@@ -140,7 +140,7 @@ function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansi
                                             {order.finalTotalQuantity}
                                         </Typography>
                                     </Grid>
-                                    <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>
+                                    {/* <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>
                                         <Typography variant="body2">
                                             <strong>Threads:</strong>
                                             {order.threadColors.map((tc, index) => (
@@ -149,7 +149,7 @@ function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansi
                                                 </Box>
                                             ))}
                                         </Typography>
-                                    </Grid>
+                                    </Grid> */}
                                     <Grid size={{ xs: 12, sm: 12 }}>
                                         <Button
                                             variant="contained"

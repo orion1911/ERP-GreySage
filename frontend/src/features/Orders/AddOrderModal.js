@@ -22,7 +22,6 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
     fitStyleId: '',
     waistSize: '',
     totalQuantity: '',
-    threadColors: [{ color: '', quantity: '' }],
     description: '',
     attachments: []
   };
@@ -30,11 +29,6 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
   const { control, handleSubmit, reset, setValue, getValues, formState: { errors } } = useForm({
     defaultValues,
     mode: 'onChange',
-  });
-
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: 'threadColors',
   });
 
   useEffect(() => {
@@ -45,7 +39,6 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
       setValue('fitStyleId', order.fitStyleId?._id || '');
       setValue('waistSize', order.waistSize || '');
       setValue('totalQuantity', order.totalQuantity || '');
-      setValue('threadColors', order.threadColors?.length > 0 ? order.threadColors : [{ color: '', quantity: '' }]);
       setValue('description', order.description || '');
       setValue('attachments', order.attachments || []);
     } else {
@@ -56,11 +49,6 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
   const onSubmit = (data) => {
     if (!data.date || !data.clientId || !data.fabric || !data.fitStyleId || !data.waistSize || !data.totalQuantity)
       return;
-    const totalThreadQuantity = data.threadColors.reduce((sum, tc) => sum + Number(tc.quantity || 0), 0);
-    if (totalThreadQuantity !== Number(data.totalQuantity)) {
-      showSnackbar(`Sum of thread color quantities (${totalThreadQuantity}) must equal total quantity (${data.totalQuantity})`, 'error');
-      return;
-    }
 
     if (isNaN(data.totalQuantity)) {
       showSnackbar('Total Quantity is not a number', 'error');
@@ -70,7 +58,6 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
     const formData = {
       ...data,
       totalQuantity: Number(data.totalQuantity),
-      threadColors: data.threadColors.map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity)})),
       date: data.date.toISOString(),
     };
 
@@ -279,67 +266,7 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
                 )}
               />
             </Grid>
-            {fields.map((tc, index) => (
-              <React.Fragment key={tc.id}>
-                <Grid size={{ xs: 6, md: 4 }}>
-                  <Controller
-                    name={`threadColors[${index}].color`}
-                    control={control}
-                    rules={{ required: 'Thread Color is required' }}
-                    render={({ field }) => (
-                      <TextField
-                        {...field}
-                        onChange={(e) => {
-                          field.onChange(e.target.value.toUpperCase());
-                        }}
-                        label="Thread Color"
-                        fullWidth
-                        margin="normal"
-                        variant="standard"
-                        error={!!errors.threadColors?.[index]?.color}
-                        helperText={errors.threadColors?.[index]?.color?.message}
-                      />
-                    )}
-                  />
-                </Grid>
-                <Grid size={{ xs: 3, md: 4 }}>
-                  <Controller
-                    name={`threadColors[${index}].quantity`}
-                    control={control}
-                    rules={{
-                      required: 'Quantity is required',
-                      pattern: {
-                        value: /^\d+$/,
-                        message: 'Only numbers allowed',
-                      },
-                    }}
-                    render={({ field }) => (
-                      <TextField
-                        {...field}
-                        label="Quantity"
-                        fullWidth
-                        margin="normal"
-                        variant="standard"
-                        error={!!errors.threadColors?.[index]?.quantity}
-                        helperText={errors.threadColors?.[index]?.quantity?.message}
-                      />
-                    )}
-                  />
-                </Grid>
-                <Grid size={{ xs: 3, md: 4 }} sx={{ alignContent: 'center' }}>
-                  {index > 0 && (
-                    <IconButton sx={{ mt: 2 }} onClick={() => remove(index)} color="error">
-                      <DeleteIcon />
-                    </IconButton>
-                  )}
-                  {index === fields.length - 1 && (
-                    <IconButton sx={{ mt: 2 }} onClick={() => append({ color: '', quantity: '' })}>
-                      <AddIcon />
-                    </IconButton>
-                  )}
-                </Grid>
-              </React.Fragment>
-            ))}
+            
             <Grid size={{ xs: 12 }}>
               <Controller
                 name="description"

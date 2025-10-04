@@ -2,16 +2,9 @@ const { Order, Counter, Client, FitStyle } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
 
 const createOrder = async (req, res) => {
-  let { date, clientId, fabric, fitStyleId, waistSize, totalQuantity, threadColors, description, attachments } = req.body;
+  let { date, clientId, fabric, fitStyleId, waistSize, totalQuantity, description, attachments } = req.body;
 
   totalQuantity = parseInt(totalQuantity);
-  threadColors = threadColors.map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity)}))
-
-  // Validate threadColors quantities
-  const totalThreadQuantity = threadColors.reduce((sum, tc) => sum + parseInt(tc.quantity), 0);
-  if (totalThreadQuantity !== totalQuantity) {
-    return res.status(400).json({ error: `Sum of thread color quantities (${totalThreadQuantity}) must equal total quantity (${totalQuantity})` });
-  }
 
   // Validate references
   const client = await Client.findById(clientId);
@@ -39,7 +32,6 @@ const createOrder = async (req, res) => {
     waistSize,
     totalQuantity,
     finalTotalQuantity: totalQuantity,
-    threadColors,
     description,
     attachments: attachments || [],
     status: 1,
@@ -58,19 +50,11 @@ const createOrder = async (req, res) => {
 
 const updateOrder = async (req, res) => {
   const { id } = req.params;
-  const { date, clientId, fabric, fitStyleId, waistSize, totalQuantity, threadColors, description, attachments, status } = req.body;
+  const { date, clientId, fabric, fitStyleId, waistSize, totalQuantity, description, attachments, status } = req.body;
 
   // Find the order
   const order = await Order.findById(id);
   if (!order) return res.status(404).json({ error: 'Order not found' });
-
-  // Validate threadColors quantities
-  if (threadColors && totalQuantity) {
-    const totalThreadQuantity = threadColors.reduce((sum, tc) => sum + parseInt(tc.quantity), 0);
-    if (totalThreadQuantity !== totalQuantity) {
-      return res.status(400).json({ error: `Sum of thread color quantities (${totalThreadQuantity}) must equal total quantity (${totalQuantity})` });
-    }
-  }
 
   // Validate references
   if (clientId) {
@@ -93,7 +77,6 @@ const updateOrder = async (req, res) => {
     order.totalQuantity = totalQuantity;
     order.finalTotalQuantity = totalQuantity; // Update finalTotalQuantity to match totalQuantity
   }
-  if (threadColors) order.threadColors = threadColors;
   if (description) order.description = description;
   if (attachments) order.attachments = attachments || [];
   // if (status && status !== order.status) {

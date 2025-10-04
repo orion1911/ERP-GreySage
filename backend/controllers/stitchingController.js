@@ -63,7 +63,7 @@ const validateLotNumber = async (lotNumber, excludeLotId = null) => {
 };
 
 const createStitching = async (req, res) => {
-  const { lotNumber, orderId, invoiceNumber, vendorId, quantity, quantityShort, rate, date, stitchOutDate, description } = req.body;
+  let { lotNumber, orderId, invoiceNumber, vendorId, quantity, quantityShort, rate, threadColors, date, stitchOutDate, description } = req.body;
   let session = null;
 
   // Validate required fields
@@ -75,6 +75,15 @@ const createStitching = async (req, res) => {
   if (!rate || rate < 0) return res.status(400).json({ error: 'Rate must be a non-negative number' });
   if (typeof invoiceNumber !== 'number' || isNaN(invoiceNumber)) {
     return res.status(400).json({ error: 'Invoice number must be a valid number' });
+  }
+
+  quantity = parseInt(quantity);
+  threadColors = threadColors.map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity)}))
+
+  // Validate threadColors quantities
+  const totalThreadQuantity = threadColors.reduce((sum, tc) => sum + parseInt(tc.quantity), 0);
+  if (totalThreadQuantity !== quantity) {
+    return res.status(400).json({ error: `Sum of thread color quantities (${totalThreadQuantity}) must equal total Lot quantity (${quantity})` });
   }
 
   // Validate lotNumber format and range constraints
@@ -134,6 +143,7 @@ const createStitching = async (req, res) => {
       quantity,
       quantityShort: quantityShort || 0,
       rate,
+      threadColors,
       date,
       stitchOutDate,
       description,
@@ -171,7 +181,15 @@ const createStitching = async (req, res) => {
 
 const updateStitching = async (req, res) => {
   const { id } = req.params;
-  const { lotNumber, orderId, invoiceNumber, vendorId, quantity, quantityShort, rate, date, stitchOutDate, description } = req.body;
+  const { lotNumber, orderId, invoiceNumber, vendorId, quantity, quantityShort, rate, threadColors, date, stitchOutDate, description } = req.body;
+
+  // Validate threadColors quantities
+  if (threadColors && quantity) {
+    const totalThreadQuantity = threadColors.reduce((sum, tc) => sum + parseInt(tc.quantity), 0);
+    if (totalThreadQuantity !== quantity) {
+      return res.status(400).json({ error: `Sum of thread color quantities (${totalThreadQuantity}) must equal total Lot quantity (${quantity})` });
+    }
+  }
 
   // Find the stitching record
   const stitching = await Stitching.findById(id).populate('lotId orderId vendorId');
@@ -219,6 +237,7 @@ const updateStitching = async (req, res) => {
   if (quantity) stitching.quantity = quantity;
   if (quantityShort !== undefined) stitching.quantityShort = quantityShort;
   if (rate !== undefined) stitching.rate = rate;
+  if (threadColors) stitching.threadColors = threadColors;
   if (date) stitching.date = date;
   if (stitchOutDate) stitching.stitchOutDate = stitchOutDate;
   if (description) stitching.description = description;
@@ -265,7 +284,20 @@ const getStitching = async (req, res) => {
     filter.lotId = { $in: await Lot.find({ invoiceNumber: parsedInvoiceNumber }).distinct('_id') };
   }
 
-  let query = Stitching.find(filter).populate('lotId orderId vendorId');
+  // let query = Stitching.find(filter).populate('lotId orderId vendorId');
+  let query = Stitching.find(filter)
+    .populate({
+      path: 'lotId'
+    })
+    .populate({
+      path: 'orderId',
+      populate: {
+        path: 'clientId'
+      }
+    })
+    .populate({
+      path: 'vendorId'
+    });
   query = query.sort({ 'orderId.date': -1, 'lotId.date': -1 });
 
   const stitchingRecords = await query.exec();

@@ -184,7 +184,7 @@ export const StitchingCardSkeleton = () => {
             <Grid size={{ xs: 4, sm: 4 }}>
               <Typography variant="body2">
                 <strong>Quantity</strong><br />
-                <Skeleton animation="wave" variant="text" width={60} />
+                <Skeleton animation="wave" variant="text" width={100} />
               </Typography>
             </Grid>
           </Grid>

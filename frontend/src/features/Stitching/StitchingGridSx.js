@@ -279,20 +279,39 @@ function StitchingGridSx({
                   </Grid>
                   <Grid size={{ xs: 4, sm: 4 }}>
                     <Typography variant="body2">
+                      <strong>Client</strong><br />
+                      {record.orderId?.clientId?.name || 'N/A'}
+                    </Typography>
+                  </Grid>
+                  <Grid size={{ xs: 4, sm: 4 }}>
+                    <Typography variant="body2">
                       <strong>Qty Short</strong><br />
                       {record.quantityShort}
                     </Typography>
                   </Grid>
-                  <Grid size={{ xs: 4, sm: 4 }}>
+                  <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
                     <Typography variant="body2">
                       <strong>Rate</strong><br />
                       {record.rate}
                     </Typography>
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>
+                  <Grid size={{ xs: 4, sm: 4 }}>
                     <Typography variant="body2">
                       <strong>Stitch Out</strong><br />
                       {record.stitchOutDate ? getFormattedDate(record.stitchOutDate) : 'N/A'}
+                    </Typography>
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>
+                    <Typography variant="body2">
+                      <strong>Threads: </strong>
+                      {record.threadColors.map((tc, index) => (
+                        <div key={index} style={{ display: 'inline-flex' }}>
+                          <Box key={index} component="span" sx={{ display: 'block' }}>
+                            {tc.color} - {tc.quantity} pcs
+                          </Box>
+                          <span>{index < record.threadColors.length - 1 ? '\u00A0' +'|'+ '\u00A0' : ''}</span>
+                        </div>
+                      ))}
                     </Typography>
                   </Grid>
                   <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left', pt: 1 }}>

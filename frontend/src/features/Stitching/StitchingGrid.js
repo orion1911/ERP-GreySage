@@ -399,7 +399,7 @@ function StitchingGrid({
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     state: {
-      globalFilter: searchTerm,
+      // globalFilter: searchTerm,
       columnVisibility: {
         actions: !readOnly, // Hide the 'actions' column when readOnly is true
         orderId: readOnly

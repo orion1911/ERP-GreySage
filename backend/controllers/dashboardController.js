@@ -285,7 +285,7 @@ const getOrderStatusSummary = async (req, res) => {
       }
       const trend = await getMonthlyTrendData(fromDate, toDate, category);
       return {
-        title: `${category.title} / (${count} orders)`,
+        title: category.title == 'Open Orders' ? `${category.title} / (${count} orders)` : `${category.title} / (${count} lots)`,
         value: totalQuantity >= 1000 ? `${(totalQuantity / 1000).toFixed(1)}k` : totalQuantity.toString(),
         interval,
         trend: category.trend,

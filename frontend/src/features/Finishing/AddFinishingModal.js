@@ -22,6 +22,7 @@ function AddFinishingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNu
     vendorId: '',
     quantity: '',
     quantityShort: '',
+    quantityShortDesc: '',
     rate: '',
     date: dayjs(new Date()),
     finishOutDate: null,
@@ -41,6 +42,7 @@ function AddFinishingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNu
       setValue('vendorId', editRecord.vendorId?._id || '');
       setValue('quantity', editRecord.quantity || '');
       setValue('quantityShort', editRecord.quantityShort || '');
+      setValue('quantityShortDesc', editRecord.quantityShortDesc || '');
       setValue('rate', editRecord.rate || '');
       setValue('date', editRecord.date ? dayjs(editRecord.date) : dayjs(new Date()));
       setValue('finishOutDate', editRecord.finishOutDate ? dayjs(editRecord.finishOutDate) : null);
@@ -51,6 +53,7 @@ function AddFinishingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNu
       setValue('vendorId', '');
       setValue('quantity', '');
       setValue('quantityShort', '');
+      setValue('quantityShortDesc', '');
       setValue('rate', '');
       setValue('date', dayjs(new Date()));
       setValue('finishOutDate', null);
@@ -263,7 +266,7 @@ function AddFinishingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNu
                 )}
               />
             </Grid>
-            {isEditMode && (<><Grid size={{ xs: 6, md: 4 }}>
+            {isEditMode && (<><Grid size={{ xs: 3, md: 4 }}>
               <Controller
                 name="quantityShort"
                 control={control}
@@ -276,7 +279,7 @@ function AddFinishingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNu
                 render={({ field }) => (
                   <TextField
                     {...field}
-                    label="Quantity Short"
+                    label="QTY Short"
                     fullWidth
                     margin="normal"
                     variant="standard"
@@ -286,6 +289,23 @@ function AddFinishingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNu
                 )}
               />
             </Grid>
+              <Grid size={{ xs: 3, md: 4 }}>
+                <Controller
+                  name="quantityShortDesc"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      label="Short Desc"
+                      fullWidth
+                      margin="normal"
+                      variant="standard"
+                      multiline
+                      rows={1}
+                    />
+                  )}
+                />
+              </Grid>
               <Grid size={{ xs: 6, md: 4 }} sx={{ alignContent: 'center' }}>
                 <LocalizationProvider dateAdapter={AdapterDayjs}>
                   <Controller

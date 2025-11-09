@@ -115,6 +115,7 @@ const StitchingSchema = new mongoose.Schema({
   vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'StitchingVendor', required: true },
   quantity: { type: Number, required: true, min: 1 },
   quantityShort: { type: Number, default: 0, min: 0 },
+  quantityShortDesc: { type: String },
   rate: { type: Number, required: true, min: 0 },
   threadColors: [{
     color: { type: String, required: true },
@@ -139,7 +140,8 @@ const WashingSchema = new mongoose.Schema({
     washCreation: { type: String, required: true },
     quantity: { type: Number, required: true, min: 1 },
     rate: { type: Number, required: true, min: 0 },
-    quantityShort: { type: Number, default: 0, min: 0 }
+    quantityShort: { type: Number, default: 0, min: 0 },
+    quantityShortDesc: { type: String }
   }],
   description: { type: String },
   createdAt: { type: Date, default: Date.now }
@@ -157,6 +159,7 @@ const FinishingSchema = new mongoose.Schema({
   vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'FinishingVendor', required: true },
   quantity: { type: Number, required: true, min: 1 },
   quantityShort: { type: Number, default: 0, min: 0 },
+  quantityShortDesc: { type: String },
   rate: { type: Number, required: true, min: 0 },
   description: { type: String },
   createdAt: { type: Date, default: Date.now }

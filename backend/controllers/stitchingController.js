@@ -10,8 +10,8 @@ const parseLotNumber = (lotNumber) => {
     throw new Error('Invalid lotNumber format. Expected format: SERIES/SUBSERIES or SERIES/SUBSERIES/NUM');
   }
   const [series, subSeries, lotNum] = parts;
-  if (!/^[A-Z]$/.test(series)) {
-    throw new Error('Series must be a single uppercase letter');
+  if (!/^[A-Z]+$/.test(series)) {
+    throw new Error('Series must contain one or more uppercase letters only');
   }
   if (!/^\d+$/.test(subSeries)) {
     throw new Error('Sub-series must be a number');
@@ -181,7 +181,7 @@ const createStitching = async (req, res) => {
 
 const updateStitching = async (req, res) => {
   const { id } = req.params;
-  const { lotNumber, orderId, invoiceNumber, vendorId, quantity, quantityShort, rate, threadColors, date, stitchOutDate, description } = req.body;
+  const { lotNumber, orderId, invoiceNumber, vendorId, quantity, quantityShort, quantityShortDesc, rate, threadColors, date, stitchOutDate, description } = req.body;
 
   // Validate threadColors quantities
   if (threadColors && quantity) {
@@ -236,6 +236,7 @@ const updateStitching = async (req, res) => {
   if (vendorId) stitching.vendorId = vendorId;
   if (quantity) stitching.quantity = quantity;
   if (quantityShort !== undefined) stitching.quantityShort = quantityShort;
+  if (quantityShortDesc) stitching.quantityShortDesc = quantityShortDesc;
   if (rate !== undefined) stitching.rate = rate;
   if (threadColors) stitching.threadColors = threadColors;
   if (date) stitching.date = date;

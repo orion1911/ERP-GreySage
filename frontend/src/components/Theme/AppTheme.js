@@ -11,7 +11,12 @@ import { getDesignTokens, typography, shadows, shape } from './themePrimitives';
 import { ThemeProvider as CustomThemeProvider } from './ThemeContext';
 
 function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDarkModeProp }) {
-  const [darkMode, setDarkMode] = React.useState(true);
+  // Initialize darkMode from localStorage, default to true (dark mode)
+  const [darkMode, setDarkMode] = React.useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+
   // const [darkMode, setDarkMode] = React.useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   // React.useEffect(() => {
@@ -24,6 +29,11 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
   //   document.documentElement.setAttribute('data-mui-color-scheme', darkMode ? 'dark' : 'light');
   //   return () => mediaQuery.removeEventListener('change', handleChange);
   // }, [darkMode, setDarkModeProp]);
+
+  // Apply data-mui-color-scheme attribute on mount and when darkMode changes
+  React.useEffect(() => {
+    document.documentElement.setAttribute('data-mui-color-scheme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
 
   const theme = React.useMemo(() => {
     const mode = darkMode ? 'dark' : 'light';
@@ -282,13 +292,13 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
             },
           },
         },
-        MuiMenu: {
-          styleOverrides: {
-            MuiPaper: ({ theme }) => ({
-              backgroundColor: theme.palette.background.default,
-            }),
-          },
-        },
+        // MuiMenu: {
+        //   styleOverrides: {
+        //     MuiPaper: ({ theme }) => ({
+        //       backgroundColor: theme.palette.background.default,
+        //     }),
+        //   },
+        // },
       },
     });
   }, [darkMode, variant]);
@@ -296,6 +306,7 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
   const toggleDarkMode = () => {
     const newMode = !darkMode;
     setDarkMode(newMode);
+    localStorage.setItem('darkMode', JSON.stringify(newMode));
     document.documentElement.setAttribute('data-mui-color-scheme', newMode ? 'dark' : 'light');
   };
 

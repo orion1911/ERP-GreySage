@@ -304,7 +304,7 @@ function StitchingGrid({
       cell: ({ row }) => (
         <Box>
           {row.original.threadColors.map((tc, index) => (
-            <Typography key={index} variant="body2">
+            <Typography key={index} variant="subtitle2" style={{ fontSize: '.8rem'}}>
               {tc.color}, {tc.quantity} pcs
             </Typography>
           ))}

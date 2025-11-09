@@ -1,4 +1,4 @@
-const { Order, Counter, Client, FitStyle } = require('../mongodb_schema');
+const { Order, Counter, Client, FitStyle, Lot } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
 
 const createOrder = async (req, res) => {
@@ -110,12 +110,30 @@ const getOrders = async (req, res) => {
   const { search } = req.query;
   const query = search ? { orderId: { $regex: search, $options: 'i' } } : {};
   const orders = await Order.find(query).populate('clientId fitStyleId');
-  res.json(orders);
+
+  const lotPromises = orders.map(async (item) => {
+    const lots = await Lot.find({ orderId: item._id });
+    if (lots.length > 0) {
+      const lotStatus = lots.map(x => x.status);
+      item.status = Math.min(...lotStatus);
+    }
+    return item;
+  });
+
+  const updatedOrders = await Promise.all(lotPromises);
+
+  res.json(updatedOrders);
 };
 
 const getOrderById = async (req, res) => {
   const order = await Order.findById(req.params.id).populate('clientId fitStyleId');
   if (!order) return res.status(404).json({ error: 'Order not found' });
+
+  const lots = await Lot.find({ orderId: order._id });
+    if (lots.length > 0) {
+      const lotStatus = lots.map(x => x.status);
+      order.status = Math.min(...lotStatus);
+    }
   res.json(order);
 };
 

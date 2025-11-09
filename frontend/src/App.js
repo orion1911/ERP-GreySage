@@ -179,14 +179,12 @@ function App() {
   LicenseInfo.setLicenseKey(process.env.REACT_APP_MUI_LICENSE_KEY);
 
   const [variant, setVariant] = React.useState('purple');
-  const [darkMode, setDarkMode] = React.useState(false);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   return (
     <>
-      <AppTheme variant={variant} setVariant={setVariant} setDarkMode={setDarkMode}>
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login isMobile={isMobile} variant={variant} setVariant={setVariant} />} />

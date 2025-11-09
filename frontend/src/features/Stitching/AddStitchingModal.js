@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
-import { Close as CloseIcon, Delete as DeleteIcon, Save as SaveIcon, Add as AddIcon  } from '@mui/icons-material';
+import { Close as CloseIcon, Delete as DeleteIcon, Save as SaveIcon, Add as AddIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -22,6 +22,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
     vendorId: '',
     quantity: '',
     quantityShort: '',
+    quantityShortDesc: '',
     rate: '',
     threadColors: [{ color: '', quantity: '' }],
     date: dayjs(new Date()),
@@ -47,6 +48,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
       setValue('vendorId', editRecord.vendorId?._id || '');
       setValue('quantity', editRecord.quantity || '');
       setValue('quantityShort', editRecord.quantityShort || '');
+      setValue('quantityShortDesc', editRecord.quantityShortDesc || '');
       setValue('rate', editRecord.rate || '');
       setValue('threadColors', editRecord.threadColors?.length > 0 ? editRecord.threadColors : [{ color: '', quantity: '' }]);
       setValue('date', editRecord.date ? dayjs(editRecord.date) : dayjs(new Date()));
@@ -63,8 +65,8 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
     if (parts.length !== 2 && parts.length !== 3) {
       return 'SERIES/SUBSERIES/NUM (A/1/3)';
     }
-    if (!/^[A-Z]$/.test(parts[0])) {
-      return 'Series must be a single uppercase letter';
+    if (!/^[A-Z]+$/.test(parts[0])) {
+      return 'Series must contain one or more uppercase letters';
     }
     if (!/^\d+$/.test(parts[1])) {
       return 'Sub-series must be a number';
@@ -81,7 +83,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
       showSnackbar(`Sum of thread color quantities (${totalThreadQuantity}) must equal total quantity (${data.quantity})`, 'error');
       return;
     }
-    
+
     const formattedData = {
       ...data,
       lotNumber: data.lotNumber.toUpperCase().replaceAll(' ', ''),
@@ -89,7 +91,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
       quantity: parseInt(data.quantity) || '',
       quantityShort: parseInt(data.quantityShort) || '',
       rate: parseInt(data.rate) || '',
-      threadColors: data.threadColors.map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity)})),
+      threadColors: data.threadColors.map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity) })),
       date: data.date.toISOString(),
       stitchOutDate: data.stitchOutDate ? data.stitchOutDate.toISOString() : null,
     };
@@ -247,7 +249,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                 render={({ field }) => (
                   <TextField
                     {...field}
-                    label="Quantity"
+                    label="Total Quantity"
                     fullWidth
                     margin="normal"
                     variant="standard"
@@ -342,6 +344,47 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                 </Grid>
               </React.Fragment>
             ))}
+            {isEditMode && <><Grid size={{ xs: 6, md: 4 }}>
+              <Controller
+                name="quantityShort"
+                control={control}
+                rules={{
+                  // required: 'Quantity is required',
+                  pattern: {
+                    value: /^\d+$/,
+                    message: 'Only numbers allowed',
+                  },
+                }}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    label="Quantity Short"
+                    fullWidth
+                    margin="normal"
+                    variant="standard"
+                    error={!!errors.quantityShort}
+                    helperText={errors.quantityShort?.message}
+                  />
+                )}
+              />
+            </Grid>
+              <Grid size={{ xs: 6, md: 8 }}>
+                <Controller
+                  name="quantityShortDesc"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      label="Shortage Description"
+                      fullWidth
+                      margin="normal"
+                      variant="standard"
+                      multiline
+                      rows={1}
+                    />
+                  )}
+                />
+              </Grid></>}
             <Grid size={{ xs: 12 }}>
               <Controller
                 name="description"

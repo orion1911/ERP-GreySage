@@ -179,14 +179,14 @@ function App() {
   LicenseInfo.setLicenseKey(process.env.REACT_APP_MUI_LICENSE_KEY);
 
   const [variant, setVariant] = React.useState('purple');
-  const [darkMode, setDarkMode] = React.useState(false);
+  // Removed unused darkMode state; persistence is now handled internally in AppTheme.js
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   return (
     <>
-      <AppTheme variant={variant} setVariant={setVariant} setDarkMode={setDarkMode}>
+      <AppTheme variant={variant} setVariant={setVariant}>
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login isMobile={isMobile} variant={variant} setVariant={setVariant} />} />

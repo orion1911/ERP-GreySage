@@ -30,6 +30,7 @@ function App(conf) {
     let cscale; updateCScale(chroma('#d11f6c'));
 
     const mouse = new THREE.Vector2();
+    const smoothedMouse = new THREE.Vector2();
 
     init();
 
@@ -38,15 +39,18 @@ function App(conf) {
         document.body.appendChild(renderer.domElement);
         camera = new THREE.PerspectiveCamera(conf.fov);
         camera.position.z = conf.cameraZ;
-        // cameraCtrl = new THREE.OrbitControls(camera); //3d interaction
 
         updateSize();
         window.addEventListener('resize', updateSize, false);
 
         if (!('ontouchstart' in window || navigator.maxTouchPoints > 0)) {
             document.addEventListener('mousemove', e => {
-                mouse.x = (e.clientX / width) * 2 - 1;
-                mouse.y = -(e.clientY / height) * 2 + 1;
+                // Update target mouse position
+                const targetX = (e.clientX / width) * 2 - 1;
+                const targetY = -(e.clientY / height) * 2 + 1;
+                // Smoothly interpolate towards target position
+                smoothedMouse.x += (targetX - smoothedMouse.x) * 0.05; // 0.1 controls smoothing speed
+                smoothedMouse.y += (targetY - smoothedMouse.y) * 0.05;
             });
         }
 
@@ -122,9 +126,9 @@ function App(conf) {
         noiseConf.coef = conf.noiseCoef * 0.00012;
         noiseConf.height = conf.heightCoef;
         noiseConf.time = Date.now() * conf.timeCoef * 0.000002;
-        noiseConf.mouseX = mouse.x / 2;
-        noiseConf.mouseY = mouse.y / 2;
-        noiseConf.mouse = mouse.x + mouse.y;
+        noiseConf.mouseX = smoothedMouse.x / 2; // Use smoothed mouse position
+        noiseConf.mouseY = smoothedMouse.y / 2;
+        noiseConf.mouse = smoothedMouse.x + smoothedMouse.y;
     }
 
     function updateColors() {

@@ -72,7 +72,7 @@ const createFinishing = async (req, res) => {
 
 const updateFinishing = async (req, res) => {
   const { id } = req.params;
-  const { vendorId, quantityShort, rate, date, finishOutDate, description, quantity } = req.body;
+  const { vendorId, quantityShort, quantityShortDesc, rate, date, finishOutDate, description, quantity } = req.body;
 
   const finishing = await Finishing.findById(id);
   if (!finishing) return res.status(404).json({ error: 'Finishing record not found' });
@@ -80,8 +80,9 @@ const updateFinishing = async (req, res) => {
   const washing = await Washing.findOne({ lotId: finishing.lotId._id });
   if (!washing) return res.status(400).json({ error: 'Washing record not found for this lot' });
 
-  if (quantity !== undefined && quantity !== washing.quantity) {
-    return res.status(400).json({ error: `Updated quantity (${quantity}) must match washing quantity (${washing.quantity})` });
+  const totalWashQuantity = washing.washDetails.reduce((sum, detail) => sum + parseInt(detail.quantity || 0), 0);
+  if (quantity !== undefined && quantity !== totalWashQuantity) {
+    return res.status(400).json({ error: `Updated quantity (${quantity}) must match washing quantity (${totalWashQuantity})` });
   }
 
   if (vendorId) finishing.vendorId = vendorId;
@@ -93,6 +94,7 @@ const updateFinishing = async (req, res) => {
   if (description) finishing.description = description;
   if (quantity !== undefined) finishing.quantity = quantity;
   if (quantityShort !== undefined) finishing.quantityShort = quantityShort;
+  if (quantityShortDesc) finishing.quantityShortDesc = quantityShortDesc;
 
   try {
     await finishing.save();

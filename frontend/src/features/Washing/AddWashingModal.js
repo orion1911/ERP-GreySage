@@ -273,7 +273,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     )}
                   />
                 </Grid>
-                <Grid size={{ xs: 9, md: 9 }}>
+                <Grid size={{ xs: 6, md: 6 }}>
                   <Controller
                     name={`washDetails[${index}].washCreation`}
                     control={control}
@@ -295,7 +295,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                     )}
                   />
                 </Grid>
-                {isEditMode && (
+                {isEditMode && <>
                   <Grid size={{ xs: 3, md: 3 }}>
                     <Controller
                       name={`washDetails[${index}].quantityShort`}
@@ -320,7 +320,24 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
                       )}
                     />
                   </Grid>
-                )}
+                  <Grid size={{ xs: 3, md: 3 }}>
+                    <Controller
+                      name={`washDetails[${index}].quantityShortDesc`}
+                      control={control}
+                      render={({ field }) => (
+                        <TextField
+                          {...field}
+                          label="Short Desc"
+                          fullWidth
+                          margin="normal"
+                          variant="standard"
+                          multiline
+                          rows={1}
+                        />
+                      )}
+                    />
+                  </Grid>
+                </>}
                 <Grid size={{ xs: 3, md: 3 }} sx={{ alignContent: 'center' }}>
                   {index > 0 && <IconButton sx={{ mt: 2 }} onClick={() => remove(index)} color="error">
                     <DeleteIcon />

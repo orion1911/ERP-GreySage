@@ -168,9 +168,9 @@ const apiService = {
       }
     },
 
-    updateStitchingStatus: async (stitchingData) => {
+    updateStitchingStatus: async (id, stitchOutDate) => {
       try {
-        const response = await axiosInstance.put('api/stitching', stitchingData);
+        const response = await axiosInstance.put(`api/stitching/${id}`, { stitchOutDate });
         return response.data;
       } catch (error) {
         throw error;

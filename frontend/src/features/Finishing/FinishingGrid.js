@@ -5,7 +5,7 @@ import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Typog
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { MorphDateTextField } from '../../components/MuiCustom';
+import { MorphDateIconField, MorphDateTextField } from '../../components/MuiCustom';
 import { Edit as EditIcon } from '@mui/icons-material';
 import { NoRecordRow, TableRowsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
@@ -93,7 +93,16 @@ function FinishingGrid({ finishingRecords, hasFinishing, lotId, handleUpdateFini
                     <TableCell align='center'>{fr.rate}</TableCell>
                     <TableCell align='center'>
                       {fr.finishOutDate ? (
-                        getFormattedDate(fr.finishOutDate)
+                        readOnly ? (getFormattedDate(fr.finishOutDate)) : (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+                            {getFormattedDate(fr.finishOutDate)}
+                            <LocalizationProvider dateAdapter={AdapterDayjs}>
+                              <MorphDateIconField
+                                value={null}
+                                onChange={(e) => handleUpdateFinishOut(lotId, fr._id, e)}
+                              />
+                            </LocalizationProvider>
+                          </div>)
                       ) : (
                         !readOnly &&
                         <LocalizationProvider dateAdapter={AdapterDayjs}>

@@ -258,13 +258,13 @@ const updateStitching = async (req, res) => {
 };
 
 const updateStitchingStatus = async (req, res) => {
-  const { id, stitchOutDate } = req.body;
+  const { stitchOutDate } = req.body;
 
   // Check totalQuantity against existing stitching entries
-  const stitch = await Stitching.findById(id);
+  const stitch = await Stitching.findById(req.params.id);
   if (!stitch) return res.status(404).json({ error: 'Stitching record not found for update operation' });
 
-  const stitching = await Stitching.findByIdAndUpdate(id, { stitchOutDate }, { new: true, runValidators: true });
+  const stitching = await Stitching.findByIdAndUpdate(req.params.id, { stitchOutDate }, { new: true, runValidators: true });
   if (!stitching) return res.status(404).json({ error: 'Stitching record not found' });
   // await logAction(req.user.userId, 'update_stitching', 'Stitching', stitching._id, 'Stitch out date updated');
   res.json(stitching);

@@ -6,7 +6,7 @@ import { getFormattedDate } from '../../components/Validators';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { MorphDateTextField } from '../../components/MuiCustom';
+import { MorphDateIconField, MorphDateTextField } from '../../components/MuiCustom';
 
 function FinishingGridSx({
   processedRecords,
@@ -71,7 +71,16 @@ function FinishingGridSx({
                   {record.finishOutDate ? (
                     <Typography variant="body2">
                       <strong>Finish Out</strong><br />
-                      {getFormattedDate(record.finishOutDate)}
+                      {readOnly ? (getFormattedDate(record.finishOutDate)) : (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+                          {getFormattedDate(record.finishOutDate)}
+                          <LocalizationProvider dateAdapter={AdapterDayjs}>
+                            <MorphDateIconField
+                              value={null}
+                              onChange={(e) => handleUpdateFinishOut(lotId, record._id, e)}
+                            />
+                          </LocalizationProvider>
+                        </div>)}
                     </Typography>
                   ) : (
                     <>

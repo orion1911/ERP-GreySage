@@ -31,7 +31,7 @@ export const MorphDateIconField = React.forwardRef((props, ref) => {
         },
         openPickerButton: {
           children: <EditCalendar />,
-          sx: { p: 1 },
+          sx: { p: 0, m: 0 },
         },
       }}
     />

@@ -159,7 +159,7 @@ const updateWashing = async (req, res) => {
 const updateWashingStatus = async (req, res) => {
   const { washOutDate } = req.body;
   try {
-    const washing = await Washing.findByIdAndUpdate(req.params.id, { washOutDate }, { new: true });
+    const washing = await Washing.findByIdAndUpdate(req.params.id, { washOutDate }, { new: true }).populate('lotId orderId vendorId');
     if (!washing) return res.status(404).json({ error: 'Washing record not found' });
     // await logAction(req.user.userId, 'update_washing', 'Washing', washing._id, 'Wash out date updated');
     res.json(washing);

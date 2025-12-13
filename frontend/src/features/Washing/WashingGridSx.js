@@ -6,7 +6,7 @@ import { getFormattedDate } from '../../components/Validators';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { MorphDateTextField } from '../../components/MuiCustom';
+import { MorphDateIconField, MorphDateTextField } from '../../components/MuiCustom';
 
 function WashingGridSx({
   processedRecords,
@@ -61,7 +61,16 @@ function WashingGridSx({
                   {record.washOutDate ? (
                     <Typography variant="body2">
                       <strong>Wash Out</strong><br />
-                      {getFormattedDate(record.washOutDate)}
+                      {readOnly ? (getFormattedDate(record.washOutDate)) : (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+                          {getFormattedDate(record.washOutDate)}
+                          <LocalizationProvider dateAdapter={AdapterDayjs}>
+                            <MorphDateIconField
+                              value={null}
+                              onChange={(e) => handleUpdateWashOut(lotId, record._id, e)}
+                            />
+                          </LocalizationProvider>
+                        </div>)}
                     </Typography>
                   ) : (
                     <>

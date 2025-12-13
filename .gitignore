@@ -11,6 +11,8 @@ frontend/node_modules
 
 frontendv2
 
+build
+
 .env
 *.zip
 .env.development

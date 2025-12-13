@@ -12,7 +12,7 @@ import { getFormattedDate } from '../../components/Validators';
 import OrderStatusChip from '../../components/OrderStatusChip';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { MorphDateIconField } from '../../components/MuiCustom';
+import { MorphDateIconField, MorphDateTextField } from '../../components/MuiCustom';
 
 function StitchingGrid({
   stitchingRecords,
@@ -304,7 +304,7 @@ function StitchingGrid({
       cell: ({ row }) => (
         <Box>
           {row.original.threadColors.map((tc, index) => (
-            <Typography key={index} variant="subtitle2" style={{ fontSize: '.8rem'}}>
+            <Typography key={index} variant="subtitle2" style={{ fontSize: '.8rem' }}>
               {tc.color}, {tc.quantity} pcs
             </Typography>
           ))}
@@ -314,9 +314,19 @@ function StitchingGrid({
     {
       accessorKey: 'stitchOut',
       header: 'STITCH OUT',
+      size: 80,
       cell: ({ row }) => (
         row.original.stitchOutDate ? (
-          getFormattedDate(row.original.stitchOutDate)
+          readOnly ? (getFormattedDate(row.original.stitchOutDate)) : (
+            <div style={{ display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+              {getFormattedDate(row.original.stitchOutDate)}
+              <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <MorphDateIconField
+                  value={null}
+                  onChange={(e) => handleUpdateStitchOut(row.original._id, e)}
+                />
+              </LocalizationProvider>
+            </div>)
         ) : (
           !readOnly && (
             <LocalizationProvider dateAdapter={AdapterDayjs}>

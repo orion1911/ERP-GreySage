@@ -5,7 +5,7 @@ import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Typog
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { MorphDateTextField } from '../../components/MuiCustom';
+import { MorphDateIconField, MorphDateTextField } from '../../components/MuiCustom';
 import { Edit as EditIcon, ArrowUpward, ArrowDownward, FilterList } from '@mui/icons-material';
 import { NoRecordRow, TableRowsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
@@ -94,9 +94,17 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
                       </Grid>
                     </TableCell>
                     <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
-                      {/* {wr.washOutDate ?? getFormattedDate(wr.washOutDate)} */}
                       {wr.washOutDate ? (
-                        getFormattedDate(wr.washOutDate)
+                        readOnly ? (getFormattedDate(wr.washOutDate)) : (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+                            {getFormattedDate(wr.washOutDate)}
+                            <LocalizationProvider dateAdapter={AdapterDayjs}>
+                              <MorphDateIconField
+                                value={null}
+                                onChange={(e) => handleUpdateWashOut(lotId, wr._id, e)}
+                              />
+                            </LocalizationProvider>
+                          </div>)
                       ) : (
                         !readOnly &&
                         <LocalizationProvider dateAdapter={AdapterDayjs}>

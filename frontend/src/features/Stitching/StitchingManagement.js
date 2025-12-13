@@ -101,7 +101,7 @@ function StitchingManagement() {
   };
 
   const handleUpdateStitchOut = (id, stitchOutDate) => {
-    apiService.stitching.updateStitchingStatus(id, { stitchOutDate })
+    apiService.stitching.updateStitchingStatus(id, stitchOutDate)
       .then(res => {
         setStitchingRecords(stitchingRecords.map(record => record._id === id ? res : record));
       });

@@ -7,6 +7,9 @@ import { getFormattedDate } from '../../components/Validators';
 import WashingGrid from '../Washing/WashingGrid';
 import FinishingGrid from '../Finishing/FinishingGrid';
 import OrderStatusChip from '../../components/OrderStatusChip';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { MorphDateIconField } from '../../components/MuiCustom';
 
 
 function StitchingGridSx({
@@ -298,7 +301,16 @@ function StitchingGridSx({
                   <Grid size={{ xs: 4, sm: 4 }}>
                     <Typography variant="body2">
                       <strong>Stitch Out</strong><br />
-                      {record.stitchOutDate ? getFormattedDate(record.stitchOutDate) : 'N/A'}
+                      {readOnly ? (getFormattedDate(record.stitchOutDate)) : (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+                          {record.stitchOutDate && getFormattedDate(record.stitchOutDate)}
+                          <LocalizationProvider dateAdapter={AdapterDayjs}>
+                            <MorphDateIconField
+                              value={null}
+                              onChange={(e) => handleUpdateStitchOut(record._id, e)}
+                            />
+                          </LocalizationProvider>
+                        </div>)}
                     </Typography>
                   </Grid>
                   <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>

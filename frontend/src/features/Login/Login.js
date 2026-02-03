@@ -131,7 +131,7 @@ export default function Login({ isMobile, variant, setVariant }) {
         .then((res) => {
           localStorage.setItem('token', res.token);
           localStorage.setItem('user', JSON.stringify(res.user));
-          navigate('/dashboard');
+          navigate('/dashboardxl');
         })
         .catch((err) => { alert(err.response?.error || 'Login failed'); setLoading(false) });
     }

@@ -40,6 +40,7 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
   const drawerWidth = collapsed ? 60 : 240;
 
   const navItems = [
+    { label: 'Dashboard XL', path: '/dashboardxl', icon: <LeaderboardIcon /> },
     { label: 'Dashboard', path: '/dashboard', icon: <LeaderboardIcon /> },
     { label: 'Orders', path: '/orders', icon: <ShoppingCartIcon /> },
     { label: 'Lots', path: '/lots', icon: <HorizontalSplit /> },

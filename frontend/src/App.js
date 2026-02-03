@@ -17,6 +17,7 @@ import InvoiceManagement from './features/Admin/InvoiceManagement';
 import Reports from './features/Admin/Reports';
 import AuditLogs from './features/Admin/AuditLogs';
 import Dashboard from './features/Admin/Dashboard';
+import DashboardExcel from './features/Admin/DashboardExcel';
 import ClientCatalog from './features/Catalogs/ClientCatalog';
 import ProductCatalog from './features/Catalogs/ProductCatalog';
 import FabricVendorCatalog from './features/Catalogs/FabricVendorCatalog';
@@ -31,7 +32,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user'));
   if (!token) return <Navigate to="/login" />;
-  if (allowedRoles && !allowedRoles.includes(user?.role)) return <Navigate to="/dashboard" />;
+  if (allowedRoles && !allowedRoles.includes(user?.role)) return <Navigate to="/dashboardxl" />;
   return children;
 };
 
@@ -192,6 +193,7 @@ function App() {
             <Route path="/login" element={<Login isMobile={isMobile} variant={variant} setVariant={setVariant} />} />
             <Route path="/register" element={<Register isMobile={isMobile} variant={variant} setVariant={setVariant} />} />
             <Route element={<AuthenticatedLayout isMobile={isMobile} variant={variant} setVariant={setVariant} />}>
+              <Route path="/dashboardxl" element={<DashboardExcel />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/orders" element={<OrderManagement />} />
               <Route path="/stitching/:orderId" element={<StitchingManagement />} />

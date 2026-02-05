@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python servertest.py:*)",
+      "Bash(timeout:*)",
+      "Bash(pip install:*)",
+      "Bash(ping:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}

@@ -25,6 +25,8 @@ import { PieChart } from '@mui/x-charts/PieChart';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import GridViewIcon from '@mui/icons-material/GridView';
 import ContentCutIcon from '@mui/icons-material/ContentCut';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import BoltIcon from '@mui/icons-material/Bolt';
 import LocalLaundryServiceIcon from '@mui/icons-material/LocalLaundryService';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -40,6 +42,7 @@ const ProductionDashboard = () => {
     const [error, setError] = useState('');
     const [processingTime, setProcessingTime] = useState('—');
     const [timestamp, setTimestamp] = useState('—');
+    const [expandedRows, setExpandedRows] = useState({});
 
     // KPI Data
     const [kpiData, setKpiData] = useState({
@@ -137,6 +140,7 @@ const ProductionDashboard = () => {
     const clientTop = clientSummary.slice(0, 10);
     const clientLabels = clientTop.map((r) => r.CLIENT || '');
     const clientSeries = [
+        { label: 'Total', data: clientTop.map((r) => r.TOTAL || 0) },
         { label: 'Making', data: clientTop.map((r) => r.MAKING || 0) },
         { label: 'In Washing', data: clientTop.map((r) => r.IN_WASHING || 0) },
         { label: 'Completed', data: clientTop.map((r) => r.OUT_WASHING || 0) },
@@ -227,7 +231,7 @@ const ProductionDashboard = () => {
     );
 
     return (
-        <Container spacing={2}>
+        <Container maxWidth="xl" sx={{ pt: '0 !important', pb: 2, px: '0 !important' }}>
             {/* Header */}
             <Stack direction="row" alignItems="center" sx={{ mb: 4, mt: 1, flexWrap: 'wrap', gap: 2 }}>
                 <Stack>
@@ -238,12 +242,12 @@ const ProductionDashboard = () => {
                         icon={<BoltIcon />}
                         label={`${processingTime} ms`}
                         variant="outlined"
-                        // sx={{
-                        //     '& .MuiChip-icon': {
-                        //         color: 'success.main',
-                        //         animation: 'pulse 2.5s ease-in-out infinite',
-                        //     },
-                        // }}
+                    // sx={{
+                    //     '& .MuiChip-icon': {
+                    //         color: 'success.main',
+                    //         animation: 'pulse 2.5s ease-in-out infinite',
+                    //     },
+                    // }}
                     />
                     <Button
                         variant="contained"
@@ -311,7 +315,7 @@ const ProductionDashboard = () => {
                                                 }
                                             }]}
                                             height={300}
-                                            colors={[chartColors.coral, chartColors.amber, chartColors.teal]}
+                                            colors={[chartColors.indigo, chartColors.coral, chartColors.amber, chartColors.teal]}
                                             margin={{ left: 0, right: 0, top: 10, bottom: 40 }}
                                             slotProps={{
                                                 legend: { hidden: false },
@@ -360,6 +364,9 @@ const ProductionDashboard = () => {
                                             <TableRow>
                                                 <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Client</TableCell>
                                                 <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Total
+                                                </TableCell>
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
                                                     Making
                                                 </TableCell>
                                                 <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
@@ -376,6 +383,9 @@ const ProductionDashboard = () => {
                                                     <TableRow key={idx} hover>
                                                         <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.CLIENT}</TableCell>
                                                         <TableCell align="center">
+                                                            <Chip label={formatNumber(row.TOTAL || 0)} size="small" color="default" variant="outlined" />
+                                                        </TableCell>
+                                                        <TableCell align="center">
                                                             <Chip label={formatNumber(row.MAKING || 0)} size="small" color="error" variant="filled" />
                                                         </TableCell>
                                                         <TableCell align="center">
@@ -388,7 +398,7 @@ const ProductionDashboard = () => {
                                                 ))
                                             ) : (
                                                 <TableRow>
-                                                    <TableCell colSpan={4} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                                    <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                                                         No data available
                                                     </TableCell>
                                                 </TableRow>
@@ -412,6 +422,9 @@ const ProductionDashboard = () => {
                                             <TableRow>
                                                 <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Washer</TableCell>
                                                 <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Total
+                                                </TableCell>
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
                                                     In
                                                 </TableCell>
                                                 <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
@@ -428,6 +441,9 @@ const ProductionDashboard = () => {
                                                     <TableRow key={idx} hover>
                                                         <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.WASHER}</TableCell>
                                                         <TableCell align="center">
+                                                            <Chip label={formatNumber(row.TOTAL || 0)} size="small" color="default" variant="outlined" />
+                                                        </TableCell>
+                                                        <TableCell align="center">
                                                             <Chip label={formatNumber(row.IN_WASHING || 0)} size="small" color="primary" variant="filled" />
                                                         </TableCell>
                                                         <TableCell align="center">
@@ -440,7 +456,7 @@ const ProductionDashboard = () => {
                                                 ))
                                             ) : (
                                                 <TableRow>
-                                                    <TableCell colSpan={4} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                                    <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                                                         No data available
                                                     </TableCell>
                                                 </TableRow>
@@ -466,34 +482,96 @@ const ProductionDashboard = () => {
                             <Table>
                                 <TableHead sx={{ backgroundColor: theme.palette.action.hover }}>
                                     <TableRow>
-                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Client</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>Washing</TableCell>
-                                        <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 70, pl: 2 }}>Client</TableCell>
+                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 100 }}>
+                                            Lot Count
+                                        </TableCell>
+                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>Washer</TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
                                             Pcs
                                         </TableCell>
                                         <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                            Status
+                                            Making
+                                        </TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                            In Washing
+                                        </TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                            Completed
                                         </TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
                                     {breakdownData.length > 0 ? (
-                                        breakdownData.slice(0, 100).map((row, idx) => {
-                                            const status = row.MAKING > 0 ? 'Making' : row.OUT_WASHING > 0 && row.OUT_WASHING >= row.IN_WASHING ? 'Completed' : 'Washing';
-                                            return (
+                                        breakdownData.slice(0, 100).map((row, idx) => (
+                                            <>
                                                 <TableRow key={idx} hover>
-                                                    <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.CLIENT}</TableCell>
+                                                    <TableCell sx={{ fontWeight: 600, maxWidth: 70, pl: 2 }}>{row.CLIENT}</TableCell>
+                                                    <TableCell title={row.LOT_NO || ''} sx={{ cursor: row.LOT_COUNT > 2 ? 'pointer' : 'default', maxWidth: 100 }}>
+                                                        {row.LOT_COUNT > 0 && (
+                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                                <Chip label={row.LOT_COUNT} size="small" sx={{ minWidth: 35, bgcolor: 'primary.soft', fontWeight: 600 }} />
+                                                                <IconButton
+                                                                    onClick={() => {
+                                                                        setExpandedRows((prevExpandedRows) => ({
+                                                                            ...prevExpandedRows,
+                                                                            [idx]: !prevExpandedRows[idx],
+                                                                        }));
+                                                                    }}
+                                                                    sx={{ padding: 0, size: 'small' }}
+                                                                >
+                                                                    {expandedRows[idx] ? (
+                                                                        <ExpandMoreIcon fontSize='small' />
+                                                                    ) : (
+                                                                        <ChevronRightIcon fontSize='small' />
+                                                                    )}
+                                                                </IconButton>
+                                                                <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 80 }}>
+                                                                    {row.LOT_NO}
+                                                                </Typography>
+                                                            </Box>
+                                                        )}
+                                                    </TableCell>
                                                     <TableCell sx={{ color: 'text.secondary' }}>{row.WASHING || '—'}</TableCell>
-                                                    <TableCell align="right">{formatNumber(row.PCS || 0)}</TableCell>
                                                     <TableCell align="center">
-                                                        <Chip label={status} size="small" color={getStatusBadgeColor(status)} variant="filled" />
+                                                        <Chip label={formatNumber(row.PCS || 0)} size="small" color="default" variant="outlined" />
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        {row.MAKING > 0 && <Chip label={formatNumber(row.MAKING)} size="small" color="error" variant="filled" />}
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        {row.IN_WASHING > 0 && <Chip label={formatNumber(row.IN_WASHING)} size="small" color="primary" variant="filled" />}
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        {row.OUT_WASHING > 0 && <Chip label={formatNumber(row.OUT_WASHING)} size="small" color="success" variant="filled" />}
                                                     </TableCell>
                                                 </TableRow>
-                                            );
-                                        })
+                                                {expandedRows[idx] && (
+                                                    <TableRow
+                                                        sx={{
+                                                            backgroundColor: 'background.paper',
+                                                            border: 0,
+                                                            '&:last-child td, &:last-child th': { border: 0 },
+                                                        }}
+                                                    >
+                                                        <TableCell colSpan={6} sx={{ pl: 2 }}>
+                                                            {row.LOT_NO.split(',').map((lotNo, lotIdx) => (
+                                                                <>
+                                                                    <Chip key={lotNo} label={lotNo} size="small" sx={{ bgcolor: 'primary.soft' }} />&nbsp;
+                                                                    {/* <Typography key={lotNo} variant="caption" sx={{ color: 'text.secondary' }}>
+                                                                    {lotIdx > 0 && '\n'}
+                                                                    {lotNo}
+                                                                </Typography> */}
+                                                                </>
+                                                            ))}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+                                            </>
+                                        ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={4} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                            <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                                                 No data available
                                             </TableCell>
                                         </TableRow>
@@ -510,9 +588,6 @@ const ProductionDashboard = () => {
                             Last updated: {timestamp}
                         </Typography>
                         <Box sx={{ width: 3, height: 3, borderRadius: '50%', backgroundColor: 'text.secondary' }} />
-                        {/* <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Production Tracker v2
-            </Typography> */}
                     </Stack>
                 </>
             )}

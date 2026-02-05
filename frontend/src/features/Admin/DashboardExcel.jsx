@@ -25,6 +25,8 @@ import { PieChart } from '@mui/x-charts/PieChart';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import GridViewIcon from '@mui/icons-material/GridView';
 import ContentCutIcon from '@mui/icons-material/ContentCut';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import BoltIcon from '@mui/icons-material/Bolt';
 import LocalLaundryServiceIcon from '@mui/icons-material/LocalLaundryService';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -40,6 +42,7 @@ const ProductionDashboard = () => {
     const [error, setError] = useState('');
     const [processingTime, setProcessingTime] = useState('—');
     const [timestamp, setTimestamp] = useState('—');
+    const [expandedRows, setExpandedRows] = useState({});
 
     // KPI Data
     const [kpiData, setKpiData] = useState({
@@ -228,7 +231,7 @@ const ProductionDashboard = () => {
     );
 
     return (
-        <Container spacing={2}>
+        <Container maxWidth="xl" sx={{ pt: '0 !important', pb: 2, px: '0 !important' }}>
             {/* Header */}
             <Stack direction="row" alignItems="center" sx={{ mb: 4, mt: 1, flexWrap: 'wrap', gap: 2 }}>
                 <Stack>
@@ -239,12 +242,12 @@ const ProductionDashboard = () => {
                         icon={<BoltIcon />}
                         label={`${processingTime} ms`}
                         variant="outlined"
-                        // sx={{
-                        //     '& .MuiChip-icon': {
-                        //         color: 'success.main',
-                        //         animation: 'pulse 2.5s ease-in-out infinite',
-                        //     },
-                        // }}
+                    // sx={{
+                    //     '& .MuiChip-icon': {
+                    //         color: 'success.main',
+                    //         animation: 'pulse 2.5s ease-in-out infinite',
+                    //     },
+                    // }}
                     />
                     <Button
                         variant="contained"
@@ -479,7 +482,10 @@ const ProductionDashboard = () => {
                             <Table>
                                 <TableHead sx={{ backgroundColor: theme.palette.action.hover }}>
                                     <TableRow>
-                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Client</TableCell>
+                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 70, pl: 2 }}>Client</TableCell>
+                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 100 }}>
+                                            Lot Count
+                                        </TableCell>
                                         <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>Washer</TableCell>
                                         <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
                                             Pcs
@@ -493,40 +499,75 @@ const ProductionDashboard = () => {
                                         <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
                                             Completed
                                         </TableCell>
-                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                            Lots
-                                        </TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
                                     {breakdownData.length > 0 ? (
                                         breakdownData.slice(0, 100).map((row, idx) => (
-                                            <TableRow key={idx} hover>
-                                                <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.CLIENT}</TableCell>
-                                                <TableCell sx={{ color: 'text.secondary' }}>{row.WASHING || '—'}</TableCell>
-                                                <TableCell align="center">
-                                                    <Chip label={formatNumber(row.PCS || 0)} size="small" color="default" variant="outlined" />
-                                                </TableCell>
-                                                <TableCell align="center">
-                                                    {row.MAKING > 0 && <Chip label={formatNumber(row.MAKING)} size="small" color="error" variant="filled" />}
-                                                </TableCell>
-                                                <TableCell align="center">
-                                                    {row.IN_WASHING > 0 && <Chip label={formatNumber(row.IN_WASHING)} size="small" color="primary" variant="filled" />}
-                                                </TableCell>
-                                                <TableCell align="center">
-                                                    {row.OUT_WASHING > 0 && <Chip label={formatNumber(row.OUT_WASHING)} size="small" color="success" variant="filled" />}
-                                                </TableCell>
-                                                <TableCell title={row.LOT_NO || ''} sx={{ cursor: row.LOT_COUNT > 0 ? 'help' : 'default' }}>
-                                                    {row.LOT_COUNT > 0 && (
-                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                            <Chip label={row.LOT_COUNT} size="small" sx={{ minWidth: 28, bgcolor: 'primary.soft', color: 'primary.main', fontWeight: 600 }} />
-                                                            <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 }}>
-                                                                {row.LOT_NO}
-                                                            </Typography>
-                                                        </Box>
-                                                    )}
-                                                </TableCell>
-                                            </TableRow>
+                                            <>
+                                                <TableRow key={idx} hover>
+                                                    <TableCell sx={{ fontWeight: 600, maxWidth: 70, pl: 2 }}>{row.CLIENT}</TableCell>
+                                                    <TableCell title={row.LOT_NO || ''} sx={{ cursor: row.LOT_COUNT > 2 ? 'pointer' : 'default', maxWidth: 100 }}>
+                                                        {row.LOT_COUNT > 0 && (
+                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                                <Chip label={row.LOT_COUNT} size="small" sx={{ minWidth: 35, bgcolor: 'primary.soft', fontWeight: 600 }} />
+                                                                <IconButton
+                                                                    onClick={() => {
+                                                                        setExpandedRows((prevExpandedRows) => ({
+                                                                            ...prevExpandedRows,
+                                                                            [idx]: !prevExpandedRows[idx],
+                                                                        }));
+                                                                    }}
+                                                                    sx={{ padding: 0, size: 'small' }}
+                                                                >
+                                                                    {expandedRows[idx] ? (
+                                                                        <ExpandMoreIcon fontSize='small' />
+                                                                    ) : (
+                                                                        <ChevronRightIcon fontSize='small' />
+                                                                    )}
+                                                                </IconButton>
+                                                                <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 80 }}>
+                                                                    {row.LOT_NO}
+                                                                </Typography>
+                                                            </Box>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell sx={{ color: 'text.secondary' }}>{row.WASHING || '—'}</TableCell>
+                                                    <TableCell align="center">
+                                                        <Chip label={formatNumber(row.PCS || 0)} size="small" color="default" variant="outlined" />
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        {row.MAKING > 0 && <Chip label={formatNumber(row.MAKING)} size="small" color="error" variant="filled" />}
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        {row.IN_WASHING > 0 && <Chip label={formatNumber(row.IN_WASHING)} size="small" color="primary" variant="filled" />}
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        {row.OUT_WASHING > 0 && <Chip label={formatNumber(row.OUT_WASHING)} size="small" color="success" variant="filled" />}
+                                                    </TableCell>
+                                                </TableRow>
+                                                {expandedRows[idx] && (
+                                                    <TableRow
+                                                        sx={{
+                                                            backgroundColor: 'background.paper',
+                                                            border: 0,
+                                                            '&:last-child td, &:last-child th': { border: 0 },
+                                                        }}
+                                                    >
+                                                        <TableCell colSpan={6} sx={{ pl: 2 }}>
+                                                            {row.LOT_NO.split(',').map((lotNo, lotIdx) => (
+                                                                <>
+                                                                    <Chip key={lotNo} label={lotNo} size="small" sx={{ bgcolor: 'primary.soft' }} />&nbsp;
+                                                                    {/* <Typography key={lotNo} variant="caption" sx={{ color: 'text.secondary' }}>
+                                                                    {lotIdx > 0 && '\n'}
+                                                                    {lotNo}
+                                                                </Typography> */}
+                                                                </>
+                                                            ))}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+                                            </>
                                         ))
                                     ) : (
                                         <TableRow>
@@ -547,9 +588,6 @@ const ProductionDashboard = () => {
                             Last updated: {timestamp}
                         </Typography>
                         <Box sx={{ width: 3, height: 3, borderRadius: '50%', backgroundColor: 'text.secondary' }} />
-                        {/* <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Production Tracker v2
-            </Typography> */}
                     </Stack>
                 </>
             )}

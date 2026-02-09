@@ -38,6 +38,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { MorphDateTextField } from '../../components/MuiCustom';
 import dayjs from 'dayjs';
+import { motion, AnimatePresence } from 'motion/react';
 import apiService from '../../services/apiService';
 import { TableRowsLoader } from '../../components/Skeleton/SkeletonLoader';
 
@@ -273,18 +274,23 @@ const Dashboard = () => {
                     ))
                 ) : (
                     <>
-                        <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-                            <KPICard label="Total Pieces" value={kpiData.totalPcs} subtitle="All tracked items" color="#5C6AC4" icon={GridViewIcon} />
-                        </Grid>
-                        <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-                            <KPICard label="Making" value={kpiData.totalMaking} subtitle="In production" color="#E8634A" icon={ContentCutIcon} />
-                        </Grid>
-                        <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-                            <KPICard label="In Washing" value={kpiData.totalInWashing} subtitle="Being processed" color="#D4920A" icon={LocalLaundryServiceIcon} />
-                        </Grid>
-                        <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-                            <KPICard label="Completed" value={kpiData.totalOutWashing} subtitle="Ready for delivery" color="#2AA89A" icon={CheckCircleIcon} />
-                        </Grid>
+                        {[
+                            { label: 'Total Pieces', value: kpiData.totalPcs, subtitle: 'All tracked items', color: '#5C6AC4', icon: GridViewIcon },
+                            { label: 'Making', value: kpiData.totalMaking, subtitle: 'In production', color: '#E8634A', icon: ContentCutIcon },
+                            { label: 'In Washing', value: kpiData.totalInWashing, subtitle: 'Being processed', color: '#D4920A', icon: LocalLaundryServiceIcon },
+                            { label: 'Completed', value: kpiData.totalOutWashing, subtitle: 'Ready for delivery', color: '#2AA89A', icon: CheckCircleIcon },
+                        ].map((card, i) => (
+                            <Grid key={card.label} size={{ xs: 6, sm: 6, md: 3 }}>
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.4, delay: i * 0.1 }}
+                                    style={{ height: '100%' }}
+                                >
+                                    <KPICard {...card} />
+                                </motion.div>
+                            </Grid>
+                        ))}
                     </>
                 )}
             </Grid>
@@ -302,64 +308,70 @@ const Dashboard = () => {
                     ))}
                 </Grid>
             ) : (
-                <Grid container spacing={3} sx={{ mb: 4, alignItems: 'stretch' }}>
-                    <Grid size={{ xs: 12, sm: 6, md: 6 }}>
-                        <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
-                            <Stack spacing={2} sx={{ flex: 1 }}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                        Client Stats
-                                    </Typography>
-                                    <Chip label="Top 10" size="small" variant="outlined" />
-                                </Box>
-                                <Box sx={{ width: '100%' }}>
-                                    <BarChart
-                                        series={clientSeries}
-                                        xAxis={[{
-                                            height: 70,
-                                            scaleType: 'band', data: clientLabels,
-                                            labelStyle: {
-                                                fontSize: 14,
-                                            },
-                                            tickLabelStyle: {
-                                                angle: -45,
-                                                fontSize: 11,
-                                            }
-                                        }]}
-                                        height={300}
-                                        colors={[chartColors.indigo, chartColors.coral, chartColors.amber, chartColors.teal]}
-                                        margin={{ left: 0, right: 0, top: 10, bottom: 40 }}
-                                        slotProps={{
-                                            legend: { hidden: false },
-                                        }}
-                                    />
-                                </Box>
-                            </Stack>
-                        </Paper>
-                    </Grid>
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.5, delay: 0.3 }}
+                >
+                    <Grid container spacing={3} sx={{ mb: 4, alignItems: 'stretch' }}>
+                        <Grid size={{ xs: 12, sm: 6, md: 6 }}>
+                            <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
+                                <Stack spacing={2} sx={{ flex: 1 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                            Client Stats
+                                        </Typography>
+                                        <Chip label="Top 10" size="small" variant="outlined" />
+                                    </Box>
+                                    <Box sx={{ width: '100%' }}>
+                                        <BarChart
+                                            series={clientSeries}
+                                            xAxis={[{
+                                                height: 70,
+                                                scaleType: 'band', data: clientLabels,
+                                                labelStyle: {
+                                                    fontSize: 14,
+                                                },
+                                                tickLabelStyle: {
+                                                    angle: -45,
+                                                    fontSize: 11,
+                                                }
+                                            }]}
+                                            height={300}
+                                            colors={[chartColors.indigo, chartColors.coral, chartColors.amber, chartColors.teal]}
+                                            margin={{ left: 0, right: 0, top: 10, bottom: 40 }}
+                                            slotProps={{
+                                                legend: { hidden: false },
+                                            }}
+                                        />
+                                    </Box>
+                                </Stack>
+                            </Paper>
+                        </Grid>
 
-                    <Grid size={{ xs: 12, sm: 6, md: 6 }}>
-                        <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
-                            <Stack spacing={2} sx={{ flex: 1 }}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                        Washing Stats
-                                    </Typography>
-                                    <Chip label="Pending" size="small" variant="outlined" />
-                                </Box>
-                                <Box sx={{ width: '100%' }}>
-                                    <PieChart
-                                        series={washerSeries}
-                                        height={320}
-                                        innerRadius={0.62}
-                                        colors={pieColors}
-                                        slotProps={{ legend: { position: 'bottom' } }}
-                                    />
-                                </Box>
-                            </Stack>
-                        </Paper>
+                        <Grid size={{ xs: 12, sm: 6, md: 6 }}>
+                            <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
+                                <Stack spacing={2} sx={{ flex: 1 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                            Washing Stats
+                                        </Typography>
+                                        <Chip label="Pending" size="small" variant="outlined" />
+                                    </Box>
+                                    <Box sx={{ width: '100%' }}>
+                                        <PieChart
+                                            series={washerSeries}
+                                            height={320}
+                                            innerRadius={0.62}
+                                            colors={pieColors}
+                                            slotProps={{ legend: { position: 'bottom' } }}
+                                        />
+                                    </Box>
+                                </Stack>
+                            </Paper>
+                        </Grid>
                     </Grid>
-                </Grid>
+                </motion.div>
             )}
 
             {/* Summary Tables */}
@@ -371,56 +383,67 @@ const Dashboard = () => {
                                 Client Summary
                             </Typography>
                         </Box>
-                        <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
-                            <Table>
-                                <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
-                                    <TableRow>
-                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Client</TableCell>
-                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                            Total
-                                        </TableCell>
-                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                            Making
-                                        </TableCell>
-                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                            In Washing
-                                        </TableCell>
-                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                            Completed
-                                        </TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {loading ? (
-                                        <TableRowsLoader colsNum={5} rowsNum={5} />
-                                    ) : clientSummary.length > 0 ? (
-                                        clientSummary.map((row, idx) => (
-                                            <TableRow key={idx} hover>
-                                                <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.CLIENT}</TableCell>
-                                                <TableCell align="center">
-                                                    <Chip label={formatNumber(row.TOTAL || 0)} size="small" color="default" variant="outlined" />
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={loading ? 'client-loading' : 'client-data'}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.15 }}
+                                style={{ flex: 1, overflow: 'auto' }}
+                            >
+                                <TableContainer sx={{ height: '100%' }}>
+                                    <Table>
+                                        <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
+                                            <TableRow>
+                                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Client</TableCell>
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Total
                                                 </TableCell>
-                                                <TableCell align="center">
-                                                    <Chip label={formatNumber(row.MAKING || 0)} size="small" color="error" variant="filled" />
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Making
                                                 </TableCell>
-                                                <TableCell align="center">
-                                                    <Chip label={formatNumber(row.IN_WASHING || 0)} size="small" color="primary" variant="filled" />
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    In Washing
                                                 </TableCell>
-                                                <TableCell align="center">
-                                                    <Chip label={formatNumber(row.OUT_WASHING || 0)} size="small" color="success" variant="filled" />
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Completed
                                                 </TableCell>
                                             </TableRow>
-                                        ))
-                                    ) : (
-                                        <TableRow>
-                                            <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                                                No data available
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
+                                        </TableHead>
+                                        <TableBody>
+                                            {loading ? (
+                                                <TableRowsLoader colsNum={5} rowsNum={5} />
+                                            ) : clientSummary.length > 0 ? (
+                                                clientSummary.map((row, idx) => (
+                                                    <TableRow key={idx} hover>
+                                                        <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.CLIENT}</TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.TOTAL || 0)} size="small" color="default" variant="outlined" />
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.MAKING || 0)} size="small" color="error" variant="filled" />
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.IN_WASHING || 0)} size="small" color="primary" variant="filled" />
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.OUT_WASHING || 0)} size="small" color="success" variant="filled" />
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            ) : (
+                                                <TableRow>
+                                                    <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                                        No data available
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            </motion.div>
+                        </AnimatePresence>
                     </Paper>
                 </Grid>
 
@@ -431,56 +454,67 @@ const Dashboard = () => {
                                 Washer Summary
                             </Typography>
                         </Box>
-                        <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
-                            <Table>
-                                <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
-                                    <TableRow>
-                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Washer</TableCell>
-                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                            Total
-                                        </TableCell>
-                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                            In
-                                        </TableCell>
-                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                            Out
-                                        </TableCell>
-                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                            Pending
-                                        </TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {loading ? (
-                                        <TableRowsLoader colsNum={5} rowsNum={5} />
-                                    ) : washerSummary.length > 0 ? (
-                                        washerSummary.map((row, idx) => (
-                                            <TableRow key={idx} hover>
-                                                <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.WASHER}</TableCell>
-                                                <TableCell align="center">
-                                                    <Chip label={formatNumber(row.TOTAL || 0)} size="small" color="default" variant="outlined" />
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={loading ? 'washer-loading' : 'washer-data'}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.15 }}
+                                style={{ flex: 1, overflow: 'auto' }}
+                            >
+                                <TableContainer sx={{ height: '100%' }}>
+                                    <Table>
+                                        <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
+                                            <TableRow>
+                                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Washer</TableCell>
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Total
                                                 </TableCell>
-                                                <TableCell align="center">
-                                                    <Chip label={formatNumber(row.IN_WASHING || 0)} size="small" color="primary" variant="filled" />
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    In
                                                 </TableCell>
-                                                <TableCell align="center">
-                                                    <Chip label={formatNumber(row.OUT_WASHING || 0)} size="small" color="success" variant="filled" />
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Out
                                                 </TableCell>
-                                                <TableCell align="center">
-                                                    <Chip label={formatNumber(row.PENDING || 0)} size="small" color="error" variant="filled" />
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Pending
                                                 </TableCell>
                                             </TableRow>
-                                        ))
-                                    ) : (
-                                        <TableRow>
-                                            <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                                                No data available
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
+                                        </TableHead>
+                                        <TableBody>
+                                            {loading ? (
+                                                <TableRowsLoader colsNum={5} rowsNum={5} />
+                                            ) : washerSummary.length > 0 ? (
+                                                washerSummary.map((row, idx) => (
+                                                    <TableRow key={idx} hover>
+                                                        <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.WASHER}</TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.TOTAL || 0)} size="small" color="default" variant="outlined" />
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.IN_WASHING || 0)} size="small" color="primary" variant="filled" />
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.OUT_WASHING || 0)} size="small" color="success" variant="filled" />
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.PENDING || 0)} size="small" color="error" variant="filled" />
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            ) : (
+                                                <TableRow>
+                                                    <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                                        No data available
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            </motion.div>
+                        </AnimatePresence>
                     </Paper>
                 </Grid>
             </Grid>
@@ -495,106 +529,123 @@ const Dashboard = () => {
                         {!loading && <Chip label={`${breakdownData.length} items`} size="small" variant="outlined" />}
                     </Stack>
                 </Box>
-                <TableContainer>
-                    <Table>
-                        <TableHead sx={{ backgroundColor: theme.palette.action.hover }}>
-                            <TableRow>
-                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 70, pl: 2 }}>Client</TableCell>
-                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 100 }}>
-                                    Lot Count
-                                </TableCell>
-                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>Washer</TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                    Pcs
-                                </TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                    Making
-                                </TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                    In Washing
-                                </TableCell>
-                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                    Completed
-                                </TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {loading ? (
-                                <TableRowsLoader colsNum={7} rowsNum={10} />
-                            ) : breakdownData.length > 0 ? (
-                                breakdownData.slice(breakdownPage * breakdownRowsPerPage, breakdownPage * breakdownRowsPerPage + breakdownRowsPerPage).map((row, idx) => (
-                                    <React.Fragment key={idx}>
-                                        <TableRow hover>
-                                            <TableCell sx={{ fontWeight: 600, maxWidth: 70, pl: 2 }}>{row.CLIENT}</TableCell>
-                                            <TableCell title={row.LOT_NO || ''} sx={{ cursor: row.LOT_COUNT > 2 ? 'pointer' : 'default', maxWidth: 100 }}>
-                                                {row.LOT_COUNT > 0 && (
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                        <Chip label={row.LOT_COUNT} size="small" sx={{ minWidth: 35, bgcolor: 'primary.soft', fontWeight: 600 }} />
-                                                        <IconButton
-                                                            onClick={() => {
-                                                                const globalIdx = breakdownPage * breakdownRowsPerPage + idx;
-                                                                setExpandedRows((prevExpandedRows) => ({
-                                                                    ...prevExpandedRows,
-                                                                    [globalIdx]: !prevExpandedRows[globalIdx],
-                                                                }));
-                                                            }}
-                                                            sx={{ padding: 0, size: 'small' }}
-                                                        >
-                                                            {expandedRows[breakdownPage * breakdownRowsPerPage + idx] ? (
-                                                                <ExpandMoreIcon fontSize='small' />
-                                                            ) : (
-                                                                <ChevronRightIcon fontSize='small' />
-                                                            )}
-                                                        </IconButton>
-                                                        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 80 }}>
-                                                            {row.LOT_NO}
-                                                        </Typography>
-                                                    </Box>
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={loading ? 'breakdown-loading' : 'breakdown-data'}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                    >
+                        <TableContainer>
+                            <Table>
+                                <TableHead sx={{ backgroundColor: theme.palette.action.hover }}>
+                                    <TableRow>
+                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 70, pl: 2 }}>Client</TableCell>
+                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 100 }}>
+                                            Lot Count
+                                        </TableCell>
+                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>Washer</TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                            Pcs
+                                        </TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                            Making
+                                        </TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                            In Washing
+                                        </TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                            Completed
+                                        </TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {loading ? (
+                                        <TableRowsLoader colsNum={7} rowsNum={10} />
+                                    ) : breakdownData.length > 0 ? (
+                                        breakdownData.slice(breakdownPage * breakdownRowsPerPage, breakdownPage * breakdownRowsPerPage + breakdownRowsPerPage).map((row, idx) => (
+                                            <React.Fragment key={idx}>
+                                                <TableRow hover>
+                                                    <TableCell sx={{ fontWeight: 600, maxWidth: 70, pl: 2 }}>{row.CLIENT}</TableCell>
+                                                    <TableCell title={row.LOT_NO || ''} sx={{ cursor: row.LOT_COUNT > 2 ? 'pointer' : 'default', maxWidth: 100 }}>
+                                                        {row.LOT_COUNT > 0 && (
+                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                                <Chip label={row.LOT_COUNT} size="small" sx={{ minWidth: 35, bgcolor: 'primary.soft', fontWeight: 600 }} />
+                                                                <IconButton
+                                                                    onClick={() => {
+                                                                        const globalIdx = breakdownPage * breakdownRowsPerPage + idx;
+                                                                        setExpandedRows((prevExpandedRows) => ({
+                                                                            ...prevExpandedRows,
+                                                                            [globalIdx]: !prevExpandedRows[globalIdx],
+                                                                        }));
+                                                                    }}
+                                                                    sx={{ padding: 0, size: 'small' }}
+                                                                >
+                                                                    {expandedRows[breakdownPage * breakdownRowsPerPage + idx] ? (
+                                                                        <ExpandMoreIcon fontSize='small' />
+                                                                    ) : (
+                                                                        <ChevronRightIcon fontSize='small' />
+                                                                    )}
+                                                                </IconButton>
+                                                                <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 80 }}>
+                                                                    {row.LOT_NO}
+                                                                </Typography>
+                                                            </Box>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell sx={{ color: 'text.secondary' }}>{row.WASHING || '\u2014'}</TableCell>
+                                                    <TableCell align="center">
+                                                        <Chip label={formatNumber(row.PCS || 0)} size="small" color="default" variant="outlined" />
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        {row.MAKING > 0 && <Chip label={formatNumber(row.MAKING)} size="small" color="error" variant="filled" />}
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        {row.IN_WASHING > 0 && <Chip label={formatNumber(row.IN_WASHING)} size="small" color="primary" variant="filled" />}
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        {row.OUT_WASHING > 0 && <Chip label={formatNumber(row.OUT_WASHING)} size="small" color="success" variant="filled" />}
+                                                    </TableCell>
+                                                </TableRow>
+                                                {expandedRows[breakdownPage * breakdownRowsPerPage + idx] && row.LOT_NO && (
+                                                    <TableRow
+                                                        sx={{
+                                                            backgroundColor: 'background.paper',
+                                                            border: 0,
+                                                            '&:last-child td, &:last-child th': { border: 0 },
+                                                        }}
+                                                    >
+                                                        <TableCell colSpan={7} sx={{ pl: 2 }}>
+                                                            <motion.div
+                                                                initial={{ opacity: 0, height: 0 }}
+                                                                animate={{ opacity: 1, height: 'auto' }}
+                                                                transition={{ duration: 0.3 }}
+                                                                style={{ overflow: 'hidden' }}
+                                                            >
+                                                                {row.LOT_NO.split(',').map((lotNo) => (
+                                                                    <React.Fragment key={lotNo}>
+                                                                        <Chip label={lotNo.trim()} size="small" sx={{ bgcolor: 'primary.soft', mr: 0.5, mb: 0.5 }} />
+                                                                    </React.Fragment>
+                                                                ))}
+                                                            </motion.div>
+                                                        </TableCell>
+                                                    </TableRow>
                                                 )}
-                                            </TableCell>
-                                            <TableCell sx={{ color: 'text.secondary' }}>{row.WASHING || '\u2014'}</TableCell>
-                                            <TableCell align="center">
-                                                <Chip label={formatNumber(row.PCS || 0)} size="small" color="default" variant="outlined" />
-                                            </TableCell>
-                                            <TableCell align="center">
-                                                {row.MAKING > 0 && <Chip label={formatNumber(row.MAKING)} size="small" color="error" variant="filled" />}
-                                            </TableCell>
-                                            <TableCell align="center">
-                                                {row.IN_WASHING > 0 && <Chip label={formatNumber(row.IN_WASHING)} size="small" color="primary" variant="filled" />}
-                                            </TableCell>
-                                            <TableCell align="center">
-                                                {row.OUT_WASHING > 0 && <Chip label={formatNumber(row.OUT_WASHING)} size="small" color="success" variant="filled" />}
+                                            </React.Fragment>
+                                        ))
+                                    ) : (
+                                        <TableRow>
+                                            <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                                No data available
                                             </TableCell>
                                         </TableRow>
-                                        {expandedRows[breakdownPage * breakdownRowsPerPage + idx] && row.LOT_NO && (
-                                            <TableRow
-                                                sx={{
-                                                    backgroundColor: 'background.paper',
-                                                    border: 0,
-                                                    '&:last-child td, &:last-child th': { border: 0 },
-                                                }}
-                                            >
-                                                <TableCell colSpan={7} sx={{ pl: 2 }}>
-                                                    {row.LOT_NO.split(',').map((lotNo) => (
-                                                        <React.Fragment key={lotNo}>
-                                                            <Chip label={lotNo.trim()} size="small" sx={{ bgcolor: 'primary.soft', mr: 0.5, mb: 0.5 }} />
-                                                        </React.Fragment>
-                                                    ))}
-                                                </TableCell>
-                                            </TableRow>
-                                        )}
-                                    </React.Fragment>
-                                ))
-                            ) : (
-                                <TableRow>
-                                    <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                                        No data available
-                                    </TableCell>
-                                </TableRow>
                             )}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                    </motion.div>
+                </AnimatePresence>
                 {!loading && breakdownData.length > 0 && (
                     <TablePagination
                         component="div"

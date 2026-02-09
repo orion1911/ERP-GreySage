@@ -10,6 +10,7 @@ import StitchingGridSx from './StitchingGridSx';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
 import OrderStatusChip from '../../components/OrderStatusChip';
+import { motion } from 'motion/react';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { MorphDateIconField, MorphDateTextField } from '../../components/MuiCustom';
@@ -515,42 +516,56 @@ function StitchingGrid({
                   <>
                     <TableRow>
                       <TableCell colSpan={13} sx={{ p: 0 }}>
-                        <WashingGrid
-                          washingRecords={washingRecords && washingRecords[row.original.lotId?._id] || []}
-                          hasWashing={hasWashing}
-                          lotId={row.original.lotId?._id}
-                          handleUpdateWashOut={handleUpdateWashOut}
-                          onEditWashing={onEditWashing}
-                          sortBy={sortBy}
-                          setSortBy={setSortBy}
-                          sortDirection={sortDirection}
-                          setSortDirection={setSortDirection}
-                          filterAnchorEl={filterAnchorEl}
-                          setFilterAnchorEl={setFilterAnchorEl}
-                          filterStatus={filterStatus}
-                          setFilterStatus={setFilterStatus}
-                          readOnly={readOnly}
-                        />
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          transition={{ duration: 0.3 }}
+                          style={{ overflow: 'hidden' }}
+                        >
+                          <WashingGrid
+                            washingRecords={washingRecords && washingRecords[row.original.lotId?._id] || []}
+                            hasWashing={hasWashing}
+                            lotId={row.original.lotId?._id}
+                            handleUpdateWashOut={handleUpdateWashOut}
+                            onEditWashing={onEditWashing}
+                            sortBy={sortBy}
+                            setSortBy={setSortBy}
+                            sortDirection={sortDirection}
+                            setSortDirection={setSortDirection}
+                            filterAnchorEl={filterAnchorEl}
+                            setFilterAnchorEl={setFilterAnchorEl}
+                            filterStatus={filterStatus}
+                            setFilterStatus={setFilterStatus}
+                            readOnly={readOnly}
+                          />
+                        </motion.div>
                       </TableCell>
                     </TableRow>
                     {finishingRecords && finishingRecords[row.original.lotId?._id].length > 0 && (<TableRow>
                       <TableCell colSpan={13} sx={{ p: 0 }}>
-                        <FinishingGrid
-                          finishingRecords={finishingRecords && finishingRecords[row.original.lotId?._id] || []}
-                          hasFinishing={hasFinishing}
-                          lotId={row.original.lotId?._id}
-                          handleUpdateFinishOut={handleUpdateFinishOut}
-                          onEditFinishing={onEditFinishing}
-                          sortBy={sortBy}
-                          setSortBy={setSortBy}
-                          sortDirection={sortDirection}
-                          setSortDirection={setSortDirection}
-                          filterAnchorEl={filterAnchorEl}
-                          setFilterAnchorEl={setFilterAnchorEl}
-                          filterStatus={filterStatus}
-                          setFilterStatus={setFilterStatus}
-                          readOnly={readOnly}
-                        />
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          transition={{ duration: 0.3 }}
+                          style={{ overflow: 'hidden' }}
+                        >
+                          <FinishingGrid
+                            finishingRecords={finishingRecords && finishingRecords[row.original.lotId?._id] || []}
+                            hasFinishing={hasFinishing}
+                            lotId={row.original.lotId?._id}
+                            handleUpdateFinishOut={handleUpdateFinishOut}
+                            onEditFinishing={onEditFinishing}
+                            sortBy={sortBy}
+                            setSortBy={setSortBy}
+                            sortDirection={sortDirection}
+                            setSortDirection={setSortDirection}
+                            filterAnchorEl={filterAnchorEl}
+                            setFilterAnchorEl={setFilterAnchorEl}
+                            filterStatus={filterStatus}
+                            setFilterStatus={setFilterStatus}
+                            readOnly={readOnly}
+                          />
+                        </motion.div>
                       </TableCell>
                     </TableRow>)}
                   </>

@@ -44,9 +44,10 @@ const createWashing = async (req, res) => {
   const order = await Order.findById(orderId);
   if (!order) return res.status(400).json({ error: 'Order not found' });
 
+  const availableQty = stitching.quantity - (stitching.quantityShort || 0);
   const totalWashQuantity = washDetails.reduce((sum, item) => sum + parseInt(item.quantity || 0), 0);
-  if (totalWashQuantity !== stitching.quantity) {
-    return res.status(400).json({ error: `Total quantity in washDetails (${totalWashQuantity}) must equal the stitching quantity (${stitching.quantity})` });
+  if (totalWashQuantity !== availableQty) {
+    return res.status(400).json({ error: `Total wash quantity (${totalWashQuantity}) must equal available stitching quantity (${availableQty}) [stitching: ${stitching.quantity} - short: ${stitching.quantityShort || 0}]` });
   }
 
   session = await mongoose.startSession();
@@ -131,9 +132,10 @@ const updateWashing = async (req, res) => {
 
   // Validate washDetails quantities
   if (washDetails) {
+    const availableQty = stitching.quantity - (stitching.quantityShort || 0);
     const totalWashQuantity = washDetails.reduce((sum, detail) => sum + parseInt(detail.quantity || 0), 0);
-    if (totalWashQuantity !== stitching.quantity) {
-      return res.status(400).json({ error: `Total quantity in washDetails (${totalWashQuantity}) must equal the stitching quantity (${stitching.quantity})` });
+    if (totalWashQuantity !== availableQty) {
+      return res.status(400).json({ error: `Total wash quantity (${totalWashQuantity}) must equal available stitching quantity (${availableQty}) [stitching: ${stitching.quantity} - short: ${stitching.quantityShort || 0}]` });
     }
   }
 

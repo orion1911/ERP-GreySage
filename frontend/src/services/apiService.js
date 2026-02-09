@@ -36,9 +36,9 @@ const apiService = {
         }
       },
 
-      getProductionDashboard: async () => {
+      getProductionDashboard: async (params) => {
         try {
-          const response = await axiosInstance.get('api/dashboard/production-summary');
+          const response = await axiosInstance.get('api/dashboard/production-summary', { params });
           return response.data;
         } catch (error) {
           throw error;

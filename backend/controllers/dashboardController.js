@@ -958,37 +958,64 @@ const getTopFitStyles = async (req, res) => {
 const getProductionDashboard = async (req, res) => {
   try {
     const startTime = Date.now();
+    const { fromDate, toDate } = req.query;
 
-    // Fetch all stitching records with populated references
-    const stitchingRecords = await Stitching.find()
-      .populate({ path: 'lotId' })
-      .populate({ path: 'orderId', populate: { path: 'clientId' } })
-      .populate({ path: 'vendorId' })
-      .lean();
+    // Build date filter for stitching
+    const stitchingMatch = {};
+    if (fromDate || toDate) {
+      stitchingMatch.date = {};
+      if (fromDate) stitchingMatch.date.$gte = new Date(fromDate);
+      if (toDate) stitchingMatch.date.$lte = new Date(toDate);
+    }
 
-    // Fetch all washing records with populated references
-    const washingRecords = await Washing.find()
-      .populate({ path: 'lotId' })
-      .populate({ path: 'orderId', populate: { path: 'clientId' } })
-      .populate({ path: 'vendorId' })
-      .lean();
+    // Aggregation pipeline for stitching - single query with $lookup joins
+    const stitchingRecords = await Stitching.aggregate([
+      { $match: stitchingMatch },
+      { $lookup: { from: 'lots', localField: 'lotId', foreignField: '_id', as: 'lot' } },
+      { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+      { $lookup: { from: 'orders', localField: 'orderId', foreignField: '_id', as: 'order' } },
+      { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
+      { $lookup: { from: 'clients', localField: 'order.clientId', foreignField: '_id', as: 'client' } },
+      { $unwind: { path: '$client', preserveNullAndEmptyArrays: true } },
+      { $project: {
+        _lotId: '$lot._id',
+        lotNumber: '$lot.lotNumber',
+        quantity: 1,
+        clientName: { $ifNull: ['$client.name', 'Unknown'] }
+      }}
+    ]);
+
+    // Get lot IDs for scoped washing query
+    const lotIds = stitchingRecords.map(s => s._lotId).filter(Boolean);
+
+    // Aggregation pipeline for washing - only for matched lots
+    const washingRecords = await Washing.aggregate([
+      { $match: { lotId: { $in: lotIds } } },
+      { $lookup: { from: 'washingvendors', localField: 'vendorId', foreignField: '_id', as: 'vendor' } },
+      { $unwind: { path: '$vendor', preserveNullAndEmptyArrays: true } },
+      { $project: {
+        lotId: 1,
+        washerName: { $ifNull: ['$vendor.name', 'Unknown'] },
+        washOutDate: 1
+      }}
+    ]);
 
     // Build a map of lotId -> washing record for quick lookup
     const washingByLot = {};
     for (const w of washingRecords) {
-      const lotId = w.lotId?._id?.toString();
+      const lotId = w.lotId?.toString();
       if (lotId) washingByLot[lotId] = w;
     }
 
     // Build lot-level data from stitching records
     const lotData = {};
     for (const st of stitchingRecords) {
-      const lotId = st.lotId?._id?.toString();
+      const lotId = st._lotId?.toString();
       if (!lotId) continue;
       lotData[lotId] = {
         quantity: st.quantity || 0,
-        clientName: st.orderId?.clientId?.name || 'Unknown',
-        lotNumber: st.lotId?.lotNumber || '',
+        clientName: st.clientName,
+        lotNumber: st.lotNumber || '',
         washerName: null,
         status: 'making',
       };
@@ -997,7 +1024,7 @@ const getProductionDashboard = async (req, res) => {
     // Update status from washing records
     for (const [lotId, washing] of Object.entries(washingByLot)) {
       if (!lotData[lotId]) continue;
-      lotData[lotId].washerName = washing.vendorId?.name || 'Unknown';
+      lotData[lotId].washerName = washing.washerName;
       lotData[lotId].status = washing.washOutDate ? 'outWashing' : 'inWashing';
     }
 

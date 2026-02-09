@@ -118,7 +118,7 @@ function OrderGridMd({ processedOrders, columns, table, sortBy, sortDirection, s
             </Table>
             <TablePagination
                 component="div"
-                count={table.getFilteredRowModel().rows.length}
+                count={processedOrders ? processedOrders.length : 0}
                 page={table.getState().pagination.pageIndex}
                 onPageChange={(_, newPage) => table.setPageIndex(newPage)}
                 rowsPerPage={table.getState().pagination.pageSize}

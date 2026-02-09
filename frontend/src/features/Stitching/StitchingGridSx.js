@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { Box, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, Link } from '@mui/material';
+import { Box, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, Link, TablePagination } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, ContentCut, Add, MoreVert as MoreVertIcon, AutoAwesome } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
@@ -14,6 +14,11 @@ import { MorphDateIconField } from '../../components/MuiCustom';
 
 function StitchingGridSx({
   processedRecords,
+  totalCount,
+  page,
+  rowsPerPage,
+  onPageChange,
+  onRowsPerPageChange,
   washingRecords,
   finishingRecords,
   fetchWashingRecords,
@@ -371,6 +376,17 @@ function StitchingGridSx({
         ))
       ) : (
         'No records found'
+      )}
+      {filteredRecords && filteredRecords.length > 0 && (
+        <TablePagination
+          component="div"
+          count={totalCount || 0}
+          page={page || 0}
+          onPageChange={onPageChange}
+          rowsPerPage={rowsPerPage || 25}
+          onRowsPerPageChange={onRowsPerPageChange}
+          rowsPerPageOptions={[10, 25, 50]}
+        />
       )}
     </Box>
   );

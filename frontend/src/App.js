@@ -27,6 +27,7 @@ import FinishingVendorCatalog from './features/Catalogs/FinishingVendorCatalog';
 import OrderManagement from './features/Orders/OrderManagement';
 import StitchingManagement from './features/Stitching/StitchingManagement';
 import LotsManagement from './features/Stitching/LotsManagement';
+import NotFound from './components/NotFound';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem('token');
@@ -212,6 +213,7 @@ function App() {
               </Route>
             </Route>
             <Route path="/" element={<Navigate to="/login" />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
       </AppTheme>

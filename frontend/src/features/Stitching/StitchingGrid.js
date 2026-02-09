@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useOutletContext, Link as RouterLink } from 'react-router-dom';
 import { useTheme } from '@mui/material/styles';
-import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, IconButton, Tooltip, Badge, Link, Typography } from '@mui/material';
+import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, flexRender } from '@tanstack/react-table';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, Box, IconButton, Tooltip, Badge, Link, Typography } from '@mui/material';
 import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon, AutoAwesome } from '@mui/icons-material';
 import WashingGrid from '../Washing/WashingGrid';
 import FinishingGrid from '../Finishing/FinishingGrid';
@@ -41,6 +41,8 @@ function StitchingGrid({
   const [sortDirection, setSortDirection] = useState('desc');
   const [filterAnchorEl, setFilterAnchorEl] = useState(null);
   const [filterStatus, setFilterStatus] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
 
   useEffect(() => {
     if (stitchingRecords && Array.isArray(stitchingRecords)) {
@@ -408,21 +410,35 @@ function StitchingGrid({
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
     state: {
       // globalFilter: searchTerm,
       columnVisibility: {
         actions: !readOnly, // Hide the 'actions' column when readOnly is true
         orderId: readOnly
       },
-    }
+      pagination: { pageIndex: page, pageSize: rowsPerPage },
+    },
+    onPaginationChange: (updater) => {
+      const next = typeof updater === 'function' ? updater({ pageIndex: page, pageSize: rowsPerPage }) : updater;
+      setPage(next.pageIndex);
+      setRowsPerPage(next.pageSize);
+    },
   });
 
   const getHeaderContent = (column) => column.columnDef && column.columnDef.header ? column.columnDef.header : column.id;
   const isColumnSortable = (column) => column.columnDef && column.columnDef.enableSorting === true;
 
+  const paginatedRecordsSx = processedRecords ? processedRecords.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage) : processedRecords;
+
   return isMobile ? (
     <StitchingGridSx
-      processedRecords={processedRecords}
+      processedRecords={paginatedRecordsSx}
+      totalCount={processedRecords ? processedRecords.length : 0}
+      page={page}
+      rowsPerPage={rowsPerPage}
+      onPageChange={(_, newPage) => setPage(newPage)}
+      onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
       washingRecords={washingRecords}
       finishingRecords={finishingRecords}
       fetchWashingRecords={fetchWashingRecords}
@@ -546,6 +562,15 @@ function StitchingGrid({
           )}
         </TableBody>
       </Table>
+      <TablePagination
+        component="div"
+        count={table.getFilteredRowModel().rows.length}
+        page={table.getState().pagination.pageIndex}
+        onPageChange={(_, newPage) => table.setPageIndex(newPage)}
+        rowsPerPage={table.getState().pagination.pageSize}
+        onRowsPerPageChange={(e) => table.setPageSize(Number(e.target.value))}
+        rowsPerPageOptions={[10, 25, 50]}
+      />
     </TableContainer>
   );
 }

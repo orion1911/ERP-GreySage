@@ -72,16 +72,14 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
 
     request
       .then(res => {
-        setLoading(false);
         onAddWashing(lotId, res);
         reset(defaultValues);
-        onClose();
       })
       .catch(err => {
         console.log(err.response);
         showSnackbar(err);
-        setLoading(false);
       })
+      .finally(() => setLoading(false));
   };
 
   return (

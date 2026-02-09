@@ -36,6 +36,15 @@ const apiService = {
         }
       },
 
+      getProductionDashboard: async () => {
+        try {
+          const response = await axiosInstance.get('api/dashboard/production-summary');
+          return response.data;
+        } catch (error) {
+          throw error;
+        }
+      },
+
       getOrderStatusSummary: async (params) => {
         try {
           const response = await axiosInstance.get('api/dashboard/orders/status-summary', {

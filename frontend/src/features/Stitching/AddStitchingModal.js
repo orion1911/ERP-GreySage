@@ -103,16 +103,14 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
 
     request
       .then(res => {
-        setLoading(false);
         onAddStitching(res);
         reset(defaultValues);
-        onClose();
       })
       .catch(err => {
         console.log(err.response);
         showSnackbar(err);
-        setLoading(false);
       })
+      .finally(() => setLoading(false));
   };
 
   return (

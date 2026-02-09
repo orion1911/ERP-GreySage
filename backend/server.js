@@ -85,6 +85,9 @@ app.use('/api', balancesRoutes);
 app.use('/api', reportRoutes);
 app.use('/api', auditLogRoutes);
 
+// 404 Catch-All
+app.use((req, res) => res.status(404).json({ success: false, error: 'Route not found' }));
+
 // Error Handling Middleware
 app.use(errorHandler);
 

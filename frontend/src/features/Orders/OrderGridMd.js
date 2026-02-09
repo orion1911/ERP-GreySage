@@ -1,5 +1,5 @@
 import React from 'react';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Grid, IconButton, Button, Stack, Select, Menu, MenuItem, useTheme } from '@mui/material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, Grid, IconButton, Button, Stack, Select, Menu, MenuItem, useTheme } from '@mui/material';
 import { ArrowUpward, ArrowDownward, FilterList } from '@mui/icons-material';
 import { flexRender } from '@tanstack/react-table';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
@@ -97,9 +97,9 @@ function OrderGridMd({ processedOrders, columns, table, sortBy, sortDirection, s
                     {processedOrders === undefined ? (
                         <TableRowsLoader colsNum={10} rowsNum={10} />
                     ) : processedOrders.length > 0 ? (
-                        processedOrders.map(row => (
-                            <TableRow key={row._id}>
-                                {table.getRowModel().rows.find(r => r.original._id === row._id)?.getVisibleCells().map(cell => (
+                        table.getRowModel().rows.map(row => (
+                            <TableRow key={row.original._id}>
+                                {row.getVisibleCells().map(cell => (
                                     <TableCell
                                         key={cell.id}
                                         style={{
@@ -116,6 +116,15 @@ function OrderGridMd({ processedOrders, columns, table, sortBy, sortDirection, s
                     )}
                 </TableBody>
             </Table>
+            <TablePagination
+                component="div"
+                count={table.getFilteredRowModel().rows.length}
+                page={table.getState().pagination.pageIndex}
+                onPageChange={(_, newPage) => table.setPageIndex(newPage)}
+                rowsPerPage={table.getState().pagination.pageSize}
+                onRowsPerPageChange={(e) => table.setPageSize(Number(e.target.value))}
+                rowsPerPageOptions={[10, 25, 50]}
+            />
         </TableContainer>
     );
 }

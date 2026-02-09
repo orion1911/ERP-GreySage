@@ -107,7 +107,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
             <Typography variant="h6" id="add-washing-modal">
               {isEditMode ? 'Edit Washing' : 'Add Washing'}
             </Typography>
-            <Typography variant="caption">Lot Quantity <b>{lotQuantity}</b></Typography>
+            <Typography variant="caption">Available Quantity <b>{lotQuantity}</b></Typography>
           </Grid>
           <Grid size={{ xs: 2, md: 2 }} sx={{ textAlign: 'right' }}>
             <IconButton id="close-wash-modal" onClick={onClose}>

@@ -13,8 +13,10 @@ import {
     TableContainer,
     TableHead,
     TableRow,
+    TablePagination,
     Chip,
     CircularProgress,
+    Skeleton,
     Alert,
     useTheme,
     useMediaQuery,
@@ -31,7 +33,13 @@ import BoltIcon from '@mui/icons-material/Bolt';
 import LocalLaundryServiceIcon from '@mui/icons-material/LocalLaundryService';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useOutletContext } from 'react-router-dom';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { MorphDateTextField } from '../../components/MuiCustom';
+import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
+import { TableRowsLoader } from '../../components/Skeleton/SkeletonLoader';
 
 const Dashboard = () => {
     const theme = useTheme();
@@ -43,6 +51,10 @@ const Dashboard = () => {
     const [processingTime, setProcessingTime] = useState('—');
     const [timestamp, setTimestamp] = useState('—');
     const [expandedRows, setExpandedRows] = useState({});
+    const [breakdownPage, setBreakdownPage] = useState(0);
+    const [breakdownRowsPerPage, setBreakdownRowsPerPage] = useState(25);
+    const [fromDate, setFromDate] = useState(dayjs().startOf('month'));
+    const [toDate, setToDate] = useState(dayjs());
 
     // KPI Data
     const [kpiData, setKpiData] = useState({
@@ -61,9 +73,13 @@ const Dashboard = () => {
     const loadData = async () => {
         setLoading(true);
         setError('');
+        setBreakdownPage(0);
 
         try {
-            const data = await apiService.admin.dashboard.getProductionDashboard();
+            const params = {};
+            if (fromDate) params.fromDate = fromDate.startOf('day').toISOString();
+            if (toDate) params.toDate = toDate.endOf('day').toISOString();
+            const data = await apiService.admin.dashboard.getProductionDashboard(params);
 
             if (data.error) {
                 setError(data.error);
@@ -98,10 +114,10 @@ const Dashboard = () => {
         }
     };
 
-    // Load data on component mount
+    // Load data on mount and when date range changes
     useEffect(() => {
         loadData();
-    }, []);
+    }, [fromDate, toDate]);
 
     // Chart Colors based on theme
     const chartColors = {
@@ -199,6 +215,28 @@ const Dashboard = () => {
                 <Stack>
                     <Typography variant="h4">Dashboard</Typography>
                 </Stack>
+                <LocalizationProvider dateAdapter={AdapterDayjs}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                        <DatePicker
+                            value={fromDate}
+                            onChange={(val) => val && setFromDate(val)}
+                            label="From"
+                            format="DD-MMM-YYYY"
+                            slots={{ textField: MorphDateTextField }}
+                            slotProps={{ textField: { variant: 'standard', size: 'small' } }}
+                            sx={{ width: 140 }}
+                        />
+                        <DatePicker
+                            value={toDate}
+                            onChange={(val) => val && setToDate(val)}
+                            label="To"
+                            format="DD-MMM-YYYY"
+                            slots={{ textField: MorphDateTextField }}
+                            slotProps={{ textField: { variant: 'standard', size: 'small' } }}
+                            sx={{ width: 140 }}
+                        />
+                    </Stack>
+                </LocalizationProvider>
                 <Stack direction="row" spacing={2} alignItems="center">
                     <Chip
                         icon={<BoltIcon />}
@@ -220,17 +258,21 @@ const Dashboard = () => {
             {/* Error Message */}
             {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
-            {/* Loading State */}
-            {loading && (
-                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300 }}>
-                    <CircularProgress />
-                </Box>
-            )}
-
-            {!loading && (
-                <>
-
-                    <Grid container spacing={2} sx={{ mb: 4, alignItems: 'stretch' }}>
+            {/* KPI Cards */}
+            <Grid container spacing={2} sx={{ mb: 4, alignItems: 'stretch' }}>
+                {loading ? (
+                    [0, 1, 2, 3].map((i) => (
+                        <Grid key={i} size={{ xs: 6, sm: 6, md: 3 }}>
+                            <Paper elevation={1} sx={{ p: 2, borderRadius: 2 }}>
+                                <Skeleton variant="circular" width={40} height={40} sx={{ mb: 1 }} />
+                                <Skeleton variant="text" width="50%" height={16} />
+                                <Skeleton variant="text" width="70%" height={36} sx={{ my: 0.5 }} />
+                                <Skeleton variant="text" width="60%" height={14} />
+                            </Paper>
+                        </Grid>
+                    ))
+                ) : (
+                    <>
                         <Grid size={{ xs: 6, sm: 6, md: 3 }}>
                             <KPICard label="Total Pieces" value={kpiData.totalPcs} subtitle="All tracked items" color="#5C6AC4" icon={GridViewIcon} />
                         </Grid>
@@ -243,208 +285,99 @@ const Dashboard = () => {
                         <Grid size={{ xs: 6, sm: 6, md: 3 }}>
                             <KPICard label="Completed" value={kpiData.totalOutWashing} subtitle="Ready for delivery" color="#2AA89A" icon={CheckCircleIcon} />
                         </Grid>
-                    </Grid>
+                    </>
+                )}
+            </Grid>
 
-                    {/* Charts */}
-                    <Grid container spacing={3} sx={{ mb: 4, alignItems: 'stretch' }}>
-                        <Grid size={{ xs: 12, sm: 6, md: 6 }}>
-                            <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
-                                <Stack spacing={2} sx={{ flex: 1 }}>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                            Client Stats
-                                        </Typography>
-                                        <Chip label="Top 10" size="small" variant="outlined" />
-                                    </Box>
-                                    <Box sx={{ width: '100%' }}>
-                                        <BarChart
-                                            series={clientSeries}
-                                            xAxis={[{
-                                                height: 70,
-                                                scaleType: 'band', data: clientLabels,
-                                                labelStyle: {
-                                                    fontSize: 14,
-                                                },
-                                                tickLabelStyle: {
-                                                    angle: -45,
-                                                    fontSize: 11,
-                                                }
-                                            }]}
-                                            height={300}
-                                            colors={[chartColors.indigo, chartColors.coral, chartColors.amber, chartColors.teal]}
-                                            margin={{ left: 0, right: 0, top: 10, bottom: 40 }}
-                                            slotProps={{
-                                                legend: { hidden: false },
-                                            }}
-                                        />
-                                    </Box>
-                                </Stack>
+            {/* Charts */}
+            {loading ? (
+                <Grid container spacing={3} sx={{ mb: 4, alignItems: 'stretch' }}>
+                    {[0, 1].map((i) => (
+                        <Grid key={i} size={{ xs: 12, sm: 6, md: 6 }}>
+                            <Paper elevation={1} sx={{ p: 2, borderRadius: 2 }}>
+                                <Skeleton variant="text" width="40%" height={28} sx={{ mb: 2 }} />
+                                <Skeleton variant="rectangular" height={300} />
                             </Paper>
                         </Grid>
-
-                        <Grid size={{ xs: 12, sm: 6, md: 6 }}>
-                            <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
-                                <Stack spacing={2} sx={{ flex: 1 }}>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                            Washing Stats
-                                        </Typography>
-                                        <Chip label="Pending" size="small" variant="outlined" />
-                                    </Box>
-                                    <Box sx={{ width: '100%' }}>
-                                        <PieChart
-                                            series={washerSeries}
-                                            height={320}
-                                            innerRadius={0.62}
-                                            colors={pieColors}
-                                            slotProps={{ legend: { position: 'bottom' } }}
-                                        />
-                                    </Box>
-                                </Stack>
-                            </Paper>
-                        </Grid>
-                    </Grid>
-
-                    {/* Summary Tables */}
-                    <Grid container spacing={3} sx={{ mb: 4 }}>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
-                                <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                    ))}
+                </Grid>
+            ) : (
+                <Grid container spacing={3} sx={{ mb: 4, alignItems: 'stretch' }}>
+                    <Grid size={{ xs: 12, sm: 6, md: 6 }}>
+                        <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
+                            <Stack spacing={2} sx={{ flex: 1 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                        Client Summary
+                                        Client Stats
                                     </Typography>
+                                    <Chip label="Top 10" size="small" variant="outlined" />
                                 </Box>
-                                <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
-                                    <Table>
-                                        <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
-                                            <TableRow>
-                                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Client</TableCell>
-                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                                    Total
-                                                </TableCell>
-                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                                    Making
-                                                </TableCell>
-                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                                    In Washing
-                                                </TableCell>
-                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                                    Completed
-                                                </TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {clientSummary.length > 0 ? (
-                                                clientSummary.map((row, idx) => (
-                                                    <TableRow key={idx} hover>
-                                                        <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.CLIENT}</TableCell>
-                                                        <TableCell align="center">
-                                                            <Chip label={formatNumber(row.TOTAL || 0)} size="small" color="default" variant="outlined" />
-                                                        </TableCell>
-                                                        <TableCell align="center">
-                                                            <Chip label={formatNumber(row.MAKING || 0)} size="small" color="error" variant="filled" />
-                                                        </TableCell>
-                                                        <TableCell align="center">
-                                                            <Chip label={formatNumber(row.IN_WASHING || 0)} size="small" color="primary" variant="filled" />
-                                                        </TableCell>
-                                                        <TableCell align="center">
-                                                            <Chip label={formatNumber(row.OUT_WASHING || 0)} size="small" color="success" variant="filled" />
-                                                        </TableCell>
-                                                    </TableRow>
-                                                ))
-                                            ) : (
-                                                <TableRow>
-                                                    <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                                                        No data available
-                                                    </TableCell>
-                                                </TableRow>
-                                            )}
-                                        </TableBody>
-                                    </Table>
-                                </TableContainer>
-                            </Paper>
-                        </Grid>
-
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
-                                <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
-                                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                        Washer Summary
-                                    </Typography>
+                                <Box sx={{ width: '100%' }}>
+                                    <BarChart
+                                        series={clientSeries}
+                                        xAxis={[{
+                                            height: 70,
+                                            scaleType: 'band', data: clientLabels,
+                                            labelStyle: {
+                                                fontSize: 14,
+                                            },
+                                            tickLabelStyle: {
+                                                angle: -45,
+                                                fontSize: 11,
+                                            }
+                                        }]}
+                                        height={300}
+                                        colors={[chartColors.indigo, chartColors.coral, chartColors.amber, chartColors.teal]}
+                                        margin={{ left: 0, right: 0, top: 10, bottom: 40 }}
+                                        slotProps={{
+                                            legend: { hidden: false },
+                                        }}
+                                    />
                                 </Box>
-                                <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
-                                    <Table>
-                                        <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
-                                            <TableRow>
-                                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Washer</TableCell>
-                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                                    Total
-                                                </TableCell>
-                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                                    In
-                                                </TableCell>
-                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                                    Out
-                                                </TableCell>
-                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                                    Pending
-                                                </TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {washerSummary.length > 0 ? (
-                                                washerSummary.map((row, idx) => (
-                                                    <TableRow key={idx} hover>
-                                                        <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.WASHER}</TableCell>
-                                                        <TableCell align="center">
-                                                            <Chip label={formatNumber(row.TOTAL || 0)} size="small" color="default" variant="outlined" />
-                                                        </TableCell>
-                                                        <TableCell align="center">
-                                                            <Chip label={formatNumber(row.IN_WASHING || 0)} size="small" color="primary" variant="filled" />
-                                                        </TableCell>
-                                                        <TableCell align="center">
-                                                            <Chip label={formatNumber(row.OUT_WASHING || 0)} size="small" color="success" variant="filled" />
-                                                        </TableCell>
-                                                        <TableCell align="center">
-                                                            <Chip label={formatNumber(row.PENDING || 0)} size="small" color="error" variant="filled" />
-                                                        </TableCell>
-                                                    </TableRow>
-                                                ))
-                                            ) : (
-                                                <TableRow>
-                                                    <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                                                        No data available
-                                                    </TableCell>
-                                                </TableRow>
-                                            )}
-                                        </TableBody>
-                                    </Table>
-                                </TableContainer>
-                            </Paper>
-                        </Grid>
-                    </Grid>
-
-                    {/* Detailed Breakdown */}
-                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden' }}>
-                        <Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                    Complete Breakdown
-                                </Typography>
-                                <Chip label={`${breakdownData.length} items`} size="small" variant="outlined" />
                             </Stack>
+                        </Paper>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, sm: 6, md: 6 }}>
+                        <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
+                            <Stack spacing={2} sx={{ flex: 1 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                        Washing Stats
+                                    </Typography>
+                                    <Chip label="Pending" size="small" variant="outlined" />
+                                </Box>
+                                <Box sx={{ width: '100%' }}>
+                                    <PieChart
+                                        series={washerSeries}
+                                        height={320}
+                                        innerRadius={0.62}
+                                        colors={pieColors}
+                                        slotProps={{ legend: { position: 'bottom' } }}
+                                    />
+                                </Box>
+                            </Stack>
+                        </Paper>
+                    </Grid>
+                </Grid>
+            )}
+
+            {/* Summary Tables */}
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
+                        <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                Client Summary
+                            </Typography>
                         </Box>
-                        <TableContainer>
+                        <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
                             <Table>
-                                <TableHead sx={{ backgroundColor: theme.palette.action.hover }}>
+                                <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
                                     <TableRow>
-                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 70, pl: 2 }}>Client</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 100 }}>
-                                            Lot Count
-                                        </TableCell>
-                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>Washer</TableCell>
+                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Client</TableCell>
                                         <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                            Pcs
+                                            Total
                                         </TableCell>
                                         <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
                                             Making
@@ -458,72 +391,29 @@ const Dashboard = () => {
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
-                                    {breakdownData.length > 0 ? (
-                                        breakdownData.slice(0, 100).map((row, idx) => (
-                                            <React.Fragment key={idx}>
-                                                <TableRow hover>
-                                                    <TableCell sx={{ fontWeight: 600, maxWidth: 70, pl: 2 }}>{row.CLIENT}</TableCell>
-                                                    <TableCell title={row.LOT_NO || ''} sx={{ cursor: row.LOT_COUNT > 2 ? 'pointer' : 'default', maxWidth: 100 }}>
-                                                        {row.LOT_COUNT > 0 && (
-                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                                <Chip label={row.LOT_COUNT} size="small" sx={{ minWidth: 35, bgcolor: 'primary.soft', fontWeight: 600 }} />
-                                                                <IconButton
-                                                                    onClick={() => {
-                                                                        setExpandedRows((prevExpandedRows) => ({
-                                                                            ...prevExpandedRows,
-                                                                            [idx]: !prevExpandedRows[idx],
-                                                                        }));
-                                                                    }}
-                                                                    sx={{ padding: 0, size: 'small' }}
-                                                                >
-                                                                    {expandedRows[idx] ? (
-                                                                        <ExpandMoreIcon fontSize='small' />
-                                                                    ) : (
-                                                                        <ChevronRightIcon fontSize='small' />
-                                                                    )}
-                                                                </IconButton>
-                                                                <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 80 }}>
-                                                                    {row.LOT_NO}
-                                                                </Typography>
-                                                            </Box>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell sx={{ color: 'text.secondary' }}>{row.WASHING || '\u2014'}</TableCell>
-                                                    <TableCell align="center">
-                                                        <Chip label={formatNumber(row.PCS || 0)} size="small" color="default" variant="outlined" />
-                                                    </TableCell>
-                                                    <TableCell align="center">
-                                                        {row.MAKING > 0 && <Chip label={formatNumber(row.MAKING)} size="small" color="error" variant="filled" />}
-                                                    </TableCell>
-                                                    <TableCell align="center">
-                                                        {row.IN_WASHING > 0 && <Chip label={formatNumber(row.IN_WASHING)} size="small" color="primary" variant="filled" />}
-                                                    </TableCell>
-                                                    <TableCell align="center">
-                                                        {row.OUT_WASHING > 0 && <Chip label={formatNumber(row.OUT_WASHING)} size="small" color="success" variant="filled" />}
-                                                    </TableCell>
-                                                </TableRow>
-                                                {expandedRows[idx] && row.LOT_NO && (
-                                                    <TableRow
-                                                        sx={{
-                                                            backgroundColor: 'background.paper',
-                                                            border: 0,
-                                                            '&:last-child td, &:last-child th': { border: 0 },
-                                                        }}
-                                                    >
-                                                        <TableCell colSpan={7} sx={{ pl: 2 }}>
-                                                            {row.LOT_NO.split(',').map((lotNo) => (
-                                                                <React.Fragment key={lotNo}>
-                                                                    <Chip label={lotNo.trim()} size="small" sx={{ bgcolor: 'primary.soft', mr: 0.5, mb: 0.5 }} />
-                                                                </React.Fragment>
-                                                            ))}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                )}
-                                            </React.Fragment>
+                                    {loading ? (
+                                        <TableRowsLoader colsNum={5} rowsNum={5} />
+                                    ) : clientSummary.length > 0 ? (
+                                        clientSummary.map((row, idx) => (
+                                            <TableRow key={idx} hover>
+                                                <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.CLIENT}</TableCell>
+                                                <TableCell align="center">
+                                                    <Chip label={formatNumber(row.TOTAL || 0)} size="small" color="default" variant="outlined" />
+                                                </TableCell>
+                                                <TableCell align="center">
+                                                    <Chip label={formatNumber(row.MAKING || 0)} size="small" color="error" variant="filled" />
+                                                </TableCell>
+                                                <TableCell align="center">
+                                                    <Chip label={formatNumber(row.IN_WASHING || 0)} size="small" color="primary" variant="filled" />
+                                                </TableCell>
+                                                <TableCell align="center">
+                                                    <Chip label={formatNumber(row.OUT_WASHING || 0)} size="small" color="success" variant="filled" />
+                                                </TableCell>
+                                            </TableRow>
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                            <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                                                 No data available
                                             </TableCell>
                                         </TableRow>
@@ -532,17 +422,200 @@ const Dashboard = () => {
                             </Table>
                         </TableContainer>
                     </Paper>
+                </Grid>
 
-                    {/* Footer */}
-                    <Stack direction="row" justifyContent="center" alignItems="center" spacing={2} sx={{ mt: 4, pt: 3, borderTop: `1px solid ${theme.palette.divider}`, textAlign: 'center' }}>
-                        <Box sx={{ width: 3, height: 3, borderRadius: '50%', backgroundColor: 'text.secondary' }} />
-                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                            Last updated: {timestamp}
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
+                        <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                Washer Summary
+                            </Typography>
+                        </Box>
+                        <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
+                            <Table>
+                                <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
+                                    <TableRow>
+                                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Washer</TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                            Total
+                                        </TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                            In
+                                        </TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                            Out
+                                        </TableCell>
+                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                            Pending
+                                        </TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {loading ? (
+                                        <TableRowsLoader colsNum={5} rowsNum={5} />
+                                    ) : washerSummary.length > 0 ? (
+                                        washerSummary.map((row, idx) => (
+                                            <TableRow key={idx} hover>
+                                                <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.WASHER}</TableCell>
+                                                <TableCell align="center">
+                                                    <Chip label={formatNumber(row.TOTAL || 0)} size="small" color="default" variant="outlined" />
+                                                </TableCell>
+                                                <TableCell align="center">
+                                                    <Chip label={formatNumber(row.IN_WASHING || 0)} size="small" color="primary" variant="filled" />
+                                                </TableCell>
+                                                <TableCell align="center">
+                                                    <Chip label={formatNumber(row.OUT_WASHING || 0)} size="small" color="success" variant="filled" />
+                                                </TableCell>
+                                                <TableCell align="center">
+                                                    <Chip label={formatNumber(row.PENDING || 0)} size="small" color="error" variant="filled" />
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    ) : (
+                                        <TableRow>
+                                            <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                                No data available
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    </Paper>
+                </Grid>
+            </Grid>
+
+            {/* Detailed Breakdown */}
+            <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden' }}>
+                <Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                            Complete Breakdown
                         </Typography>
-                        <Box sx={{ width: 3, height: 3, borderRadius: '50%', backgroundColor: 'text.secondary' }} />
+                        {!loading && <Chip label={`${breakdownData.length} items`} size="small" variant="outlined" />}
                     </Stack>
-                </>
-            )}
+                </Box>
+                <TableContainer>
+                    <Table>
+                        <TableHead sx={{ backgroundColor: theme.palette.action.hover }}>
+                            <TableRow>
+                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 70, pl: 2 }}>Client</TableCell>
+                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 100 }}>
+                                    Lot Count
+                                </TableCell>
+                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>Washer</TableCell>
+                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                    Pcs
+                                </TableCell>
+                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                    Making
+                                </TableCell>
+                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                    In Washing
+                                </TableCell>
+                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                    Completed
+                                </TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {loading ? (
+                                <TableRowsLoader colsNum={7} rowsNum={10} />
+                            ) : breakdownData.length > 0 ? (
+                                breakdownData.slice(breakdownPage * breakdownRowsPerPage, breakdownPage * breakdownRowsPerPage + breakdownRowsPerPage).map((row, idx) => (
+                                    <React.Fragment key={idx}>
+                                        <TableRow hover>
+                                            <TableCell sx={{ fontWeight: 600, maxWidth: 70, pl: 2 }}>{row.CLIENT}</TableCell>
+                                            <TableCell title={row.LOT_NO || ''} sx={{ cursor: row.LOT_COUNT > 2 ? 'pointer' : 'default', maxWidth: 100 }}>
+                                                {row.LOT_COUNT > 0 && (
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                        <Chip label={row.LOT_COUNT} size="small" sx={{ minWidth: 35, bgcolor: 'primary.soft', fontWeight: 600 }} />
+                                                        <IconButton
+                                                            onClick={() => {
+                                                                const globalIdx = breakdownPage * breakdownRowsPerPage + idx;
+                                                                setExpandedRows((prevExpandedRows) => ({
+                                                                    ...prevExpandedRows,
+                                                                    [globalIdx]: !prevExpandedRows[globalIdx],
+                                                                }));
+                                                            }}
+                                                            sx={{ padding: 0, size: 'small' }}
+                                                        >
+                                                            {expandedRows[breakdownPage * breakdownRowsPerPage + idx] ? (
+                                                                <ExpandMoreIcon fontSize='small' />
+                                                            ) : (
+                                                                <ChevronRightIcon fontSize='small' />
+                                                            )}
+                                                        </IconButton>
+                                                        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 80 }}>
+                                                            {row.LOT_NO}
+                                                        </Typography>
+                                                    </Box>
+                                                )}
+                                            </TableCell>
+                                            <TableCell sx={{ color: 'text.secondary' }}>{row.WASHING || '\u2014'}</TableCell>
+                                            <TableCell align="center">
+                                                <Chip label={formatNumber(row.PCS || 0)} size="small" color="default" variant="outlined" />
+                                            </TableCell>
+                                            <TableCell align="center">
+                                                {row.MAKING > 0 && <Chip label={formatNumber(row.MAKING)} size="small" color="error" variant="filled" />}
+                                            </TableCell>
+                                            <TableCell align="center">
+                                                {row.IN_WASHING > 0 && <Chip label={formatNumber(row.IN_WASHING)} size="small" color="primary" variant="filled" />}
+                                            </TableCell>
+                                            <TableCell align="center">
+                                                {row.OUT_WASHING > 0 && <Chip label={formatNumber(row.OUT_WASHING)} size="small" color="success" variant="filled" />}
+                                            </TableCell>
+                                        </TableRow>
+                                        {expandedRows[breakdownPage * breakdownRowsPerPage + idx] && row.LOT_NO && (
+                                            <TableRow
+                                                sx={{
+                                                    backgroundColor: 'background.paper',
+                                                    border: 0,
+                                                    '&:last-child td, &:last-child th': { border: 0 },
+                                                }}
+                                            >
+                                                <TableCell colSpan={7} sx={{ pl: 2 }}>
+                                                    {row.LOT_NO.split(',').map((lotNo) => (
+                                                        <React.Fragment key={lotNo}>
+                                                            <Chip label={lotNo.trim()} size="small" sx={{ bgcolor: 'primary.soft', mr: 0.5, mb: 0.5 }} />
+                                                        </React.Fragment>
+                                                    ))}
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </React.Fragment>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                        No data available
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+                {!loading && breakdownData.length > 0 && (
+                    <TablePagination
+                        component="div"
+                        count={breakdownData.length}
+                        page={breakdownPage}
+                        onPageChange={(_, newPage) => setBreakdownPage(newPage)}
+                        rowsPerPage={breakdownRowsPerPage}
+                        onRowsPerPageChange={(e) => { setBreakdownRowsPerPage(parseInt(e.target.value, 10)); setBreakdownPage(0); }}
+                        rowsPerPageOptions={[10, 25, 50, 100]}
+                    />
+                )}
+            </Paper>
+
+            {/* Footer */}
+            <Stack direction="row" justifyContent="center" alignItems="center" spacing={2} sx={{ mt: 4, pt: 3, borderTop: `1px solid ${theme.palette.divider}`, textAlign: 'center' }}>
+                <Box sx={{ width: 3, height: 3, borderRadius: '50%', backgroundColor: 'text.secondary' }} />
+                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    Last updated: {timestamp}
+                </Typography>
+                <Box sx={{ width: 3, height: 3, borderRadius: '50%', backgroundColor: 'text.secondary' }} />
+            </Stack>
         </Container>
     );
 };

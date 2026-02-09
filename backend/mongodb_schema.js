@@ -126,6 +126,7 @@ const StitchingSchema = new mongoose.Schema({
 });
 StitchingSchema.index({ orderId: 1, date: 1 }); // Compound index for order-specific date queries
 StitchingSchema.index({ lotId: 1 }); // Index for joining with Washing
+StitchingSchema.index({ date: 1 }); // Index for dashboard date range queries
 // StitchingSchema.index({ lotId: 1, orderId: 1, vendorId: 1 });
 
 // Washing Schema: Stage #3 - Washing by vendors

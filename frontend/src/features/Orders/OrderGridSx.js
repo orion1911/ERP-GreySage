@@ -3,6 +3,7 @@ import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Chip, Link
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList } from '@mui/icons-material';
 import { OrderCardsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
+import { motion, AnimatePresence } from 'motion/react';
 
 function OrderGridSx({ processedOrders, totalCount, page, rowsPerPage, onPageChange, onRowsPerPageChange, navigate, expandedRows, toggleRowExpansion, statusLabels, statusIcons, onEditOrder, sortBy, setSortBy, sortDirection, setSortDirection, filterAnchorEl, setFilterAnchorEl, filterStatus, setFilterStatus }) {
     const theme = useTheme();
@@ -55,132 +56,142 @@ function OrderGridSx({ processedOrders, totalCount, page, rowsPerPage, onPageCha
                     </Stack>
                 </Grid>
             </Grid>
-            {processedOrders === undefined ? (
-                <OrderCardsLoader />
-            ) : processedOrders.length > 0 ? (
-                processedOrders.map((order) => (
-                    <Card key={order._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
-                        <CardContent>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                <Typography variant="subtitle1" fontWeight="bold">
-                                    <Link
-                                        // component="button"
-                                        onClick={() => navigate(`/stitching/${order._id}`)}
-                                        sx={{ textDecoration: 'underline' }}
-                                        underline="none"
-                                    >
-                                        {order.orderId}
-                                    </Link>
-                                </Typography>
-                                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
-                                    <Chip
-                                        size="small"
-                                        icon={statusIcons[order.status]}
-                                        label={statusLabels[order.status] || 'Unknown'}
-                                        color={
-                                            order.status === 1 ? 'primary' :
-                                                order.status === 2 ? 'primary' :
-                                                    order.status === 3 ? 'primary' :
-                                                        order.status === 4 ? 'primary' :
-                                                            order.status === 5 ? 'primary' :
-                                                                order.status === 6 ? 'secondary' : 'default'
-                                        }
-                                        sx={{ ml: 1, p: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                    />
-                                </Typography>
-                                <IconButton onClick={() => toggleRowExpansion(order._id)} size="small">
-                                    <ExpandMoreIcon sx={{ transform: expandedRows[order._id] ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-                                </IconButton>
-                            </Stack>
-                            <Stack spacing={1} sx={{ mt: 1 }}>
-                                <Grid container spacing={1} sx={{ textAlign: 'center' }}>
-                                    <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
-                                        <Typography variant="body2" sx={{ wrap: 'nowrap' }}>
-                                            <strong>Date</strong><br />
-                                            {getFormattedDate(order.date)}
-                                        </Typography>
-                                    </Grid>
-                                    <Grid size={{ xs: 4, sm: 4 }}>
-                                        <Typography variant="body2">
-                                            <strong>Client</strong><br />
-                                            {order.clientId?.name || ''}
-                                        </Typography>
-                                    </Grid>
-                                    <Grid size={{ xs: 4, sm: 4 }}>
-                                        <Typography variant="body2">
-                                            <strong>Fit Style</strong><br />
-                                            {order.fitStyleId?.name || ''}
-                                        </Typography>
-                                    </Grid>
-                                </Grid>
-                            </Stack>
-                            <Collapse in={expandedRows[order._id]}>
-                                <Grid container spacing={1} sx={{ mt: 2, textAlign: 'center' }}>
-                                    <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
-                                        <Typography variant="body2">
-                                            <strong>Quantity</strong><br />
-                                            {order.totalQuantity}
-                                        </Typography>
-                                    </Grid>
-                                    <Grid size={{ xs: 4, sm: 4 }}>
-                                        <Typography variant="body2">
-                                            <strong>Fabric</strong><br />
-                                            {order.fabric}
-                                        </Typography>
-                                    </Grid>
-                                    <Grid size={{ xs: 4, sm: 4 }}>
-                                        <Typography variant="body2">
-                                            <strong>Waist Size</strong><br />
-                                            {order.waistSize}
-                                        </Typography>
-                                    </Grid>
-                                    <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
-                                        <Typography variant="body2">
-                                            <strong>Final Qty</strong><br />
-                                            {order.finalTotalQuantity}
-                                        </Typography>
-                                    </Grid>
-                                    {/* <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>
-                                        <Typography variant="body2">
-                                            <strong>Threads:</strong>
-                                            {order.threadColors.map((tc, index) => (
-                                                <Box key={index} component="span" sx={{ display: 'block' }}>
-                                                    {tc.color}, {tc.quantity} pcs
-                                                </Box>
-                                            ))}
-                                        </Typography>
-                                    </Grid> */}
-                                    <Grid size={{ xs: 12, sm: 12 }}>
-                                        <Button
-                                            variant="contained"
-                                            startIcon={<EditIcon />}
-                                            onClick={() => onEditOrder(order)}
-                                            size="small"
-                                            sx={{ mt: 1 }}
-                                            fullWidth
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={processedOrders === undefined ? 'loading' : 'data'}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                {processedOrders === undefined ? (
+                    <OrderCardsLoader />
+                ) : processedOrders.length > 0 ? (
+                    processedOrders.map((order) => (
+                        <Card key={order._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+                            <CardContent>
+                                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                    <Typography variant="subtitle1" fontWeight="bold">
+                                        <Link
+                                            // component="button"
+                                            onClick={() => navigate(`/stitching/${order._id}`)}
+                                            sx={{ textDecoration: 'underline' }}
+                                            underline="none"
                                         >
-                                            Edit
-                                        </Button>
+                                            {order.orderId}
+                                        </Link>
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
+                                        <Chip
+                                            size="small"
+                                            icon={statusIcons[order.status]}
+                                            label={statusLabels[order.status] || 'Unknown'}
+                                            color={
+                                                order.status === 1 ? 'primary' :
+                                                    order.status === 2 ? 'primary' :
+                                                        order.status === 3 ? 'primary' :
+                                                            order.status === 4 ? 'primary' :
+                                                                order.status === 5 ? 'primary' :
+                                                                    order.status === 6 ? 'secondary' : 'default'
+                                            }
+                                            sx={{ ml: 1, p: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                        />
+                                    </Typography>
+                                    <IconButton onClick={() => toggleRowExpansion(order._id)} size="small">
+                                        <ExpandMoreIcon sx={{ transform: expandedRows[order._id] ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                                    </IconButton>
+                                </Stack>
+                                <Stack spacing={1} sx={{ mt: 1 }}>
+                                    <Grid container spacing={1} sx={{ textAlign: 'center' }}>
+                                        <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                                            <Typography variant="body2" sx={{ wrap: 'nowrap' }}>
+                                                <strong>Date</strong><br />
+                                                {getFormattedDate(order.date)}
+                                            </Typography>
+                                        </Grid>
+                                        <Grid size={{ xs: 4, sm: 4 }}>
+                                            <Typography variant="body2">
+                                                <strong>Client</strong><br />
+                                                {order.clientId?.name || ''}
+                                            </Typography>
+                                        </Grid>
+                                        <Grid size={{ xs: 4, sm: 4 }}>
+                                            <Typography variant="body2">
+                                                <strong>Fit Style</strong><br />
+                                                {order.fitStyleId?.name || ''}
+                                            </Typography>
+                                        </Grid>
                                     </Grid>
-                                </Grid>
-                            </Collapse>
-                        </CardContent>
-                    </Card>
-                ))
-            ) : (
-                'No records found'
-            )}
-            {processedOrders && processedOrders.length > 0 && (
-                <TablePagination
-                    component="div"
-                    count={totalCount}
-                    page={page}
-                    onPageChange={onPageChange}
-                    rowsPerPage={rowsPerPage}
-                    onRowsPerPageChange={onRowsPerPageChange}
-                    rowsPerPageOptions={[10, 25, 50]}
-                />
-            )}
+                                </Stack>
+                                <Collapse in={expandedRows[order._id]}>
+                                    <Grid container spacing={1} sx={{ mt: 2, textAlign: 'center' }}>
+                                        <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                                            <Typography variant="body2">
+                                                <strong>Quantity</strong><br />
+                                                {order.totalQuantity}
+                                            </Typography>
+                                        </Grid>
+                                        <Grid size={{ xs: 4, sm: 4 }}>
+                                            <Typography variant="body2">
+                                                <strong>Fabric</strong><br />
+                                                {order.fabric}
+                                            </Typography>
+                                        </Grid>
+                                        <Grid size={{ xs: 4, sm: 4 }}>
+                                            <Typography variant="body2">
+                                                <strong>Waist Size</strong><br />
+                                                {order.waistSize}
+                                            </Typography>
+                                        </Grid>
+                                        <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                                            <Typography variant="body2">
+                                                <strong>Final Qty</strong><br />
+                                                {order.finalTotalQuantity}
+                                            </Typography>
+                                        </Grid>
+                                        {/* <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>
+                                            <Typography variant="body2">
+                                                <strong>Threads:</strong>
+                                                {order.threadColors.map((tc, index) => (
+                                                    <Box key={index} component="span" sx={{ display: 'block' }}>
+                                                        {tc.color}, {tc.quantity} pcs
+                                                    </Box>
+                                                ))}
+                                            </Typography>
+                                        </Grid> */}
+                                        <Grid size={{ xs: 12, sm: 12 }}>
+                                            <Button
+                                                variant="contained"
+                                                startIcon={<EditIcon />}
+                                                onClick={() => onEditOrder(order)}
+                                                size="small"
+                                                sx={{ mt: 1 }}
+                                                fullWidth
+                                            >
+                                                Edit
+                                            </Button>
+                                        </Grid>
+                                    </Grid>
+                                </Collapse>
+                            </CardContent>
+                        </Card>
+                    ))
+                ) : (
+                    'No records found'
+                )}
+                {processedOrders && processedOrders.length > 0 && (
+                    <TablePagination
+                        component="div"
+                        count={totalCount}
+                        page={page}
+                        onPageChange={onPageChange}
+                        rowsPerPage={rowsPerPage}
+                        onRowsPerPageChange={onRowsPerPageChange}
+                        rowsPerPageOptions={[10, 25, 50]}
+                    />
+                )}
+              </motion.div>
+            </AnimatePresence>
         </Box>
     );
 }

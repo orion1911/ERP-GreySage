@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const { Stitching, Order, Lot, Finishing, Washing } = require('../mongodb_schema');
 const { updateVendorBalance } = require('../services/vendorBalanceService');
 const { logAction } = require('../utils/logger');
+const { recalcFinalQuantity } = require('../services/orderQuantityService');
 
 // Helper function to parse lotNumber and extract series, sub-series, and lot number
 const parseLotNumber = (lotNumber) => {
@@ -172,9 +173,8 @@ const createStitching = async (req, res) => {
     }
   }
 
-  // Perform non-transactional updates
-  // await updateVendorBalance(vendorId, 'stitching', lot._id, orderId, quantity, rate);
-  // await logAction(req.user.userId, 'create_stitching', 'Stitching', stitching._id, `Lot ${lotNumber} with invoice ${invoiceNumber} created`);
+  // Recalculate order's finalTotalQuantity
+  await recalcFinalQuantity(orderId);
 
   const populatedStitching = await Stitching.findById(stitching._id)
     .populate({ path: 'lotId' })
@@ -256,8 +256,11 @@ const updateStitching = async (req, res) => {
   });
 
   const updatedStitching = await stitching.save();
+
+  // Recalculate order's finalTotalQuantity
+  await recalcFinalQuantity(orderId || stitching.orderId);
+
   const populatedStitching = await Stitching.findById(id).populate('lotId orderId vendorId');
-  // await logAction(req.user.userId, 'update_stitching', 'Stitching', updatedStitching._id, `Stitching record ${id} updated`);
   res.json(populatedStitching);
 };
 

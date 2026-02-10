@@ -10,6 +10,7 @@ import { Edit as EditIcon } from '@mui/icons-material';
 import { NoRecordRow, TableRowsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
 import FinishingGridSx from './FinishingGridSx';
+import { motion, AnimatePresence } from 'motion/react';
 
 function FinishingGrid({ finishingRecords, hasFinishing, lotId, handleUpdateFinishOut, onEditFinishing, sortBy, setSortBy, sortDirection, setSortDirection, filterAnchorEl, setFilterAnchorEl, filterStatus, setFilterStatus, readOnly = false }) {
   const theme = useTheme();
@@ -66,6 +67,14 @@ function FinishingGrid({ finishingRecords, hasFinishing, lotId, handleUpdateFini
     />
   ) : (
     <>
+      <AnimatePresence mode="wait">
+      <motion.div
+        key={!processedRecords ? 'loading' : 'data'}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.15 }}
+      >
       <Box sx={{ p: 0, pl: 0 }}>
         <TableContainer>
           <Table sx={{ backgroundColor: theme.palette.background.default }}>
@@ -130,6 +139,8 @@ function FinishingGrid({ finishingRecords, hasFinishing, lotId, handleUpdateFini
           </Table>
         </TableContainer>
       </Box>
+      </motion.div>
+      </AnimatePresence>
     </>
   );
 }

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Box, Card, CardContent, Stack, Button, IconButton, Typography, useTheme, Grid, Select, MenuItem, Tooltip, TablePagination } from '@mui/material';
 import { ArrowUpward, ArrowDownward, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
+import { motion, AnimatePresence } from 'motion/react';
 
 function FinishingVendorCatalogSx({
   vendors,
@@ -82,76 +83,86 @@ function FinishingVendorCatalogSx({
           </Stack>
         </Grid>
       </Grid>
-      {!processedVendors ? (
-        <OrderCardsLoader type="vendor" />
-      ) : processedVendors.length > 0 ? (
-        processedVendors.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((vendor) => (
-          <Card key={vendor._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
-            <CardContent>
-              <Grid container spacing={1}>
-                <Grid size={{ xs: 8, sm: 8 }} sx={{ textAlign: 'left' }}>
-                  <Typography variant="subtitle1" fontWeight="bold">
-                    {vendor.name || 'N/A'}
-                  </Typography>
-                </Grid>
-                <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'right' }}>
-                  <Stack direction="row" spacing={1} justifyContent="flex-end">
-                    <Tooltip title={vendor.isActive ? 'Disable' : 'Enable'}>
-                      <IconButton
-                        variant="contained"
-                        color={vendor.isActive ? 'warning' : 'success'}
-                        size="small"
-                        disabled={loading}
-                        onClick={() => handleToggleActive(vendor._id)}
-                        sx={{ mt: 0.2 }}
-                      >
-                        {vendor.isActive ? <DeleteIcon /> : <CheckIcon />}
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Edit">
-                      <IconButton
-                        variant="contained"
-                        color="primary"
-                        size="small"
-                        disabled={loading}
-                        onClick={() => handleEditVendor(vendor)}
-                        sx={{ mt: 0.2 }}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                </Grid>
-                <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
-                  <Typography variant="body2">
-                    <strong>Contact</strong><br />
-                    {vendor.contact || 'N/A'}
-                  </Typography>
-                </Grid>
-                <Grid size={{ xs: 8, sm: 8 }} sx={{ textAlign: 'left' }}>
-                  <Typography variant="body2">
-                    <strong>Address</strong><br />
-                    {vendor.address || 'N/A'}
-                  </Typography>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        ))
-      ) : (
-        <Typography variant="body1" sx={{ textAlign: 'center' }}>No records found</Typography>
-      )}
-      {processedVendors && processedVendors.length > 0 && (
-        <TablePagination
-          component="div"
-          count={processedVendors.length}
-          page={page}
-          onPageChange={(_, newPage) => setPage(newPage)}
-          rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
-          rowsPerPageOptions={[10, 25, 50]}
-        />
-      )}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={!processedVendors ? 'loading' : 'data'}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          {!processedVendors ? (
+            <OrderCardsLoader type="vendor" />
+          ) : processedVendors.length > 0 ? (
+            processedVendors.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((vendor) => (
+              <Card key={vendor._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+                <CardContent>
+                  <Grid container spacing={1}>
+                    <Grid size={{ xs: 8, sm: 8 }} sx={{ textAlign: 'left' }}>
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        {vendor.name || 'N/A'}
+                      </Typography>
+                    </Grid>
+                    <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'right' }}>
+                      <Stack direction="row" spacing={1} justifyContent="flex-end">
+                        <Tooltip title={vendor.isActive ? 'Disable' : 'Enable'}>
+                          <IconButton
+                            variant="contained"
+                            color={vendor.isActive ? 'warning' : 'success'}
+                            size="small"
+                            disabled={loading}
+                            onClick={() => handleToggleActive(vendor._id)}
+                            sx={{ mt: 0.2 }}
+                          >
+                            {vendor.isActive ? <DeleteIcon /> : <CheckIcon />}
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Edit">
+                          <IconButton
+                            variant="contained"
+                            color="primary"
+                            size="small"
+                            disabled={loading}
+                            onClick={() => handleEditVendor(vendor)}
+                            sx={{ mt: 0.2 }}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </Grid>
+                    <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                      <Typography variant="body2">
+                        <strong>Contact</strong><br />
+                        {vendor.contact || 'N/A'}
+                      </Typography>
+                    </Grid>
+                    <Grid size={{ xs: 8, sm: 8 }} sx={{ textAlign: 'left' }}>
+                      <Typography variant="body2">
+                        <strong>Address</strong><br />
+                        {vendor.address || 'N/A'}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            <Typography variant="body1" sx={{ textAlign: 'center' }}>No records found</Typography>
+          )}
+          {processedVendors && processedVendors.length > 0 && (
+            <TablePagination
+              component="div"
+              count={processedVendors.length}
+              page={page}
+              onPageChange={(_, newPage) => setPage(newPage)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+              rowsPerPageOptions={[10, 25, 50]}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </Box>
   );
 }

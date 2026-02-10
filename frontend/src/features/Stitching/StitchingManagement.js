@@ -30,6 +30,7 @@ function StitchingManagement() {
   const [selectedWashingRecord, setSelectedWashingRecord] = useState(null);
   const [selectedFinishingRecord, setSelectedFinishingRecord] = useState(null);
   const [totalStitchedQuantity, setTotalStitchedQuantity] = useState(0);
+  const [totalShort, setTotalShort] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
 
   const fetchData = async () => {
@@ -48,6 +49,8 @@ function StitchingManagement() {
       setFinishingVendors(finishingVendorsRes);
       const total = stitchingRes.reduce((sum, record) => sum + record.quantity, 0);
       setTotalStitchedQuantity(total);
+      const short = stitchingRes.reduce((sum, record) => sum + (record.quantityShort || 0), 0);
+      setTotalShort(short);
     } catch (err) {
       console.log(err.response);
       showSnackbar(err);
@@ -85,16 +88,17 @@ function StitchingManagement() {
 
   const handleAddStitching = (newStitching) => {
     if (selectedRecord && selectedRecord._id === newStitching._id) {
-      setStitchingRecords(stitchingRecords.map(record =>
+      const updatedRecords = stitchingRecords.map(record =>
         record._id === newStitching._id ? newStitching : record
-      ));
-      setTotalStitchedQuantity(stitchingRecords.reduce((sum, record) =>
-        record._id === newStitching._id ? sum + Number(newStitching.quantity) : sum + Number(record.quantity),
-        0
-      ));
+      );
+      setStitchingRecords(updatedRecords);
+      setTotalStitchedQuantity(updatedRecords.reduce((sum, record) => sum + Number(record.quantity), 0));
+      setTotalShort(updatedRecords.reduce((sum, record) => sum + Number(record.quantityShort || 0), 0));
     } else {
-      setStitchingRecords([...stitchingRecords, newStitching]);
+      const updatedRecords = [...stitchingRecords, newStitching];
+      setStitchingRecords(updatedRecords);
       setTotalStitchedQuantity(prev => prev + Number(newStitching.quantity));
+      setTotalShort(updatedRecords.reduce((sum, record) => sum + Number(record.quantityShort || 0), 0));
     }
     setSelectedRecord(null);
     setOpenStitchingModal(false);
@@ -192,6 +196,7 @@ function StitchingManagement() {
             {order.orderId}
           </Link>
           <Typography>Total QTY: <b>{order.totalQuantity}</b></Typography>
+          <Typography>Final QTY: <b>{order.totalQuantity - totalShort}</b></Typography>
           <Typography>Remaining QTY: <b>{order.totalQuantity - totalStitchedQuantity}</b></Typography>
         </Box>
       )}

@@ -981,6 +981,7 @@ const getProductionDashboard = async (req, res) => {
         _lotId: '$lot._id',
         lotNumber: '$lot.lotNumber',
         quantity: 1,
+        quantityShort: 1,
         clientName: { $ifNull: ['$client.name', 'Unknown'] }
       }}
     ]);
@@ -996,7 +997,8 @@ const getProductionDashboard = async (req, res) => {
       { $project: {
         lotId: 1,
         washerName: { $ifNull: ['$vendor.name', 'Unknown'] },
-        washOutDate: 1
+        washOutDate: 1,
+        washDetails: 1
       }}
     ]);
 
@@ -1007,13 +1009,13 @@ const getProductionDashboard = async (req, res) => {
       if (lotId) washingByLot[lotId] = w;
     }
 
-    // Build lot-level data from stitching records
+    // Build lot-level data from stitching records (subtract stitching quantityShort)
     const lotData = {};
     for (const st of stitchingRecords) {
       const lotId = st._lotId?.toString();
       if (!lotId) continue;
       lotData[lotId] = {
-        quantity: st.quantity || 0,
+        quantity: (st.quantity || 0) - (st.quantityShort || 0),
         clientName: st.clientName,
         lotNumber: st.lotNumber || '',
         washerName: null,
@@ -1021,11 +1023,22 @@ const getProductionDashboard = async (req, res) => {
       };
     }
 
-    // Update status from washing records
+    // Update status from washing records and subtract washing quantityShort
     for (const [lotId, washing] of Object.entries(washingByLot)) {
       if (!lotData[lotId]) continue;
       lotData[lotId].washerName = washing.washerName;
       lotData[lotId].status = washing.washOutDate ? 'outWashing' : 'inWashing';
+      // Subtract washing shorts from washDetails
+      const washShort = (washing.washDetails || []).reduce((sum, d) => sum + (d.quantityShort || 0), 0);
+      lotData[lotId].quantity -= washShort;
+    }
+
+    // Query finishing records and subtract finishing quantityShort
+    const finishingRecords = await Finishing.find({ lotId: { $in: lotIds } }).lean();
+    for (const fr of finishingRecords) {
+      const lotId = fr.lotId?.toString();
+      if (!lotId || !lotData[lotId]) continue;
+      lotData[lotId].quantity -= (fr.quantityShort || 0);
     }
 
     // Compute KPIs, client summary, washer summary, breakdown

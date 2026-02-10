@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, useTheme } from '@mui/material';
+import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, flexRender } from '@tanstack/react-table';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, useTheme } from '@mui/material';
 import { PersonAdd, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import apiService from '../../services/apiService';
@@ -125,7 +125,9 @@ function ClientCatalog() {
     onGlobalFilterChange: setSearch,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel()
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: { pagination: { pageSize: 25 } }
   });
 
   const getHeaderContent = (column) => column.columnDef && column.columnDef.header ? column.columnDef.header.toUpperCase() : column.id;
@@ -161,6 +163,7 @@ function ClientCatalog() {
           handleToggleActive={handleToggleActive}
           showSnackbar={showSnackbar}
           handleEditClient={handleEditClient}
+          table={table}
         />
       ) : (
         <TableContainer>
@@ -206,6 +209,15 @@ function ClientCatalog() {
               )}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={table.getFilteredRowModel().rows.length}
+            page={table.getState().pagination.pageIndex}
+            onPageChange={(_, page) => table.setPageIndex(page)}
+            rowsPerPage={table.getState().pagination.pageSize}
+            onRowsPerPageChange={(e) => table.setPageSize(Number(e.target.value))}
+            rowsPerPageOptions={[10, 25, 50]}
+          />
         </TableContainer>
       )}
       <ClientCatalogAdd

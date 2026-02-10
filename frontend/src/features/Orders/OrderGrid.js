@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { useReactTable, getCoreRowModel } from '@tanstack/react-table';
+import { useReactTable, getCoreRowModel, getPaginationRowModel } from '@tanstack/react-table';
 import { Link, IconButton, Chip, Box, Typography } from '@mui/material';
 import { Edit as EditIcon, CheckCircle, Cancel, ShoppingCartCheckout, ContentCut, LocalLaundryService, AutoAwesome } from '@mui/icons-material';
 import OrderGridSx from './OrderGridSx';
@@ -16,6 +16,8 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
     const [sortDirection, setSortDirection] = useState('desc'); // Track sort direction
     const [filterAnchorEl, setFilterAnchorEl] = useState(null); // Filter menu anchor
     const [filterStatus, setFilterStatus] = useState(''); // Filter by status
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(25);
 
     const statusLabels = {
         1: 'Placed',
@@ -181,6 +183,13 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
         columns,
         data: processedOrders,
         getCoreRowModel: getCoreRowModel(),
+        getPaginationRowModel: getPaginationRowModel(),
+        state: { pagination: { pageIndex: page, pageSize: rowsPerPage } },
+        onPaginationChange: (updater) => {
+            const next = typeof updater === 'function' ? updater({ pageIndex: page, pageSize: rowsPerPage }) : updater;
+            setPage(next.pageIndex);
+            setRowsPerPage(next.pageSize);
+        },
     });
 
     const toggleRowExpansion = (rowId) => {
@@ -190,9 +199,16 @@ function OrderGrid({ orders, search: globalSearch, onEditOrder }) {
         }));
     };
 
+    const paginatedOrdersSx = processedOrders ? processedOrders.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage) : processedOrders;
+
     return isMobile ? (
         <OrderGridSx
-            processedOrders={processedOrders}
+            processedOrders={paginatedOrdersSx}
+            totalCount={processedOrders ? processedOrders.length : 0}
+            page={page}
+            rowsPerPage={rowsPerPage}
+            onPageChange={(_, newPage) => setPage(newPage)}
+            onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
             navigate={navigate}
             expandedRows={expandedRows}
             toggleRowExpansion={toggleRowExpansion}

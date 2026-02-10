@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { Box, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, Link } from '@mui/material';
+import { Box, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, Link, TablePagination } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, ContentCut, Add, MoreVert as MoreVertIcon, AutoAwesome } from '@mui/icons-material';
+import { motion } from 'motion/react';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
 import WashingGrid from '../Washing/WashingGrid';
@@ -14,6 +15,11 @@ import { MorphDateIconField } from '../../components/MuiCustom';
 
 function StitchingGridSx({
   processedRecords,
+  totalCount,
+  page,
+  rowsPerPage,
+  onPageChange,
+  onRowsPerPageChange,
   washingRecords,
   finishingRecords,
   fetchWashingRecords,
@@ -117,7 +123,7 @@ function StitchingGridSx({
       lotNumber: record.lotId?.lotNumber || '',
       lotId: record.lotId?._id || '',
       invoiceNumber: record.lotId?.invoiceNumber || '',
-      lotQuantity: record.quantity
+      lotQuantity: record.quantity - (record.quantityShort || 0)
     });
     setOpenWashingModal(true);
     handleMenuClose();
@@ -273,104 +279,123 @@ function StitchingGridSx({
                 </Grid>
               </Stack>
               <Collapse in={mobileExpandedRows[record._id]}>
-                <Grid container spacing={1} sx={{ mt: 2, textAlign: 'center' }}>
-                  <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
-                    <Typography variant="body2">
-                      <strong>Invoice #</strong><br />
-                      {record.lotId?.invoiceNumber || 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 4, sm: 4 }}>
-                    <Typography variant="body2">
-                      <strong>Client</strong><br />
-                      {record.orderId?.clientId?.name || 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 4, sm: 4 }}>
-                    <Typography variant="body2">
-                      <strong>Qty Short</strong><br />
-                      {record.quantityShort}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
-                    <Typography variant="body2">
-                      <strong>Rate</strong><br />
-                      {record.rate}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 4, sm: 4 }}>
-                    <Typography variant="body2">
-                      <strong>Stitch Out</strong><br />
-                      {readOnly ? (getFormattedDate(record.stitchOutDate)) : (
-                        <div style={{ display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
-                          {record.stitchOutDate && getFormattedDate(record.stitchOutDate)}
-                          <LocalizationProvider dateAdapter={AdapterDayjs}>
-                            <MorphDateIconField
-                              value={null}
-                              onChange={(e) => handleUpdateStitchOut(record._id, e)}
-                            />
-                          </LocalizationProvider>
-                        </div>)}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>
-                    <Typography variant="body2">
-                      <strong>Threads: </strong>
-                      {record.threadColors.map((tc, index) => (
-                        <div key={index} style={{ display: 'inline-flex' }}>
-                          <Box key={index} component="span" sx={{ display: 'block' }}>
-                            {tc.color} - {tc.quantity} pcs
-                          </Box>
-                          <span>{index < record.threadColors.length - 1 ? '\u00A0' +'|'+ '\u00A0' : ''}</span>
-                        </div>
-                      ))}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left', pt: 1 }}>
-                    <Typography variant="body2">
-                      <WashingGrid
-                        washingRecords={washingRecords && washingRecords[record.lotId?._id] || []}
-                        lotId={record.lotId?._id}
-                        handleUpdateWashOut={handleUpdateWashOut}
-                        onEditWashing={onEditWashing}
-                        sortBy={sortBy}
-                        setSortBy={setSortBy}
-                        sortDirection={sortDirection}
-                        setSortDirection={setSortDirection}
-                        filterAnchorEl={filterAnchorEl}
-                        setFilterAnchorEl={setFilterAnchorEl}
-                        filterStatus={filterStatus}
-                        setFilterStatus={setFilterStatus}
-                        readOnly={readOnly}
-                      />
-                    </Typography>
-                  </Grid>
-                  {finishingRecords && finishingRecords[record.lotId?._id]?.length > 0 && (<Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left', pt: 1 }}>
-                    <Typography variant="body2">
-                      <FinishingGrid
-                        finishingRecords={finishingRecords && finishingRecords[record.lotId?._id] || []}
-                        lotId={record.lotId?._id}
-                        handleUpdateFinishOut={handleUpdateFinishOut}
-                        onEditFinishing={onEditFinishing}
-                        sortBy={sortBy}
-                        setSortBy={setSortBy}
-                        sortDirection={sortDirection}
-                        setSortDirection={setSortDirection}
-                        filterAnchorEl={filterAnchorEl}
-                        setFilterAnchorEl={setFilterAnchorEl}
-                        filterStatus={filterStatus}
-                        setFilterStatus={setFilterStatus}
-                        readOnly={readOnly}
-                      />
-                    </Typography>
-                  </Grid>)}
-                </Grid>
+                {mobileExpandedRows[record._id] && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.3, delay: 0.1 }}
+                  >
+                    <Grid container spacing={1} sx={{ mt: 2, textAlign: 'center' }}>
+                      <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                        <Typography variant="body2">
+                          <strong>Invoice #</strong><br />
+                          {record.lotId?.invoiceNumber || 'N/A'}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 4, sm: 4 }}>
+                        <Typography variant="body2">
+                          <strong>Client</strong><br />
+                          {record.orderId?.clientId?.name || 'N/A'}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 4, sm: 4 }}>
+                        <Typography variant="body2">
+                          <strong>Qty Short</strong><br />
+                          {record.quantityShort}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                        <Typography variant="body2">
+                          <strong>Rate</strong><br />
+                          {record.rate}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 4, sm: 4 }}>
+                        <Typography variant="body2">
+                          <strong>Stitch Out</strong><br />
+                          {readOnly ? (getFormattedDate(record.stitchOutDate)) : (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+                              {record.stitchOutDate && getFormattedDate(record.stitchOutDate)}
+                              <LocalizationProvider dateAdapter={AdapterDayjs}>
+                                <MorphDateIconField
+                                  value={null}
+                                  onChange={(e) => handleUpdateStitchOut(record._id, e)}
+                                />
+                              </LocalizationProvider>
+                            </div>)}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>
+                        <Typography variant="body2">
+                          <strong>Threads: </strong>
+                          {record.threadColors.map((tc, index) => (
+                            <div key={index} style={{ display: 'inline-flex' }}>
+                              <Box key={index} component="span" sx={{ display: 'block' }}>
+                                {tc.color} - {tc.quantity} pcs
+                              </Box>
+                              <span>{index < record.threadColors.length - 1 ? '\u00A0' +'|'+ '\u00A0' : ''}</span>
+                            </div>
+                          ))}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left', pt: 1 }}>
+                        <Typography variant="body2">
+                          <WashingGrid
+                            washingRecords={washingRecords && washingRecords[record.lotId?._id] || []}
+                            lotId={record.lotId?._id}
+                            handleUpdateWashOut={handleUpdateWashOut}
+                            onEditWashing={onEditWashing}
+                            sortBy={sortBy}
+                            setSortBy={setSortBy}
+                            sortDirection={sortDirection}
+                            setSortDirection={setSortDirection}
+                            filterAnchorEl={filterAnchorEl}
+                            setFilterAnchorEl={setFilterAnchorEl}
+                            filterStatus={filterStatus}
+                            setFilterStatus={setFilterStatus}
+                            readOnly={readOnly}
+                          />
+                        </Typography>
+                      </Grid>
+                      {finishingRecords && finishingRecords[record.lotId?._id]?.length > 0 && (<Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left', pt: 1 }}>
+                        <Typography variant="body2">
+                          <FinishingGrid
+                            finishingRecords={finishingRecords && finishingRecords[record.lotId?._id] || []}
+                            lotId={record.lotId?._id}
+                            handleUpdateFinishOut={handleUpdateFinishOut}
+                            onEditFinishing={onEditFinishing}
+                            sortBy={sortBy}
+                            setSortBy={setSortBy}
+                            sortDirection={sortDirection}
+                            setSortDirection={setSortDirection}
+                            filterAnchorEl={filterAnchorEl}
+                            setFilterAnchorEl={setFilterAnchorEl}
+                            filterStatus={filterStatus}
+                            setFilterStatus={setFilterStatus}
+                            readOnly={readOnly}
+                          />
+                        </Typography>
+                      </Grid>)}
+                    </Grid>
+                  </motion.div>
+                )}
               </Collapse>
             </CardContent>
           </Card>
         ))
       ) : (
         'No records found'
+      )}
+      {filteredRecords && filteredRecords.length > 0 && (
+        <TablePagination
+          component="div"
+          count={totalCount || 0}
+          page={page || 0}
+          onPageChange={onPageChange}
+          rowsPerPage={rowsPerPage || 25}
+          onRowsPerPageChange={onRowsPerPageChange}
+          rowsPerPageOptions={[10, 25, 50]}
+        />
       )}
     </Box>
   );

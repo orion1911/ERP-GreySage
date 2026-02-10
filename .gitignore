@@ -16,3 +16,4 @@ build
 .env
 *.zip
 .env.development
+.claude/settings.local.json

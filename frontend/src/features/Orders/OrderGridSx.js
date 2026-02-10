@@ -1,10 +1,10 @@
 import React from 'react';
-import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Chip, Link, Typography, useTheme, Grid, Select, MenuItem, Menu } from '@mui/material';
+import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Chip, Link, Typography, useTheme, Grid, Select, MenuItem, Menu, TablePagination } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList } from '@mui/icons-material';
 import { OrderCardsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
 
-function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansion, statusLabels, statusIcons, onEditOrder, sortBy, setSortBy, sortDirection, setSortDirection, filterAnchorEl, setFilterAnchorEl, filterStatus, setFilterStatus }) {
+function OrderGridSx({ processedOrders, totalCount, page, rowsPerPage, onPageChange, onRowsPerPageChange, navigate, expandedRows, toggleRowExpansion, statusLabels, statusIcons, onEditOrder, sortBy, setSortBy, sortDirection, setSortDirection, filterAnchorEl, setFilterAnchorEl, filterStatus, setFilterStatus }) {
     const theme = useTheme();
 
     return (
@@ -169,6 +169,17 @@ function OrderGridSx({ processedOrders, navigate, expandedRows, toggleRowExpansi
                 ))
             ) : (
                 'No records found'
+            )}
+            {processedOrders && processedOrders.length > 0 && (
+                <TablePagination
+                    component="div"
+                    count={totalCount}
+                    page={page}
+                    onPageChange={onPageChange}
+                    rowsPerPage={rowsPerPage}
+                    onRowsPerPageChange={onRowsPerPageChange}
+                    rowsPerPageOptions={[10, 25, 50]}
+                />
             )}
         </Box>
     );

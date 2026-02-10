@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { Table, TableBody, TableCell, TableHead, TableRow, Button, TextField, Container, Typography } from '@mui/material';
+import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, flexRender } from '@tanstack/react-table';
+import { Table, TableBody, TableCell, TableHead, TableRow, TablePagination, Button, TextField, Typography, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import apiService from '../../services/apiService';
 
 function UserManagement() {
   const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState(null);
 
   useEffect(() => {
     apiService.admin.userMgmt.getUsers()
@@ -34,15 +36,32 @@ function UserManagement() {
     onGlobalFilterChange: setSearch,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel()
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: { pagination: { pageSize: 25 } }
   });
 
   const getHeaderContent = (column) => column.columnDef && column.columnDef.header ? column.columnDef.header.toUpperCase() : column.id;
   const isColumnSortable = (column) => column.columnDef && column.columnDef.enableSorting === true;
 
   const handleDelete = (id) => {
-    apiService.admin.userMgmt.deleteUser(id)
-      .then(() => setUsers(users.filter(u => u._id !== id)));
+    setUserToDelete(id);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!userToDelete) return;
+    apiService.admin.userMgmt.deleteUser(userToDelete)
+      .then(() => {
+        setUsers(users.filter(u => u._id !== userToDelete));
+        setConfirmOpen(false);
+        setUserToDelete(null);
+      });
+  };
+
+  const handleCancelDelete = () => {
+    setConfirmOpen(false);
+    setUserToDelete(null);
   };
 
   return (
@@ -93,6 +112,29 @@ function UserManagement() {
           ))}
         </TableBody>
       </Table>
+      <TablePagination
+        component="div"
+        count={table.getFilteredRowModel().rows.length}
+        page={table.getState().pagination.pageIndex}
+        onPageChange={(_, page) => table.setPageIndex(page)}
+        rowsPerPage={table.getState().pagination.pageSize}
+        onRowsPerPageChange={(e) => table.setPageSize(Number(e.target.value))}
+        rowsPerPageOptions={[10, 25, 50]}
+      />
+      <Dialog open={confirmOpen} onClose={handleCancelDelete}>
+        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogContent>
+          Are you sure you want to delete this user?
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={handleCancelDelete} color="primary">
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleConfirmDelete} color="error" autoFocus>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Box, Card, CardContent, Stack, Button, IconButton, Typography, useTheme, Grid, Select, MenuItem, Tooltip } from '@mui/material';
+import { Box, Card, CardContent, Stack, Button, IconButton, Typography, useTheme, Grid, Select, MenuItem, Tooltip, TablePagination } from '@mui/material';
 import { ArrowUpward, ArrowDownward, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 
@@ -14,6 +14,8 @@ function FinishingVendorCatalogSx({
   const theme = useTheme();
   const [sortBy, setSortBy] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
 
   const sortData = (data, sortKey, direction) => {
     if (!data || !Array.isArray(data)) return [];
@@ -83,7 +85,7 @@ function FinishingVendorCatalogSx({
       {!processedVendors ? (
         <OrderCardsLoader type="vendor" />
       ) : processedVendors.length > 0 ? (
-        processedVendors.map((vendor) => (
+        processedVendors.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((vendor) => (
           <Card key={vendor._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
             <CardContent>
               <Grid container spacing={1}>
@@ -138,6 +140,17 @@ function FinishingVendorCatalogSx({
         ))
       ) : (
         <Typography variant="body1" sx={{ textAlign: 'center' }}>No records found</Typography>
+      )}
+      {processedVendors && processedVendors.length > 0 && (
+        <TablePagination
+          component="div"
+          count={processedVendors.length}
+          page={page}
+          onPageChange={(_, newPage) => setPage(newPage)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+          rowsPerPageOptions={[10, 25, 50]}
+        />
       )}
     </Box>
   );

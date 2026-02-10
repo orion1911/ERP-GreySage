@@ -477,6 +477,14 @@ function StitchingGrid({
       readOnly={readOnly}
     />
   ) : (
+    <AnimatePresence mode="wait">
+    <motion.div
+      key={!processedRecords ? 'loading' : 'data'}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+    >
     <TableContainer>
       <Table>
         <TableHead>
@@ -606,6 +614,8 @@ function StitchingGrid({
         rowsPerPageOptions={[10, 25, 50]}
       />
     </TableContainer>
+    </motion.div>
+    </AnimatePresence>
   );
 }
 

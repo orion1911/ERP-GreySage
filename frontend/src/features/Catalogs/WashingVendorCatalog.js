@@ -7,6 +7,7 @@ import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/Skeleton
 import apiService from '../../services/apiService';
 import WashingVendorCatalogSx from './WashingVendorCatalogSx';
 import WashingVendorCatalogAdd from './WashingVendorCatalogAdd';
+import { motion, AnimatePresence } from 'motion/react';
 
 function WashingVendorCatalog() {
   const { showSnackbar, isMobile } = useOutletContext();
@@ -157,6 +158,14 @@ function WashingVendorCatalog() {
           handleEditVendor={handleEditVendor}
         />
       ) : (
+        <AnimatePresence mode="wait">
+        <motion.div
+          key={loading ? 'loading' : 'data'}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
         <TableContainer>
           <Table>
             <TableHead>
@@ -210,6 +219,8 @@ function WashingVendorCatalog() {
             rowsPerPageOptions={[10, 25, 50]}
           />
         </TableContainer>
+        </motion.div>
+        </AnimatePresence>
       )}
       <WashingVendorCatalogAdd
         open={openModal}

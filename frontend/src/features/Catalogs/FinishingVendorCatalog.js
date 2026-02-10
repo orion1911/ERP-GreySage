@@ -7,6 +7,7 @@ import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/Skeleton
 import apiService from '../../services/apiService';
 import FinishingVendorCatalogSx from './FinishingVendorCatalogSx';
 import FinishingVendorCatalogAdd from './FinishingVendorCatalogAdd';
+import { motion, AnimatePresence } from 'motion/react';
 
 function FinishingVendorCatalog() {
   const { showSnackbar, isMobile } = useOutletContext();
@@ -157,6 +158,14 @@ function FinishingVendorCatalog() {
           handleEditVendor={handleEditVendor}
         />
       ) : (
+        <AnimatePresence mode="wait">
+        <motion.div
+          key={loading ? 'loading' : 'data'}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
         <TableContainer>
           <Table>
             <TableHead>
@@ -210,6 +219,8 @@ function FinishingVendorCatalog() {
             rowsPerPageOptions={[10, 25, 50]}
           />
         </TableContainer>
+        </motion.div>
+        </AnimatePresence>
       )}
       <FinishingVendorCatalogAdd
         open={openModal}

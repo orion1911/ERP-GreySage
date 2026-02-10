@@ -6,7 +6,6 @@ import {
     Grid,
     Stack,
     Typography,
-    Button,
     Table,
     TableBody,
     TableCell,
@@ -15,7 +14,6 @@ import {
     TableRow,
     TablePagination,
     Chip,
-    CircularProgress,
     Skeleton,
     Alert,
     useTheme,
@@ -29,13 +27,12 @@ import GridViewIcon from '@mui/icons-material/GridView';
 import ContentCutIcon from '@mui/icons-material/ContentCut';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import BoltIcon from '@mui/icons-material/Bolt';
 import LocalLaundryServiceIcon from '@mui/icons-material/LocalLaundryService';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useOutletContext } from 'react-router-dom';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { DateRangePicker } from '@mui/x-date-pickers-pro';
 import { MorphDateTextField } from '../../components/MuiCustom';
 import dayjs from 'dayjs';
 import { motion, AnimatePresence } from 'motion/react';
@@ -49,13 +46,11 @@ const Dashboard = () => {
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [processingTime, setProcessingTime] = useState('—');
     const [timestamp, setTimestamp] = useState('—');
     const [expandedRows, setExpandedRows] = useState({});
     const [breakdownPage, setBreakdownPage] = useState(0);
     const [breakdownRowsPerPage, setBreakdownRowsPerPage] = useState(25);
-    const [fromDate, setFromDate] = useState(dayjs().startOf('month'));
-    const [toDate, setToDate] = useState(dayjs());
+    const [dateRange, setDateRange] = useState([dayjs().startOf('month'), dayjs()]);
 
     // KPI Data
     const [kpiData, setKpiData] = useState({
@@ -78,8 +73,8 @@ const Dashboard = () => {
 
         try {
             const params = {};
-            if (fromDate) params.fromDate = fromDate.startOf('day').toISOString();
-            if (toDate) params.toDate = toDate.endOf('day').toISOString();
+            if (dateRange[0]) params.fromDate = dateRange[0].startOf('day').toISOString();
+            if (dateRange[1]) params.toDate = dateRange[1].endOf('day').toISOString();
             const data = await apiService.admin.dashboard.getProductionDashboard(params);
 
             if (data.error) {
@@ -94,10 +89,6 @@ const Dashboard = () => {
                 totalInWashing: data.total_in_washing || 0,
                 totalOutWashing: data.total_out_washing || 0,
             });
-
-            if (data.processing_time) {
-                setProcessingTime(Math.round(data.processing_time * 1000));
-            }
 
             setClientSummary(data.client_summary || []);
             setWasherSummary(data.washer_summary || []);
@@ -118,7 +109,7 @@ const Dashboard = () => {
     // Load data on mount and when date range changes
     useEffect(() => {
         loadData();
-    }, [fromDate, toDate]);
+    }, [dateRange]);
 
     // Chart Colors based on theme
     const chartColors = {
@@ -213,166 +204,153 @@ const Dashboard = () => {
         <Container maxWidth="xl" sx={{ pt: '0 !important', pb: 2, px: '0 !important' }}>
             {/* Header */}
             <Stack direction="row" alignItems="center" sx={{ mb: 4, mt: 1, flexWrap: 'wrap', gap: 2 }}>
-                <Stack>
-                    <Typography variant="h4">Dashboard</Typography>
-                </Stack>
+                <Typography variant="h4">Dashboard</Typography>
                 <LocalizationProvider dateAdapter={AdapterDayjs}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                        <DatePicker
-                            value={fromDate}
-                            onChange={(val) => val && setFromDate(val)}
-                            label="From"
-                            format="DD-MMM-YYYY"
-                            slots={{ textField: MorphDateTextField }}
-                            slotProps={{ textField: { variant: 'standard', size: 'small' } }}
-                            sx={{ width: 140 }}
-                        />
-                        <DatePicker
-                            value={toDate}
-                            onChange={(val) => val && setToDate(val)}
-                            label="To"
-                            format="DD-MMM-YYYY"
-                            slots={{ textField: MorphDateTextField }}
-                            slotProps={{ textField: { variant: 'standard', size: 'small' } }}
-                            sx={{ width: 140 }}
-                        />
-                    </Stack>
-                </LocalizationProvider>
-                <Stack direction="row" spacing={2} alignItems="center">
-                    <Chip
-                        icon={<BoltIcon />}
-                        label={`${processingTime} ms`}
-                        variant="outlined"
+                    <DateRangePicker
+                        value={dateRange}
+                        onChange={(newValue) => setDateRange(newValue)}
+                        format="DD/MM/YY"
+                        slots={{ textField: MorphDateTextField }}
+                        slotProps={{ textField: { variant: 'standard', size: 'small' } }}
+                        sx={{ width: 260 }}
                     />
-                    <Button
-                        variant="contained"
-                        startIcon={<RefreshIcon />}
-                        onClick={loadData}
-                        disabled={loading}
-                        sx={{ textTransform: 'none', fontWeight: 600 }}
-                    >
-                        {loading ? <CircularProgress size={20} /> : 'Refresh'}
-                    </Button>
-                </Stack>
+                </LocalizationProvider>
+                <IconButton onClick={loadData} disabled={loading}>
+                    <RefreshIcon />
+                </IconButton>
             </Stack>
 
             {/* Error Message */}
             {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
             {/* KPI Cards */}
-            <Grid container spacing={2} sx={{ mb: 4, alignItems: 'stretch' }}>
-                {loading ? (
-                    [0, 1, 2, 3].map((i) => (
-                        <Grid key={i} size={{ xs: 6, sm: 6, md: 3 }}>
-                            <Paper elevation={1} sx={{ p: 2, borderRadius: 2 }}>
-                                <Skeleton variant="circular" width={40} height={40} sx={{ mb: 1 }} />
-                                <Skeleton variant="text" width="50%" height={16} />
-                                <Skeleton variant="text" width="70%" height={36} sx={{ my: 0.5 }} />
-                                <Skeleton variant="text" width="60%" height={14} />
-                            </Paper>
-                        </Grid>
-                    ))
-                ) : (
-                    <>
-                        {[
-                            { label: 'Total Pieces', value: kpiData.totalPcs, subtitle: 'All tracked items', color: '#5C6AC4', icon: GridViewIcon },
-                            { label: 'Making', value: kpiData.totalMaking, subtitle: 'In production', color: '#E8634A', icon: ContentCutIcon },
-                            { label: 'In Washing', value: kpiData.totalInWashing, subtitle: 'Being processed', color: '#D4920A', icon: LocalLaundryServiceIcon },
-                            { label: 'Completed', value: kpiData.totalOutWashing, subtitle: 'Ready for delivery', color: '#2AA89A', icon: CheckCircleIcon },
-                        ].map((card, i) => (
-                            <Grid key={card.label} size={{ xs: 6, sm: 6, md: 3 }}>
-                                <motion.div
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.4, delay: i * 0.1 }}
-                                    style={{ height: '100%' }}
-                                >
-                                    <KPICard {...card} />
-                                </motion.div>
-                            </Grid>
-                        ))}
-                    </>
-                )}
-            </Grid>
-
-            {/* Charts */}
-            {loading ? (
-                <Grid container spacing={3} sx={{ mb: 4, alignItems: 'stretch' }}>
-                    {[0, 1].map((i) => (
-                        <Grid key={i} size={{ xs: 12, sm: 6, md: 6 }}>
-                            <Paper elevation={1} sx={{ p: 2, borderRadius: 2 }}>
-                                <Skeleton variant="text" width="40%" height={28} sx={{ mb: 2 }} />
-                                <Skeleton variant="rectangular" height={300} />
-                            </Paper>
-                        </Grid>
-                    ))}
-                </Grid>
-            ) : (
+            <AnimatePresence mode="wait">
                 <motion.div
+                    key={loading ? 'kpi-loading' : 'kpi-data'}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ duration: 0.5, delay: 0.3 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
                 >
-                    <Grid container spacing={3} sx={{ mb: 4, alignItems: 'stretch' }}>
-                        <Grid size={{ xs: 12, sm: 6, md: 6 }}>
-                            <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
-                                <Stack spacing={2} sx={{ flex: 1 }}>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                            Client Stats
-                                        </Typography>
-                                        <Chip label="Top 10" size="small" variant="outlined" />
-                                    </Box>
-                                    <Box sx={{ width: '100%' }}>
-                                        <BarChart
-                                            series={clientSeries}
-                                            xAxis={[{
-                                                height: 70,
-                                                scaleType: 'band', data: clientLabels,
-                                                labelStyle: {
-                                                    fontSize: 14,
-                                                },
-                                                tickLabelStyle: {
-                                                    angle: -45,
-                                                    fontSize: 11,
-                                                }
-                                            }]}
-                                            height={300}
-                                            colors={[chartColors.indigo, chartColors.coral, chartColors.amber, chartColors.teal]}
-                                            margin={{ left: 0, right: 0, top: 10, bottom: 40 }}
-                                            slotProps={{
-                                                legend: { hidden: false },
-                                            }}
-                                        />
-                                    </Box>
-                                </Stack>
-                            </Paper>
-                        </Grid>
-
-                        <Grid size={{ xs: 12, sm: 6, md: 6 }}>
-                            <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
-                                <Stack spacing={2} sx={{ flex: 1 }}>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                            Washing Stats
-                                        </Typography>
-                                        <Chip label="Pending" size="small" variant="outlined" />
-                                    </Box>
-                                    <Box sx={{ width: '100%' }}>
-                                        <PieChart
-                                            series={washerSeries}
-                                            height={320}
-                                            innerRadius={0.62}
-                                            colors={pieColors}
-                                            slotProps={{ legend: { position: 'bottom' } }}
-                                        />
-                                    </Box>
-                                </Stack>
-                            </Paper>
-                        </Grid>
+                    <Grid container spacing={2} sx={{ mb: 4, alignItems: 'stretch' }}>
+                        {loading ? (
+                            [0, 1, 2, 3].map((i) => (
+                                <Grid key={i} size={{ xs: 6, sm: 6, md: 3 }}>
+                                    <Paper elevation={1} sx={{ p: 2, borderRadius: 2 }}>
+                                        <Skeleton variant="circular" width={40} height={40} sx={{ mb: 1 }} />
+                                        <Skeleton variant="text" width="50%" height={16} />
+                                        <Skeleton variant="text" width="70%" height={36} sx={{ my: 0.5 }} />
+                                        <Skeleton variant="text" width="60%" height={14} />
+                                    </Paper>
+                                </Grid>
+                            ))
+                        ) : (
+                            <>
+                                {[
+                                    { label: 'Total Pieces', value: kpiData.totalPcs, subtitle: 'All tracked items', color: '#5C6AC4', icon: GridViewIcon },
+                                    { label: 'Making', value: kpiData.totalMaking, subtitle: 'In production', color: '#E8634A', icon: ContentCutIcon },
+                                    { label: 'In Washing', value: kpiData.totalInWashing, subtitle: 'Being processed', color: '#D4920A', icon: LocalLaundryServiceIcon },
+                                    { label: 'Completed', value: kpiData.totalOutWashing, subtitle: 'Ready for delivery', color: '#2AA89A', icon: CheckCircleIcon },
+                                ].map((card, i) => (
+                                    <Grid key={card.label} size={{ xs: 6, sm: 6, md: 3 }}>
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 20 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={{ duration: 0.4, delay: i * 0.1 }}
+                                            style={{ height: '100%' }}
+                                        >
+                                            <KPICard {...card} />
+                                        </motion.div>
+                                    </Grid>
+                                ))}
+                            </>
+                        )}
                     </Grid>
                 </motion.div>
-            )}
+            </AnimatePresence>
+
+            {/* Charts */}
+            <AnimatePresence mode="wait">
+                <motion.div
+                    key={loading ? 'charts-loading' : 'charts-data'}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                >
+                    {loading ? (
+                        <Grid container spacing={3} sx={{ mb: 4, alignItems: 'stretch' }}>
+                            {[0, 1].map((i) => (
+                                <Grid key={i} size={{ xs: 12, sm: 6, md: 6 }}>
+                                    <Paper elevation={1} sx={{ p: 2, borderRadius: 2 }}>
+                                        <Skeleton variant="text" width="40%" height={28} sx={{ mb: 2 }} />
+                                        <Skeleton variant="rectangular" height={300} />
+                                    </Paper>
+                                </Grid>
+                            ))}
+                        </Grid>
+                    ) : (
+                        <Grid container spacing={3} sx={{ mb: 4, alignItems: 'stretch' }}>
+                            <Grid size={{ xs: 12, sm: 6, md: 6 }}>
+                                <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
+                                    <Stack spacing={2} sx={{ flex: 1 }}>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                                Client Stats
+                                            </Typography>
+                                            <Chip label="Top 10" size="small" variant="outlined" />
+                                        </Box>
+                                        <Box sx={{ width: '100%' }}>
+                                            <BarChart
+                                                series={clientSeries}
+                                                xAxis={[{
+                                                    height: 70,
+                                                    scaleType: 'band', data: clientLabels,
+                                                    labelStyle: {
+                                                        fontSize: 14,
+                                                    },
+                                                    tickLabelStyle: {
+                                                        angle: -45,
+                                                        fontSize: 11,
+                                                    }
+                                                }]}
+                                                height={300}
+                                                colors={[chartColors.indigo, chartColors.coral, chartColors.amber, chartColors.teal]}
+                                                margin={{ left: 0, right: 0, top: 10, bottom: 40 }}
+                                                slotProps={{
+                                                    legend: { hidden: false },
+                                                }}
+                                            />
+                                        </Box>
+                                    </Stack>
+                                </Paper>
+                            </Grid>
+
+                            <Grid size={{ xs: 12, sm: 6, md: 6 }}>
+                                <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
+                                    <Stack spacing={2} sx={{ flex: 1 }}>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                                Washing Stats
+                                            </Typography>
+                                            <Chip label="Pending" size="small" variant="outlined" />
+                                        </Box>
+                                        <Box sx={{ width: '100%' }}>
+                                            <PieChart
+                                                series={washerSeries}
+                                                height={320}
+                                                innerRadius={0.62}
+                                                colors={pieColors}
+                                                slotProps={{ legend: { position: 'bottom' } }}
+                                            />
+                                        </Box>
+                                    </Stack>
+                                </Paper>
+                            </Grid>
+                        </Grid>
+                    )}
+                </motion.div>
+            </AnimatePresence>
 
             {/* Summary Tables */}
             <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -608,27 +586,32 @@ const Dashboard = () => {
                                                         {row.OUT_WASHING > 0 && <Chip label={formatNumber(row.OUT_WASHING)} size="small" color="success" variant="filled" />}
                                                     </TableCell>
                                                 </TableRow>
-                                                {expandedRows[breakdownPage * breakdownRowsPerPage + idx] && row.LOT_NO && (
+                                                {row.LOT_NO && (
                                                     <TableRow
                                                         sx={{
                                                             backgroundColor: 'background.paper',
-                                                            border: 0,
+                                                            '& td': { border: expandedRows[breakdownPage * breakdownRowsPerPage + idx] ? undefined : 0, p: 0 },
                                                             '&:last-child td, &:last-child th': { border: 0 },
                                                         }}
                                                     >
-                                                        <TableCell colSpan={7} sx={{ pl: 2 }}>
-                                                            <motion.div
-                                                                initial={{ opacity: 0, height: 0 }}
-                                                                animate={{ opacity: 1, height: 'auto' }}
-                                                                transition={{ duration: 0.3 }}
-                                                                style={{ overflow: 'hidden' }}
-                                                            >
-                                                                {row.LOT_NO.split(',').map((lotNo) => (
-                                                                    <React.Fragment key={lotNo}>
-                                                                        <Chip label={lotNo.trim()} size="small" sx={{ bgcolor: 'primary.soft', mr: 0.5, mb: 0.5 }} />
-                                                                    </React.Fragment>
-                                                                ))}
-                                                            </motion.div>
+                                                        <TableCell colSpan={7} sx={{ p: 0 }}>
+                                                            <AnimatePresence>
+                                                                {expandedRows[breakdownPage * breakdownRowsPerPage + idx] && (
+                                                                    <motion.div
+                                                                        initial={{ opacity: 0, height: 0 }}
+                                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                                        exit={{ opacity: 0, height: 0 }}
+                                                                        transition={{ duration: 0.3 }}
+                                                                        style={{ overflow: 'hidden', paddingLeft: 16 }}
+                                                                    >
+                                                                        {row.LOT_NO.split(',').map((lotNo) => (
+                                                                            <React.Fragment key={lotNo}>
+                                                                                <Chip label={lotNo.trim()} size="small" sx={{ bgcolor: 'primary.soft', mr: 0.5, mb: 0.5 }} />
+                                                                            </React.Fragment>
+                                                                        ))}
+                                                                    </motion.div>
+                                                                )}
+                                                            </AnimatePresence>
                                                         </TableCell>
                                                     </TableRow>
                                                 )}

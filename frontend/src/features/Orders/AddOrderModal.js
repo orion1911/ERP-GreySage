@@ -74,12 +74,10 @@ function AddOrderModal({ open, onClose, clients, fitStyles, onAddOrder, onUpdate
           onAddOrder(res);
         }
         reset(defaultValues);
-        onClose();
       })
       .catch(err => {
         console.log(err.response);
         showSnackbar(err);
-        setLoading(false);
       })
       .finally(() => setLoading(false));
   };

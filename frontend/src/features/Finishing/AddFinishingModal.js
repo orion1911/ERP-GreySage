@@ -79,16 +79,14 @@ function AddFinishingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNu
 
     request
       .then(res => {
-        setLoading(false);
         onAddFinishing(lotId, res);
         reset(defaultValues);
-        onClose();
       })
       .catch(err => {
         console.log(err.response);
         showSnackbar(err);
-        setLoading(false);
-      });
+      })
+      .finally(() => setLoading(false));
   };
 
   return (

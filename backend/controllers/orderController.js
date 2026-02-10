@@ -41,8 +41,9 @@ const createOrder = async (req, res) => {
 
   try {
     await order.save();
+    const populatedOrder = await Order.findById(order._id).populate('clientId fitStyleId');
     //await logAction(req.user.userId, 'create_order', 'Order', order._id, `Order ${orderId} created`);
-    res.status(201).json(order);
+    res.status(201).json(populatedOrder);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }

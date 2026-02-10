@@ -5,17 +5,57 @@ import authService from '../../services/authService';
 
 function Register() {
   const [form, setForm] = useState({ username: '', email: '', password: '', role: 'user' });
+  const [errors, setErrors] = useState({ username: '', email: '', password: '' });
   const navigate = useNavigate();
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+    setErrors({ ...errors, [e.target.name]: '' });
+  };
+
+  const validate = () => {
+    const newErrors = { username: '', email: '', password: '' };
+    let valid = true;
+
+    if (!form.username.trim()) {
+      newErrors.username = 'Username is required';
+      valid = false;
+    } else if (form.username.trim().length < 3) {
+      newErrors.username = 'Username must be at least 3 characters';
+      valid = false;
+    }
+
+    if (!form.email.trim()) {
+      newErrors.email = 'Email is required';
+      valid = false;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      newErrors.email = 'Invalid email format';
+      valid = false;
+    }
+
+    if (!form.password) {
+      newErrors.password = 'Password is required';
+      valid = false;
+    } else if (form.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+      valid = false;
+    }
+
+    setErrors(newErrors);
+    return valid;
+  };
 
   const handleRegister = () => {
+    if (!validate()) return;
+
     authService.register(form)
       .then(() => {
-        alert('Registration successful! Please login.');
         navigate('/login');
       })
-      .catch(err => alert(err.response.data.error));
+      .catch(err => {
+        const serverError = err.response?.data?.error || 'Registration failed';
+        setErrors(prev => ({ ...prev, email: serverError }));
+      });
   };
 
   return (
@@ -28,6 +68,8 @@ function Register() {
         onChange={handleChange}
         fullWidth
         margin="normal"
+        error={!!errors.username}
+        helperText={errors.username}
       />
       <TextField
         name="email"
@@ -36,6 +78,8 @@ function Register() {
         onChange={handleChange}
         fullWidth
         margin="normal"
+        error={!!errors.email}
+        helperText={errors.email}
       />
       <TextField
         name="password"
@@ -45,6 +89,8 @@ function Register() {
         onChange={handleChange}
         fullWidth
         margin="normal"
+        error={!!errors.password}
+        helperText={errors.password}
       />
       <FormControl fullWidth margin="normal">
         <InputLabel>Role</InputLabel>

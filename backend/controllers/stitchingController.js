@@ -176,7 +176,11 @@ const createStitching = async (req, res) => {
   // await updateVendorBalance(vendorId, 'stitching', lot._id, orderId, quantity, rate);
   // await logAction(req.user.userId, 'create_stitching', 'Stitching', stitching._id, `Lot ${lotNumber} with invoice ${invoiceNumber} created`);
 
-  res.status(201).json(stitching);
+  const populatedStitching = await Stitching.findById(stitching._id)
+    .populate({ path: 'lotId' })
+    .populate({ path: 'orderId', populate: { path: 'clientId' } })
+    .populate({ path: 'vendorId' });
+  res.status(201).json(populatedStitching);
 };
 
 const updateStitching = async (req, res) => {

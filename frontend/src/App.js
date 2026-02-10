@@ -27,6 +27,8 @@ import FinishingVendorCatalog from './features/Catalogs/FinishingVendorCatalog';
 import OrderManagement from './features/Orders/OrderManagement';
 import StitchingManagement from './features/Stitching/StitchingManagement';
 import LotsManagement from './features/Stitching/LotsManagement';
+import NotFound from './components/NotFound';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem('token');
@@ -167,7 +169,9 @@ const AuthenticatedLayout = ({ isMobile, variant, setVariant }) => {
             }}
           >
             <Container maxWidth={false} disableGutters={isMobile ? true : false} sx={{ mt: 4, mb: 4 }}>
-              <Outlet context={{ isMobile, drawerWidth, showSnackbar }} />
+              <ErrorBoundary>
+                <Outlet context={{ isMobile, drawerWidth, showSnackbar }} />
+              </ErrorBoundary>
             </Container>
           </Stack>
         </Box>
@@ -212,6 +216,7 @@ function App() {
               </Route>
             </Route>
             <Route path="/" element={<Navigate to="/login" />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
       </AppTheme>

@@ -1,6 +1,7 @@
 // controllers/finishingController.js
 const mongoose = require('mongoose');
 const { Finishing, Lot, Order, Washing } = require('../mongodb_schema');
+const { recalcFinalQuantity } = require('../services/orderQuantityService');
 // const { updateVendorBalance } = require('../services/vendorBalanceService');
 
 const createFinishing = async (req, res) => {
@@ -62,6 +63,9 @@ const createFinishing = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
+    // Recalculate order's finalTotalQuantity
+    await recalcFinalQuantity(orderId);
+
     const populated = await Finishing.findById(finishing._id).populate('orderId vendorId lotId');
     res.status(201).json(populated);
   } catch (err) {
@@ -102,6 +106,10 @@ const updateFinishing = async (req, res) => {
 
   try {
     await finishing.save();
+
+    // Recalculate order's finalTotalQuantity
+    await recalcFinalQuantity(finishing.orderId._id || finishing.orderId);
+
     const populated = await Finishing.findById(id).populate('lotId orderId vendorId');
     res.json(populated);
   } catch (err) {

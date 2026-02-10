@@ -3,6 +3,7 @@ import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Table
 import { ArrowUpward, ArrowDownward, FilterList } from '@mui/icons-material';
 import { flexRender } from '@tanstack/react-table';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
+import { motion, AnimatePresence } from 'motion/react';
 
 function OrderGridMd({ processedOrders, columns, table, sortBy, sortDirection, setSortBy, setSortDirection, filterAnchorEl, setFilterAnchorEl, filterStatus, setFilterStatus }) {
     const theme = useTheme();
@@ -11,6 +12,14 @@ function OrderGridMd({ processedOrders, columns, table, sortBy, sortDirection, s
     const isColumnSortable = (column) => column.columnDef && column.columnDef.enableSorting === true;
 
     return (
+        <AnimatePresence mode="wait">
+        <motion.div
+            key={processedOrders === undefined ? 'loading' : 'data'}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+        >
         <TableContainer>
             <Table>
                 <TableHead>
@@ -126,6 +135,8 @@ function OrderGridMd({ processedOrders, columns, table, sortBy, sortDirection, s
                 rowsPerPageOptions={[10, 25, 50]}
             />
         </TableContainer>
+        </motion.div>
+        </AnimatePresence>
     );
 }
 

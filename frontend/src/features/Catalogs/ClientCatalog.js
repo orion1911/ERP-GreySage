@@ -7,6 +7,7 @@ import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/Skeleton
 import apiService from '../../services/apiService';
 import ClientCatalogSx from './ClientCatalogSx';
 import ClientCatalogAdd from './ClientCatalogAdd';
+import { motion, AnimatePresence } from 'motion/react';
 
 function ClientCatalog() {
   const { showSnackbar, isMobile } = useOutletContext();
@@ -166,6 +167,14 @@ function ClientCatalog() {
           table={table}
         />
       ) : (
+        <AnimatePresence mode="wait">
+        <motion.div
+          key={loading ? 'loading' : 'data'}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
         <TableContainer>
           <Table>
             <TableHead>
@@ -219,6 +228,8 @@ function ClientCatalog() {
             rowsPerPageOptions={[10, 25, 50]}
           />
         </TableContainer>
+        </motion.div>
+        </AnimatePresence>
       )}
       <ClientCatalogAdd
         open={openModal}

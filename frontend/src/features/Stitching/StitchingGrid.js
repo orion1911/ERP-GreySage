@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useOutletContext, Link as RouterLink } from 'react-router-dom';
 import { useTheme } from '@mui/material/styles';
-import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, Box, IconButton, Tooltip, Badge, Link, Typography } from '@mui/material';
+import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, flexRender } from '@tanstack/react-table';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, Box, IconButton, Tooltip, Badge, Link, Typography } from '@mui/material';
 import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon, AutoAwesome } from '@mui/icons-material';
 import WashingGrid from '../Washing/WashingGrid';
 import FinishingGrid from '../Finishing/FinishingGrid';
@@ -10,6 +10,7 @@ import StitchingGridSx from './StitchingGridSx';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
 import OrderStatusChip from '../../components/OrderStatusChip';
+import { motion } from 'motion/react';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { MorphDateIconField, MorphDateTextField } from '../../components/MuiCustom';
@@ -41,6 +42,8 @@ function StitchingGrid({
   const [sortDirection, setSortDirection] = useState('desc');
   const [filterAnchorEl, setFilterAnchorEl] = useState(null);
   const [filterStatus, setFilterStatus] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
 
   useEffect(() => {
     if (stitchingRecords && Array.isArray(stitchingRecords)) {
@@ -368,7 +371,7 @@ function StitchingGrid({
                     lotNumber: row.original.lotId?.lotNumber || '',
                     lotId: row.original.lotId?._id || '',
                     invoiceNumber: row.original.lotId?.invoiceNumber || '',
-                    lotQuantity: row.original.quantity
+                    lotQuantity: row.original.quantity - (row.original.quantityShort || 0)
                   });
                   setOpenWashingModal(true);
                 }}
@@ -408,21 +411,35 @@ function StitchingGrid({
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
     state: {
       // globalFilter: searchTerm,
       columnVisibility: {
         actions: !readOnly, // Hide the 'actions' column when readOnly is true
         orderId: readOnly
       },
-    }
+      pagination: { pageIndex: page, pageSize: rowsPerPage },
+    },
+    onPaginationChange: (updater) => {
+      const next = typeof updater === 'function' ? updater({ pageIndex: page, pageSize: rowsPerPage }) : updater;
+      setPage(next.pageIndex);
+      setRowsPerPage(next.pageSize);
+    },
   });
 
   const getHeaderContent = (column) => column.columnDef && column.columnDef.header ? column.columnDef.header : column.id;
   const isColumnSortable = (column) => column.columnDef && column.columnDef.enableSorting === true;
 
+  const paginatedRecordsSx = processedRecords ? processedRecords.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage) : processedRecords;
+
   return isMobile ? (
     <StitchingGridSx
-      processedRecords={processedRecords}
+      processedRecords={paginatedRecordsSx}
+      totalCount={processedRecords ? processedRecords.length : 0}
+      page={page}
+      rowsPerPage={rowsPerPage}
+      onPageChange={(_, newPage) => setPage(newPage)}
+      onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
       washingRecords={washingRecords}
       finishingRecords={finishingRecords}
       fetchWashingRecords={fetchWashingRecords}
@@ -499,42 +516,56 @@ function StitchingGrid({
                   <>
                     <TableRow>
                       <TableCell colSpan={13} sx={{ p: 0 }}>
-                        <WashingGrid
-                          washingRecords={washingRecords && washingRecords[row.original.lotId?._id] || []}
-                          hasWashing={hasWashing}
-                          lotId={row.original.lotId?._id}
-                          handleUpdateWashOut={handleUpdateWashOut}
-                          onEditWashing={onEditWashing}
-                          sortBy={sortBy}
-                          setSortBy={setSortBy}
-                          sortDirection={sortDirection}
-                          setSortDirection={setSortDirection}
-                          filterAnchorEl={filterAnchorEl}
-                          setFilterAnchorEl={setFilterAnchorEl}
-                          filterStatus={filterStatus}
-                          setFilterStatus={setFilterStatus}
-                          readOnly={readOnly}
-                        />
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          transition={{ duration: 0.3 }}
+                          style={{ overflow: 'hidden' }}
+                        >
+                          <WashingGrid
+                            washingRecords={washingRecords && washingRecords[row.original.lotId?._id] || []}
+                            hasWashing={hasWashing}
+                            lotId={row.original.lotId?._id}
+                            handleUpdateWashOut={handleUpdateWashOut}
+                            onEditWashing={onEditWashing}
+                            sortBy={sortBy}
+                            setSortBy={setSortBy}
+                            sortDirection={sortDirection}
+                            setSortDirection={setSortDirection}
+                            filterAnchorEl={filterAnchorEl}
+                            setFilterAnchorEl={setFilterAnchorEl}
+                            filterStatus={filterStatus}
+                            setFilterStatus={setFilterStatus}
+                            readOnly={readOnly}
+                          />
+                        </motion.div>
                       </TableCell>
                     </TableRow>
-                    {finishingRecords && finishingRecords[row.original.lotId?._id].length > 0 && (<TableRow>
+                    {finishingRecords && finishingRecords[row.original.lotId?._id]?.length > 0 && (<TableRow>
                       <TableCell colSpan={13} sx={{ p: 0 }}>
-                        <FinishingGrid
-                          finishingRecords={finishingRecords && finishingRecords[row.original.lotId?._id] || []}
-                          hasFinishing={hasFinishing}
-                          lotId={row.original.lotId?._id}
-                          handleUpdateFinishOut={handleUpdateFinishOut}
-                          onEditFinishing={onEditFinishing}
-                          sortBy={sortBy}
-                          setSortBy={setSortBy}
-                          sortDirection={sortDirection}
-                          setSortDirection={setSortDirection}
-                          filterAnchorEl={filterAnchorEl}
-                          setFilterAnchorEl={setFilterAnchorEl}
-                          filterStatus={filterStatus}
-                          setFilterStatus={setFilterStatus}
-                          readOnly={readOnly}
-                        />
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          transition={{ duration: 0.3 }}
+                          style={{ overflow: 'hidden' }}
+                        >
+                          <FinishingGrid
+                            finishingRecords={finishingRecords && finishingRecords[row.original.lotId?._id] || []}
+                            hasFinishing={hasFinishing}
+                            lotId={row.original.lotId?._id}
+                            handleUpdateFinishOut={handleUpdateFinishOut}
+                            onEditFinishing={onEditFinishing}
+                            sortBy={sortBy}
+                            setSortBy={setSortBy}
+                            sortDirection={sortDirection}
+                            setSortDirection={setSortDirection}
+                            filterAnchorEl={filterAnchorEl}
+                            setFilterAnchorEl={setFilterAnchorEl}
+                            filterStatus={filterStatus}
+                            setFilterStatus={setFilterStatus}
+                            readOnly={readOnly}
+                          />
+                        </motion.div>
                       </TableCell>
                     </TableRow>)}
                   </>
@@ -546,6 +577,15 @@ function StitchingGrid({
           )}
         </TableBody>
       </Table>
+      <TablePagination
+        component="div"
+        count={processedRecords ? processedRecords.length : 0}
+        page={table.getState().pagination.pageIndex}
+        onPageChange={(_, newPage) => table.setPageIndex(newPage)}
+        rowsPerPage={table.getState().pagination.pageSize}
+        onRowsPerPageChange={(e) => table.setPageSize(Number(e.target.value))}
+        rowsPerPageOptions={[10, 25, 50]}
+      />
     </TableContainer>
   );
 }

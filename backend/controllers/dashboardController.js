@@ -954,4 +954,182 @@ const getTopFitStyles = async (req, res) => {
   }
 };
 
-module.exports = { getOrdersByStatus, getProductionStages, getInvoiceStatus, getVendorPerformance, getAuditLog, getTopFitStyles, getOrderStatusSummary, getAllClientCompletedQuantities };
+// Production Dashboard (mirrors DashboardExcel logic using MongoDB data)
+const getProductionDashboard = async (req, res) => {
+  try {
+    const startTime = Date.now();
+    const { fromDate, toDate } = req.query;
+
+    // Build date filter for stitching
+    const stitchingMatch = {};
+    if (fromDate || toDate) {
+      stitchingMatch.date = {};
+      if (fromDate) stitchingMatch.date.$gte = new Date(fromDate);
+      if (toDate) stitchingMatch.date.$lte = new Date(toDate);
+    }
+
+    // Aggregation pipeline for stitching - single query with $lookup joins
+    const stitchingRecords = await Stitching.aggregate([
+      { $match: stitchingMatch },
+      { $lookup: { from: 'lots', localField: 'lotId', foreignField: '_id', as: 'lot' } },
+      { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+      { $lookup: { from: 'orders', localField: 'orderId', foreignField: '_id', as: 'order' } },
+      { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
+      { $lookup: { from: 'clients', localField: 'order.clientId', foreignField: '_id', as: 'client' } },
+      { $unwind: { path: '$client', preserveNullAndEmptyArrays: true } },
+      { $project: {
+        _lotId: '$lot._id',
+        lotNumber: '$lot.lotNumber',
+        quantity: 1,
+        clientName: { $ifNull: ['$client.name', 'Unknown'] }
+      }}
+    ]);
+
+    // Get lot IDs for scoped washing query
+    const lotIds = stitchingRecords.map(s => s._lotId).filter(Boolean);
+
+    // Aggregation pipeline for washing - only for matched lots
+    const washingRecords = await Washing.aggregate([
+      { $match: { lotId: { $in: lotIds } } },
+      { $lookup: { from: 'washingvendors', localField: 'vendorId', foreignField: '_id', as: 'vendor' } },
+      { $unwind: { path: '$vendor', preserveNullAndEmptyArrays: true } },
+      { $project: {
+        lotId: 1,
+        washerName: { $ifNull: ['$vendor.name', 'Unknown'] },
+        washOutDate: 1
+      }}
+    ]);
+
+    // Build a map of lotId -> washing record for quick lookup
+    const washingByLot = {};
+    for (const w of washingRecords) {
+      const lotId = w.lotId?.toString();
+      if (lotId) washingByLot[lotId] = w;
+    }
+
+    // Build lot-level data from stitching records
+    const lotData = {};
+    for (const st of stitchingRecords) {
+      const lotId = st._lotId?.toString();
+      if (!lotId) continue;
+      lotData[lotId] = {
+        quantity: st.quantity || 0,
+        clientName: st.clientName,
+        lotNumber: st.lotNumber || '',
+        washerName: null,
+        status: 'making',
+      };
+    }
+
+    // Update status from washing records
+    for (const [lotId, washing] of Object.entries(washingByLot)) {
+      if (!lotData[lotId]) continue;
+      lotData[lotId].washerName = washing.washerName;
+      lotData[lotId].status = washing.washOutDate ? 'outWashing' : 'inWashing';
+    }
+
+    // Compute KPIs, client summary, washer summary, breakdown
+    let totalPcs = 0, totalMaking = 0, totalInWashing = 0, totalOutWashing = 0;
+    const clientMap = {};
+    const washerMap = {};
+    const breakdownMap = {};
+
+    for (const lot of Object.values(lotData)) {
+      const { quantity, clientName, lotNumber, washerName, status } = lot;
+      totalPcs += quantity;
+
+      // Client map
+      if (!clientMap[clientName]) clientMap[clientName] = { total: 0, making: 0, inWashing: 0, outWashing: 0 };
+      clientMap[clientName].total += quantity;
+
+      // Washer map
+      const washer = washerName || '\u2014';
+      if (washerName) {
+        if (!washerMap[washerName]) washerMap[washerName] = { total: 0, inWashing: 0, outWashing: 0, pending: 0 };
+        washerMap[washerName].total += quantity;
+      }
+
+      // Breakdown map (grouped by client + washer)
+      const bKey = `${clientName}|${washer}`;
+      if (!breakdownMap[bKey]) {
+        breakdownMap[bKey] = { client: clientName, lots: new Set(), washer, pcs: 0, making: 0, inWashing: 0, outWashing: 0 };
+      }
+      if (lotNumber) breakdownMap[bKey].lots.add(lotNumber);
+      breakdownMap[bKey].pcs += quantity;
+
+      if (status === 'making') {
+        totalMaking += quantity;
+        clientMap[clientName].making += quantity;
+        breakdownMap[bKey].making += quantity;
+      } else if (status === 'inWashing') {
+        totalInWashing += quantity;
+        clientMap[clientName].inWashing += quantity;
+        if (washerName) {
+          washerMap[washerName].inWashing += quantity;
+          washerMap[washerName].pending += quantity;
+        }
+        breakdownMap[bKey].inWashing += quantity;
+      } else if (status === 'outWashing') {
+        totalOutWashing += quantity;
+        clientMap[clientName].outWashing += quantity;
+        if (washerName) {
+          washerMap[washerName].outWashing += quantity;
+        }
+        breakdownMap[bKey].outWashing += quantity;
+      }
+    }
+
+    // Build response arrays
+    const client_summary = Object.entries(clientMap)
+      .map(([name, data]) => ({
+        CLIENT: name,
+        TOTAL: data.total,
+        MAKING: data.making,
+        IN_WASHING: data.inWashing,
+        OUT_WASHING: data.outWashing,
+      }))
+      .sort((a, b) => b.TOTAL - a.TOTAL);
+
+    const washer_summary = Object.entries(washerMap)
+      .map(([name, data]) => ({
+        WASHER: name,
+        TOTAL: data.total,
+        IN_WASHING: data.inWashing,
+        OUT_WASHING: data.outWashing,
+        PENDING: data.pending,
+      }))
+      .sort((a, b) => b.PENDING - a.PENDING);
+
+    const rows = Object.values(breakdownMap)
+      .map(b => ({
+        CLIENT: b.client,
+        LOT_COUNT: b.lots.size,
+        LOT_NO: Array.from(b.lots).sort().join(', '),
+        WASHING: b.washer,
+        PCS: b.pcs,
+        MAKING: b.making,
+        IN_WASHING: b.inWashing,
+        OUT_WASHING: b.outWashing,
+      }))
+      .sort((a, b) => b.PCS - a.PCS);
+
+    const processingTime = (Date.now() - startTime) / 1000;
+
+    res.json({
+      total_pcs: totalPcs,
+      total_making: totalMaking,
+      total_in_washing: totalInWashing,
+      total_out_washing: totalOutWashing,
+      client_summary,
+      washer_summary,
+      rows,
+      processing_time: processingTime,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error in production dashboard:', error);
+    res.status(500).json({ error: 'Error fetching production dashboard data' });
+  }
+};
+
+module.exports = { getOrdersByStatus, getProductionStages, getInvoiceStatus, getVendorPerformance, getAuditLog, getTopFitStyles, getOrderStatusSummary, getAllClientCompletedQuantities, getProductionDashboard };

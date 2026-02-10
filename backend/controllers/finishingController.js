@@ -23,8 +23,10 @@ const createFinishing = async (req, res) => {
   if (!washing) return res.status(400).json({ error: 'Washing record not found for this lot' });
 
   const totalWashQuantity = washing.washDetails.reduce((sum, item) => sum + parseInt(item.quantity || 0), 0);
-  if (quantity !== totalWashQuantity) {
-    return res.status(400).json({ error: `Finishing quantity (${quantity}) must equal washing quantity (${totalWashQuantity})` });
+  const totalWashShort = washing.washDetails.reduce((sum, item) => sum + parseInt(item.quantityShort || 0), 0);
+  const availableQty = totalWashQuantity - totalWashShort;
+  if (quantity !== availableQty) {
+    return res.status(400).json({ error: `Finishing quantity (${quantity}) must equal available washing quantity (${availableQty}) [wash total: ${totalWashQuantity} - short: ${totalWashShort}]` });
   }
 
   let session = null;
@@ -81,8 +83,10 @@ const updateFinishing = async (req, res) => {
   if (!washing) return res.status(400).json({ error: 'Washing record not found for this lot' });
 
   const totalWashQuantity = washing.washDetails.reduce((sum, detail) => sum + parseInt(detail.quantity || 0), 0);
-  if (quantity !== undefined && quantity !== totalWashQuantity) {
-    return res.status(400).json({ error: `Updated quantity (${quantity}) must match washing quantity (${totalWashQuantity})` });
+  const totalWashShort = washing.washDetails.reduce((sum, detail) => sum + parseInt(detail.quantityShort || 0), 0);
+  const availableQty = totalWashQuantity - totalWashShort;
+  if (quantity !== undefined && quantity !== availableQty) {
+    return res.status(400).json({ error: `Updated quantity (${quantity}) must match available washing quantity (${availableQty}) [wash total: ${totalWashQuantity} - short: ${totalWashShort}]` });
   }
 
   if (vendorId) finishing.vendorId = vendorId;

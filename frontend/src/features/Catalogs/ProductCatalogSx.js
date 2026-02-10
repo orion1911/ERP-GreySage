@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Typography, useTheme, Grid, Select, MenuItem, Tooltip } from '@mui/material';
+import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Typography, useTheme, Grid, Select, MenuItem, Tooltip, TablePagination } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 
@@ -15,6 +15,8 @@ function ProductCatalogSx({
   const [expandedRows, setExpandedRows] = useState({});
   const [sortBy, setSortBy] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
 
   const sortData = (data, sortKey, direction) => {
     if (!data || !Array.isArray(data)) return [];
@@ -79,7 +81,7 @@ function ProductCatalogSx({
       {!processedProducts ? (
         <OrderCardsLoader type="product" />
       ) : processedProducts.length > 0 ? (
-        processedProducts.map((product) => (
+        processedProducts.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((product) => (
           <Card key={product._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
             <CardContent>
               <Stack>
@@ -130,6 +132,17 @@ function ProductCatalogSx({
         ))
       ) : (
         <Typography variant="body1" sx={{ textAlign: 'center' }}>No records found</Typography>
+      )}
+      {processedProducts && processedProducts.length > 0 && (
+        <TablePagination
+          component="div"
+          count={processedProducts.length}
+          page={page}
+          onPageChange={(_, newPage) => setPage(newPage)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+          rowsPerPageOptions={[10, 25, 50]}
+        />
       )}
     </Box>
   );

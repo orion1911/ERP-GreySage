@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
-const { getOrdersByStatus, getOrderStatusSummary, getAllClientCompletedQuantities, getProductionStages, getInvoiceStatus, getVendorPerformance, getAuditLog, getTopFitStyles } = require('../controllers/dashboardController');
+const { getOrdersByStatus, getOrderStatusSummary, getAllClientCompletedQuantities, getProductionStages, getInvoiceStatus, getVendorPerformance, getAuditLog, getTopFitStyles, getProductionDashboard } = require('../controllers/dashboardController');
 
 // Role-based access middleware
 const checkRole = (roles) => (req, res, next) => {
@@ -19,5 +19,6 @@ router.get('/dashboard/financial/invoices', authenticateToken, getInvoiceStatus)
 router.get('/dashboard/vendors/performance', authenticateToken, checkRole(['admin']), getVendorPerformance);
 router.get('/dashboard/audit/log', authenticateToken, checkRole(['admin']), getAuditLog);
 router.get('/dashboard/fitstyles/top', authenticateToken, getTopFitStyles);
+router.get('/dashboard/production-summary', authenticateToken, getProductionDashboard);
 
 module.exports = router;

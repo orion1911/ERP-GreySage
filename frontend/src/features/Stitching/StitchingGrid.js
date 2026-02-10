@@ -541,7 +541,7 @@ function StitchingGrid({
                         </motion.div>
                       </TableCell>
                     </TableRow>
-                    {finishingRecords && finishingRecords[row.original.lotId?._id].length > 0 && (<TableRow>
+                    {finishingRecords && finishingRecords[row.original.lotId?._id]?.length > 0 && (<TableRow>
                       <TableCell colSpan={13} sx={{ p: 0 }}>
                         <motion.div
                           initial={{ opacity: 0, height: 0 }}

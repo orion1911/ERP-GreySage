@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { Box, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, Link, TablePagination } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, ContentCut, Add, MoreVert as MoreVertIcon, AutoAwesome } from '@mui/icons-material';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
 import WashingGrid from '../Washing/WashingGrid';
@@ -43,7 +43,6 @@ function StitchingGridSx({
   setFilterAnchorEl,
   filterStatus,
   setFilterStatus,
-  searchTerm,
   readOnly = false
 }) {
   const theme = useTheme();
@@ -73,35 +72,6 @@ function StitchingGridSx({
     }));
     toggleRowExpansion(rowId);
   };
-
-  // Apply filtering based on searchTerm and filterStatus
-  const filteredRecords = useMemo(() => {
-    if (!processedRecords || !Array.isArray(processedRecords)) return processedRecords;
-    let result = processedRecords;
-
-    // Apply search term filter
-    if (searchTerm) {
-      result = result.filter(record =>
-        record.lotId?.lotNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        record.lotId?.invoiceNumber?.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
-        record.vendorId?.name?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    // Apply status filter
-    if (filterStatus) {
-      result = result.filter(record => {
-        if (filterStatus === 'completed') {
-          return !!record.stitchOutDate; // Records with a stitchOutDate
-        } else if (filterStatus === 'pending') {
-          return !record.stitchOutDate; // Records without a stitchOutDate
-        }
-        return true; // 'all' or unknown filter
-      });
-    }
-
-    return result;
-  }, [processedRecords, searchTerm, filterStatus]);
 
   const handleMenuOpen = (event, recordId) => {
     setMenuAnchorEl(event.currentTarget);
@@ -186,10 +156,10 @@ function StitchingGridSx({
           </Stack>
         </Grid>
       </Grid>
-      {!filteredRecords ? (
+      {!processedRecords ? (
         <OrderCardsLoader type="stitching" />
-      ) : filteredRecords.length > 0 ? (
-        filteredRecords.map((record) => (
+      ) : processedRecords.length > 0 ? (
+        processedRecords.map((record) => (
           <Card key={record._id} variant="outlined" sx={{ p: 1.3, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
             <CardContent>
               <Grid container spacing={1} sx={{ textAlign: 'center' }}>
@@ -279,12 +249,14 @@ function StitchingGridSx({
                 </Grid>
               </Stack>
               <Collapse in={mobileExpandedRows[record._id]}>
-                {mobileExpandedRows[record._id] && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.3, delay: 0.1 }}
-                  >
+                <AnimatePresence>
+                  {mobileExpandedRows[record._id] && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.3, delay: 0.1 }}
+                    >
                     <Grid container spacing={1} sx={{ mt: 2, textAlign: 'center' }}>
                       <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
                         <Typography variant="body2">
@@ -377,8 +349,9 @@ function StitchingGridSx({
                         </Typography>
                       </Grid>)}
                     </Grid>
-                  </motion.div>
-                )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </Collapse>
             </CardContent>
           </Card>
@@ -386,7 +359,7 @@ function StitchingGridSx({
       ) : (
         'No records found'
       )}
-      {filteredRecords && filteredRecords.length > 0 && (
+      {processedRecords && processedRecords.length > 0 && (
         <TablePagination
           component="div"
           count={totalCount || 0}

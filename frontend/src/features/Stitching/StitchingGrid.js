@@ -10,7 +10,7 @@ import StitchingGridSx from './StitchingGridSx';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
 import OrderStatusChip from '../../components/OrderStatusChip';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { MorphDateIconField, MorphDateTextField } from '../../components/MuiCustom';
@@ -131,8 +131,19 @@ function StitchingGrid({
   const processedRecords = useMemo(() => {
     let filtered = stitchingRecords;
     filtered = filterData(filtered, searchTerm);
+    if (filterStatus && filtered) {
+      filtered = filtered.filter(record => {
+        if (filterStatus === 'completed') return !!record.stitchOutDate;
+        if (filterStatus === 'pending') return !record.stitchOutDate;
+        return true;
+      });
+    }
     return sortData(filtered, sortBy, sortDirection);
-  }, [stitchingRecords, searchTerm, sortBy, sortDirection]);
+  }, [stitchingRecords, searchTerm, sortBy, sortDirection, filterStatus]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [filterStatus]);
 
   const columns = [
     {
@@ -512,13 +523,14 @@ function StitchingGrid({
                     </TableCell>
                   ))}
                 </TableRow>
-                {expandedRows[row.original._id] && (
-                  <>
-                    <TableRow>
-                      <TableCell colSpan={13} sx={{ p: 0 }}>
+                <TableRow sx={{ '& td': { border: expandedRows[row.original._id] ? undefined : 0, p: 0 } }}>
+                  <TableCell colSpan={13} sx={{ p: 0 }}>
+                    <AnimatePresence>
+                      {expandedRows[row.original._id] && (
                         <motion.div
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
                           transition={{ duration: 0.3 }}
                           style={{ overflow: 'hidden' }}
                         >
@@ -539,36 +551,43 @@ function StitchingGrid({
                             readOnly={readOnly}
                           />
                         </motion.div>
-                      </TableCell>
-                    </TableRow>
-                    {finishingRecords && finishingRecords[row.original.lotId?._id]?.length > 0 && (<TableRow>
-                      <TableCell colSpan={13} sx={{ p: 0 }}>
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          transition={{ duration: 0.3 }}
-                          style={{ overflow: 'hidden' }}
-                        >
-                          <FinishingGrid
-                            finishingRecords={finishingRecords && finishingRecords[row.original.lotId?._id] || []}
-                            hasFinishing={hasFinishing}
-                            lotId={row.original.lotId?._id}
-                            handleUpdateFinishOut={handleUpdateFinishOut}
-                            onEditFinishing={onEditFinishing}
-                            sortBy={sortBy}
-                            setSortBy={setSortBy}
-                            sortDirection={sortDirection}
-                            setSortDirection={setSortDirection}
-                            filterAnchorEl={filterAnchorEl}
-                            setFilterAnchorEl={setFilterAnchorEl}
-                            filterStatus={filterStatus}
-                            setFilterStatus={setFilterStatus}
-                            readOnly={readOnly}
-                          />
-                        </motion.div>
-                      </TableCell>
-                    </TableRow>)}
-                  </>
+                      )}
+                    </AnimatePresence>
+                  </TableCell>
+                </TableRow>
+                {finishingRecords && finishingRecords[row.original.lotId?._id]?.length > 0 && (
+                  <TableRow sx={{ '& td': { border: expandedRows[row.original._id] ? undefined : 0, p: 0 } }}>
+                    <TableCell colSpan={13} sx={{ p: 0 }}>
+                      <AnimatePresence>
+                        {expandedRows[row.original._id] && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.3 }}
+                            style={{ overflow: 'hidden' }}
+                          >
+                            <FinishingGrid
+                              finishingRecords={finishingRecords && finishingRecords[row.original.lotId?._id] || []}
+                              hasFinishing={hasFinishing}
+                              lotId={row.original.lotId?._id}
+                              handleUpdateFinishOut={handleUpdateFinishOut}
+                              onEditFinishing={onEditFinishing}
+                              sortBy={sortBy}
+                              setSortBy={setSortBy}
+                              sortDirection={sortDirection}
+                              setSortDirection={setSortDirection}
+                              filterAnchorEl={filterAnchorEl}
+                              setFilterAnchorEl={setFilterAnchorEl}
+                              filterStatus={filterStatus}
+                              setFilterStatus={setFilterStatus}
+                              readOnly={readOnly}
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </TableCell>
+                  </TableRow>
                 )}
               </React.Fragment>
             ))

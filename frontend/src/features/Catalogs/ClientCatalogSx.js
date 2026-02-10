@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Box, Card, CardContent, Stack, Collapse, IconButton, Typography, useTheme, Grid, Select, MenuItem, Tooltip, TablePagination } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
+import { motion, AnimatePresence } from 'motion/react';
 
 function ClientCatalogSx({
   clients,
@@ -99,103 +100,113 @@ function ClientCatalogSx({
           </Stack>
         </Grid>
       </Grid>
-      {!processedClients ? (
-        <OrderCardsLoader type="client" />
-      ) : processedClients.length > 0 ? (
-        processedClients.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((client) => (
-          <Card key={client._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
-            <CardContent>
-              <Stack>
-                <Grid container spacing={1} sx={{ textAlign: 'center' }}>
-                  <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'left' }}>
-                    <Typography variant="subtitle1" fontWeight="bold">
-                      {client.name || 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'right' }}>
-                    <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      <Tooltip title={client.isActive ? 'Disable' : 'Enable'}>
-                        <IconButton
-                          color={client.isActive ? 'warning' : 'success'}
-                          size="small"
-                          disabled={loading}
-                          onClick={() => handleToggleActive(client._id)}
-                        >
-                          {client.isActive ? <DeleteIcon /> : <CheckIcon />}
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Edit">
-                        <IconButton
-                          color="primary"
-                          size="small"
-                          disabled={loading}
-                          onClick={() => handleEditClient(client)}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <IconButton onClick={() => toggleRowExpansion(client._id)} size="small">
-                        <ExpandMoreIcon sx={{ transform: expandedRows[client._id] ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-                      </IconButton>
-                    </Stack>
-                  </Grid>
-                </Grid>
-              </Stack>
-              <Stack spacing={1} sx={{ mt: 1 }}>
-                <Grid container spacing={1} sx={{ textAlign: 'center' }}>
-                  <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'left' }}>
-                    <Typography variant="body2">
-                      <strong>Client Code</strong><br />
-                      {client.clientCode || 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'left' }}>
-                    <Typography variant="body2">
-                      <strong>Contact</strong><br />
-                      {client.contact || 'N/A'}
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </Stack>
-              <Collapse in={expandedRows[client._id]}>
-                <Grid container spacing={1} sx={{ mt: 2, textAlign: 'center' }}>
-                  <Grid size={{ xs: 8, sm: 8 }} sx={{ textAlign: 'left' }}>
-                    <Typography variant="body2">
-                      <strong>Email</strong><br />
-                      {client.email || 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
-                    <Typography variant="body2">
-                      <strong>Status</strong><br />
-                      {client.isActive ? 'Active' : 'Inactive'}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>
-                    <Typography variant="body2">
-                      <strong>Address</strong><br />
-                      {client.address || 'N/A'}
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </Collapse>
-            </CardContent>
-          </Card>
-        ))
-      ) : (
-        <Typography variant="body1" sx={{ textAlign: 'center' }}>No records found</Typography>
-      )}
-      {processedClients && processedClients.length > 0 && (
-        <TablePagination
-          component="div"
-          count={processedClients.length}
-          page={page}
-          onPageChange={(_, newPage) => setPage(newPage)}
-          rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
-          rowsPerPageOptions={[10, 25, 50]}
-        />
-      )}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={!processedClients ? 'loading' : 'data'}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          {!processedClients ? (
+            <OrderCardsLoader type="client" />
+          ) : processedClients.length > 0 ? (
+            processedClients.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((client) => (
+              <Card key={client._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+                <CardContent>
+                  <Stack>
+                    <Grid container spacing={1} sx={{ textAlign: 'center' }}>
+                      <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'left' }}>
+                        <Typography variant="subtitle1" fontWeight="bold">
+                          {client.name || 'N/A'}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'right' }}>
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Tooltip title={client.isActive ? 'Disable' : 'Enable'}>
+                            <IconButton
+                              color={client.isActive ? 'warning' : 'success'}
+                              size="small"
+                              disabled={loading}
+                              onClick={() => handleToggleActive(client._id)}
+                            >
+                              {client.isActive ? <DeleteIcon /> : <CheckIcon />}
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Edit">
+                            <IconButton
+                              color="primary"
+                              size="small"
+                              disabled={loading}
+                              onClick={() => handleEditClient(client)}
+                            >
+                              <EditIcon />
+                            </IconButton>
+                          </Tooltip>
+                          <IconButton onClick={() => toggleRowExpansion(client._id)} size="small">
+                            <ExpandMoreIcon sx={{ transform: expandedRows[client._id] ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+                          </IconButton>
+                        </Stack>
+                      </Grid>
+                    </Grid>
+                  </Stack>
+                  <Stack spacing={1} sx={{ mt: 1 }}>
+                    <Grid container spacing={1} sx={{ textAlign: 'center' }}>
+                      <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'left' }}>
+                        <Typography variant="body2">
+                          <strong>Client Code</strong><br />
+                          {client.clientCode || 'N/A'}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'left' }}>
+                        <Typography variant="body2">
+                          <strong>Contact</strong><br />
+                          {client.contact || 'N/A'}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Stack>
+                  <Collapse in={expandedRows[client._id]}>
+                    <Grid container spacing={1} sx={{ mt: 2, textAlign: 'center' }}>
+                      <Grid size={{ xs: 8, sm: 8 }} sx={{ textAlign: 'left' }}>
+                        <Typography variant="body2">
+                          <strong>Email</strong><br />
+                          {client.email || 'N/A'}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                        <Typography variant="body2">
+                          <strong>Status</strong><br />
+                          {client.isActive ? 'Active' : 'Inactive'}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>
+                        <Typography variant="body2">
+                          <strong>Address</strong><br />
+                          {client.address || 'N/A'}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Collapse>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            <Typography variant="body1" sx={{ textAlign: 'center' }}>No records found</Typography>
+          )}
+          {processedClients && processedClients.length > 0 && (
+            <TablePagination
+              component="div"
+              count={processedClients.length}
+              page={page}
+              onPageChange={(_, newPage) => setPage(newPage)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+              rowsPerPageOptions={[10, 25, 50]}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </Box>
   );
 }

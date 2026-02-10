@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Typography, useTheme, Grid, Select, MenuItem, Tooltip, TablePagination } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
+import { motion, AnimatePresence } from 'motion/react';
 
 function ProductCatalogSx({
   products,
@@ -78,72 +79,82 @@ function ProductCatalogSx({
           </Stack>
         </Grid>
       </Grid>
-      {!processedProducts ? (
-        <OrderCardsLoader type="product" />
-      ) : processedProducts.length > 0 ? (
-        processedProducts.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((product) => (
-          <Card key={product._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
-            <CardContent>
-              <Stack>
-                <Grid container spacing={1} sx={{ textAlign: 'center' }}>
-                  <Grid size={{ xs: 8, sm: 8 }} sx={{ textAlign: 'left' }}>
-                    <Typography variant="subtitle1" fontWeight="bold">
-                      {product.name || 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'right' }}>
-                    <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      <Tooltip title={product.isActive ? 'Disable' : 'Enable'}>
-                        <IconButton
-                          variant="contained"
-                          color={product.isActive ? 'warning' : 'success'}
-                          size="small"
-                          disabled={loading}
-                          onClick={() => handleToggleActive(product._id)}
-                          sx={{ mt: 0.2 }}
-                        >
-                          {product.isActive ? <DeleteIcon /> : <CheckIcon />}
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Edit">
-                        <IconButton
-                          variant="contained"
-                          color="primary"
-                          size="small"
-                          disabled={loading}
-                          onClick={() => handleEditProduct(product)}
-                          sx={{ mt: 0.2 }}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </Stack>
-                  </Grid>
-                  <Grid size={{ xs: 8, sm: 8 }} sx={{ textAlign: 'left' }}>
-                    <Typography variant="body2">
-                      <strong>Description</strong><br />
-                      {product.description || 'N/A'}
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </Stack>
-            </CardContent>
-          </Card>
-        ))
-      ) : (
-        <Typography variant="body1" sx={{ textAlign: 'center' }}>No records found</Typography>
-      )}
-      {processedProducts && processedProducts.length > 0 && (
-        <TablePagination
-          component="div"
-          count={processedProducts.length}
-          page={page}
-          onPageChange={(_, newPage) => setPage(newPage)}
-          rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
-          rowsPerPageOptions={[10, 25, 50]}
-        />
-      )}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={!processedProducts ? 'loading' : 'data'}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          {!processedProducts ? (
+            <OrderCardsLoader type="product" />
+          ) : processedProducts.length > 0 ? (
+            processedProducts.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((product) => (
+              <Card key={product._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+                <CardContent>
+                  <Stack>
+                    <Grid container spacing={1} sx={{ textAlign: 'center' }}>
+                      <Grid size={{ xs: 8, sm: 8 }} sx={{ textAlign: 'left' }}>
+                        <Typography variant="subtitle1" fontWeight="bold">
+                          {product.name || 'N/A'}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'right' }}>
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Tooltip title={product.isActive ? 'Disable' : 'Enable'}>
+                            <IconButton
+                              variant="contained"
+                              color={product.isActive ? 'warning' : 'success'}
+                              size="small"
+                              disabled={loading}
+                              onClick={() => handleToggleActive(product._id)}
+                              sx={{ mt: 0.2 }}
+                            >
+                              {product.isActive ? <DeleteIcon /> : <CheckIcon />}
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Edit">
+                            <IconButton
+                              variant="contained"
+                              color="primary"
+                              size="small"
+                              disabled={loading}
+                              onClick={() => handleEditProduct(product)}
+                              sx={{ mt: 0.2 }}
+                            >
+                              <EditIcon />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+                      </Grid>
+                      <Grid size={{ xs: 8, sm: 8 }} sx={{ textAlign: 'left' }}>
+                        <Typography variant="body2">
+                          <strong>Description</strong><br />
+                          {product.description || 'N/A'}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Stack>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            <Typography variant="body1" sx={{ textAlign: 'center' }}>No records found</Typography>
+          )}
+          {processedProducts && processedProducts.length > 0 && (
+            <TablePagination
+              component="div"
+              count={processedProducts.length}
+              page={page}
+              onPageChange={(_, newPage) => setPage(newPage)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+              rowsPerPageOptions={[10, 25, 50]}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </Box>
   );
 }

@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { Washing, Lot, Order, Stitching } = require('../mongodb_schema');
 const { updateVendorBalance } = require('../services/vendorBalanceService');
+const { recalcFinalQuantity } = require('../services/orderQuantityService');
 // const { logAction } = require('../utils/logger');
 
 const createWashing = async (req, res) => {
@@ -93,9 +94,8 @@ const createWashing = async (req, res) => {
     // Populate the washing record for response
     const populatedWashing = await Washing.findById(washing._id).populate('orderId vendorId lotId').session(null);
 
-    // Perform non-transactional updates
-    // await updateVendorBalance(vendorId, 'washing', lot._id, orderId, totalWashQuantity, rate);
-    // await logAction(req.user.userId, 'create_washing', 'Washing', washing._id, `Lot with invoice ${parsedInvoiceNumber} washed`);
+    // Recalculate order's finalTotalQuantity
+    await recalcFinalQuantity(orderId);
 
     res.status(201).json(populatedWashing);
   } catch (error) {
@@ -150,8 +150,11 @@ const updateWashing = async (req, res) => {
 
   try {
     await washing.save();
+
+    // Recalculate order's finalTotalQuantity
+    await recalcFinalQuantity(washing.orderId._id || washing.orderId);
+
     const populatedWashing = await Washing.findById(id).populate('lotId orderId vendorId');
-    // await logAction(req.user.userId, 'update_washing', 'Washing', updatedWashing._id, 'Washing record updated');
     res.json(populatedWashing);
   } catch (error) {
     res.status(400).json({ error: error.message });

@@ -25,10 +25,10 @@
  *   Yes — each step is idempotent (skips documents that are already migrated).
  */
 
-require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env') });
+// require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env') });
 const mongoose = require('mongoose');
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://mongodb:27017/sales_accounting';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://mongodb:27017/gs_dev';
 
 async function run() {
   console.log('Connecting to', MONGO_URI.replace(/\/\/.*@/, '//<credentials>@'));

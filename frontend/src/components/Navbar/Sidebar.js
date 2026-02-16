@@ -7,7 +7,7 @@ import {
   People as PeopleIcon, Inventory as InventoryIcon,
   Assessment as AssessmentIcon, Group as GroupIcon, History as AuditIcon,
   DryCleaning as DryCleaningIcon, LocalLaundryService as LaundryIcon,
-  AutoAwesome as AutoAwesomeIcon,
+  AutoAwesome as AutoAwesomeIcon, PieChart as PieChartIcon,
   Leaderboard as LeaderboardIcon, ContentCut as ContentCutIcon
 } from '@mui/icons-material';
 import { motion } from 'motion/react';
@@ -40,7 +40,7 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
   const drawerWidth = collapsed ? 60 : 240;
 
   const navItems = [
-    { label: 'Dashboard XL', path: '/dashboardxl', icon: <LeaderboardIcon /> },
+    { label: 'Dashboard XL', path: '/dashboardxl', icon: <PieChartIcon /> },
     { label: 'Dashboard', path: '/dashboard', icon: <LeaderboardIcon /> },
     { label: 'Stitching', path: '/stitching', icon: <ContentCutIcon /> },
     { label: 'Invoices', path: '/invoices', icon: <ReceiptIcon /> },

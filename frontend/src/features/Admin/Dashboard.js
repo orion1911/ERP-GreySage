@@ -212,7 +212,7 @@ const Dashboard = () => {
                         format="DD/MM/YY"
                         slots={{ textField: MorphDateTextField }}
                         slotProps={{ textField: { variant: 'standard', size: 'small' } }}
-                        sx={{ width: 260 }}
+                        sx={{ width: 180 }}
                     />
                 </LocalizationProvider>
                 <IconButton onClick={loadData} disabled={loading}>

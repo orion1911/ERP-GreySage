@@ -194,59 +194,17 @@ function StitchingGrid({
         </Tooltip>
       )
     },
-    // {
-    //   accessorKey: 'toggleFinishing',
-    //   header: ' ',
-    //   cell: ({ row }) => (
-    //     <Tooltip title="Show Finishing" placement='bottom' arrow>
-    //       <IconButton
-    //         size="small"
-    //         sx={{
-    //           outline: 'none',
-    //           "&.MuiButtonBase-root:hover": { bgcolor: "transparent" },
-    //         }}
-    //         onClick={() => toggleRowExpansion(row.original._id)}
-    //       >
-    //         {expandedRows[row.original._id] ?
-    //           <>
-    //             <AutoAwesome fontSize='small' />
-    //             <ExpandMore />
-    //           </> :
-    //           <>
-    //             {finishingRecords && finishingRecords[row.original.lotId?._id]?.length > 0 ?
-    //               <Badge color="primary" variant="dot"
-    //                 sx={{
-    //                   '& .MuiBadge-badge': {
-    //                     width: '10px',
-    //                     height: '10px',
-    //                     animation: 'blink 1.4s ease-in-out infinite',
-    //                     '@keyframes blink': {
-    //                       '0%': { opacity: 1 },
-    //                       '50%': { opacity: 0.2 },
-    //                       '100%': { opacity: 1 },
-    //                     },
-    //                   },
-    //                 }}
-    //               >
-    //                 <AutoAwesome fontSize='small' />
-    //                 <ChevronRight fontSize='small' />
-    //               </Badge> :
-    //               <>
-    //                 <AutoAwesome fontSize='small' />
-    //                 <ChevronRight fontSize='small' />
-    //               </>
-    //             }
-    //           </>
-    //         }
-    //       </IconButton>
-    //     </Tooltip>
-    //   )
-    // },
     {
       accessorKey: 'lotId_display',
       header: 'LOT ID',
       enableSorting: false,
       cell: ({ row }) => row.original.lotId?.lotId || '—',
+    },
+    {
+      accessorKey: 'date',
+      header: 'DATE',
+      cell: ({ row }) => getFormattedDate(row.original.date),
+      enableSorting: true,
     },
     {
       accessorKey: 'lotNumber',
@@ -256,7 +214,7 @@ function StitchingGrid({
     },
     {
       accessorKey: 'invoiceNumber',
-      header: 'INVOICE #',
+      header: 'BILL',
       cell: ({ row }) => row.original.lotId?.invoiceNumber || 'N/A',
       enableSorting: true,
     },
@@ -267,15 +225,27 @@ function StitchingGrid({
       enableSorting: true,
     },
     {
+      accessorKey: 'fitStyle',
+      header: 'STYLE',
+      cell: ({ row }) => row.original.lotId?.fitStyleId?.name || 'N/A',
+      enableSorting: false,
+    },
+    {
+      accessorKey: 'fabric',
+      header: 'FABRIC',
+      cell: ({ row }) => row.original.lotId?.fabric || 'N/A',
+      enableSorting: false,
+    },
+    {
+      accessorKey: 'waistSize',
+      header: 'SIZE',
+      cell: ({ row }) => row.original.lotId?.waistSize || 'N/A',
+      enableSorting: false,
+    },
+    {
       accessorKey: 'status',
       header: 'STATUS',
       cell: ({ row }) => <OrderStatusChip status={row.original.lotId?.status} />,
-      enableSorting: true,
-    },
-    {
-      accessorKey: 'date',
-      header: 'DATE',
-      cell: ({ row }) => getFormattedDate(row.original.date),
       enableSorting: true,
     },
     {
@@ -286,13 +256,13 @@ function StitchingGrid({
     },
     {
       accessorKey: 'quantity',
-      header: 'QUANTITY',
+      header: 'QTY',
       cell: ({ row }) => row.original.quantity,
       enableSorting: true,
     },
     {
       accessorKey: 'quantityShort',
-      header: 'QTY SHORT',
+      header: 'SHORT',
       cell: ({ row }) => row.original.quantityShort,
       enableSorting: true,
     },
@@ -417,6 +387,7 @@ function StitchingGrid({
       // globalFilter: searchTerm,
       columnVisibility: {
         actions: !readOnly,
+        lotId_display: false,
       },
       pagination: { pageIndex: page, pageSize: rowsPerPage },
     },
@@ -491,7 +462,7 @@ function StitchingGrid({
                   style={{
                     cursor: isColumnSortable(colHeader.column) ? 'pointer' : 'default',
                     textAlign: 'center',
-                    width: colHeader.column.id === 'toggleWashing' || colHeader.column.id === 'toggleFinishing' ? 20 : (colHeader.column.id === 'status' ? 110 : 'auto')
+                    width: colHeader.column.id === 'toggleWashing' || colHeader.column.id === 'toggleFinishing' ? 20 : (colHeader.column.id === 'status' ? 90 : 'auto')
                   }}
                 >
                   {flexRender(getHeaderContent(colHeader.column), colHeader.getContext())}
@@ -503,7 +474,7 @@ function StitchingGrid({
         </TableHead>
         <TableBody>
           {!processedRecords ? (
-            <TableRowsLoader colsNum={15} rowsNum={10} />
+            <TableRowsLoader colsNum={17} rowsNum={10} />
           ) : processedRecords.length > 0 ? (
             table.getRowModel().rows.map(row => (
               <React.Fragment key={row.id}>
@@ -521,7 +492,7 @@ function StitchingGrid({
                   ))}
                 </TableRow>
                 <TableRow sx={{ '& td': { border: expandedRows[row.original._id] ? undefined : 0, p: 0 } }}>
-                  <TableCell colSpan={15} sx={{ p: 0 }}>
+                  <TableCell colSpan={17} sx={{ p: 0 }}>
                     <AnimatePresence>
                       {expandedRows[row.original._id] && (
                         <motion.div
@@ -554,7 +525,7 @@ function StitchingGrid({
                 </TableRow>
                 {finishingRecords && finishingRecords[row.original.lotId?._id]?.length > 0 && (
                   <TableRow sx={{ '& td': { border: expandedRows[row.original._id] ? undefined : 0, p: 0 } }}>
-                    <TableCell colSpan={15} sx={{ p: 0 }}>
+                    <TableCell colSpan={17} sx={{ p: 0 }}>
                       <AnimatePresence>
                         {expandedRows[row.original._id] && (
                           <motion.div

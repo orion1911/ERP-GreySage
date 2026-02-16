@@ -56,6 +56,7 @@ function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }
               <IconButton
                 onClick={handleMenuClick}
                 color='inherit'
+                style={{ "backdropFilter": "blur(5px)", "WebkitBackdropFilter": "blur(5px)" }}
               >
                 {collapsed ? <MenuIcon /> : <CloseIcon />}
               </IconButton>
@@ -70,6 +71,7 @@ function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }
                 <IconButton
                   onClick={handleLogout}
                   color='inherit'
+                  style={{ "backdropFilter": "blur(5px)", "WebkitBackdropFilter": "blur(5px)" }}
                 >
                   <LogoutIcon fontSize="small" />
                 </IconButton>
@@ -81,6 +83,7 @@ function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }
               <IconButton
                 onClick={handleLogout}
                 color='inherit'
+                style={{ "backdropFilter": "blur(5px)", "WebkitBackdropFilter": "blur(5px)" }}
               >
                 <LogoutIcon fontSize="small" />
               </IconButton>

@@ -10,7 +10,7 @@ function ThemeToggle() {
   const { toggleDarkMode } = useThemeContext();
 
   return (
-    <IconButton onClick={toggleDarkMode} color="inherit">
+    <IconButton onClick={toggleDarkMode} color="inherit" style={{ "backdropFilter": "blur(5px)", "WebkitBackdropFilter": "blur(5px)" }}>
       {theme.palette.mode === 'dark' ? <Brightness7Icon fontSize='small' /> : <Brightness4Icon fontSize='small' />}
     </IconButton>
   );

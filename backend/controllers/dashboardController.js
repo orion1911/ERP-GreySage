@@ -553,10 +553,10 @@ const getOrderStatusSummary = async (req, res) => {
         return acc;
       }, {});
 
-      clientData = clientIds.flatMap(clientId => {
+      clientData = await Promise.all(clientIds.flatMap(clientId => {
         const clientGroup = clientGroups[clientId];
         const clientName = clientNameMap[clientId] || 'Unknown Client';
-        return statusCategories.map(category => {
+        return statusCategories.map(async category => {
           let totalQuantity = 0;
           let count = 0;
           if (category.title === 'Active Lots') {
@@ -583,7 +583,7 @@ const getOrderStatusSummary = async (req, res) => {
             totalQuantity = statusMatch ? statusMatch.totalQuantity : 0;
             count = statusMatch ? statusMatch.count : 0;
           }
-          const trend = getMonthlyTrendData(fromDate, toDate, category, clientId);
+          const trend = await getMonthlyTrendData(fromDate, toDate, category, clientId);
           return {
             title: `${category.title} (${clientName}, / ${count} lots)`,
             value: totalQuantity >= 1000 ? `${(totalQuantity / 1000).toFixed(1)}k` : totalQuantity.toString(),
@@ -593,7 +593,7 @@ const getOrderStatusSummary = async (req, res) => {
             labels: trend.labels
           };
         });
-      }).flat();
+      }));
     }
 
     // Calculate Overall Quantity Since Inception (unfiltered by date or client)

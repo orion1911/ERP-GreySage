@@ -503,7 +503,7 @@ function StitchingGrid({
         </TableHead>
         <TableBody>
           {!processedRecords ? (
-            <TableRowsLoader colsNum={13} rowsNum={10} />
+            <TableRowsLoader colsNum={15} rowsNum={10} />
           ) : processedRecords.length > 0 ? (
             table.getRowModel().rows.map(row => (
               <React.Fragment key={row.id}>
@@ -521,7 +521,7 @@ function StitchingGrid({
                   ))}
                 </TableRow>
                 <TableRow sx={{ '& td': { border: expandedRows[row.original._id] ? undefined : 0, p: 0 } }}>
-                  <TableCell colSpan={13} sx={{ p: 0 }}>
+                  <TableCell colSpan={15} sx={{ p: 0 }}>
                     <AnimatePresence>
                       {expandedRows[row.original._id] && (
                         <motion.div
@@ -554,7 +554,7 @@ function StitchingGrid({
                 </TableRow>
                 {finishingRecords && finishingRecords[row.original.lotId?._id]?.length > 0 && (
                   <TableRow sx={{ '& td': { border: expandedRows[row.original._id] ? undefined : 0, p: 0 } }}>
-                    <TableCell colSpan={13} sx={{ p: 0 }}>
+                    <TableCell colSpan={15} sx={{ p: 0 }}>
                       <AnimatePresence>
                         {expandedRows[row.original._id] && (
                           <motion.div

@@ -149,88 +149,6 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
         </Box>
         <form onSubmit={handleSubmit(onSubmit)}>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 6, md: 4 }}>
-              <Controller
-                name="clientId"
-                control={control}
-                rules={{ required: 'Client is required' }}
-                render={({ field }) => (
-                  <FormControl fullWidth margin="normal" error={!!errors.clientId}>
-                    <InputLabel>Client</InputLabel>
-                    <Select
-                      {...field}
-                      label="Client"
-                      variant="standard"
-                    >
-                      {(clients || []).map(client => (
-                        <MenuItem key={client._id} value={client._id}>{client.name}</MenuItem>
-                      ))}
-                    </Select>
-                    {errors.clientId && <Typography color="error" variant="caption">{errors.clientId.message}</Typography>}
-                  </FormControl>
-                )}
-              />
-            </Grid>
-            <Grid size={{ xs: 6, md: 4 }}>
-              <Controller
-                name="fabric"
-                control={control}
-                rules={{ required: 'Fabric is required' }}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                    label="Fabric"
-                    fullWidth
-                    margin="normal"
-                    variant="standard"
-                    error={!!errors.fabric}
-                    helperText={errors.fabric?.message}
-                  />
-                )}
-              />
-            </Grid>
-            <Grid size={{ xs: 6, md: 4 }}>
-              <Controller
-                name="fitStyleId"
-                control={control}
-                rules={{ required: 'Fit Style is required' }}
-                render={({ field }) => (
-                  <FormControl fullWidth margin="normal" error={!!errors.fitStyleId}>
-                    <InputLabel>Fit Style</InputLabel>
-                    <Select
-                      {...field}
-                      label="Fit Style"
-                      variant="standard"
-                    >
-                      {(fitStyles || []).map(fs => (
-                        <MenuItem key={fs._id} value={fs._id}>{fs.name}</MenuItem>
-                      ))}
-                    </Select>
-                    {errors.fitStyleId && <Typography color="error" variant="caption">{errors.fitStyleId.message}</Typography>}
-                  </FormControl>
-                )}
-              />
-            </Grid>
-            <Grid size={{ xs: 6, md: 4 }}>
-              <Controller
-                name="waistSize"
-                control={control}
-                rules={{ required: 'Waist Size is required' }}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                    label="Waist Size"
-                    fullWidth
-                    margin="normal"
-                    variant="standard"
-                    error={!!errors.waistSize}
-                    helperText={errors.waistSize?.message}
-                  />
-                )}
-              />
-            </Grid>
             <Grid size={{ xs: 6, md: 4 }} sx={{ alignContent: 'center' }}>
               <LocalizationProvider dateAdapter={AdapterDayjs}>
                 <Controller
@@ -303,6 +221,88 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
             </Grid>
             <Grid size={{ xs: 6, md: 4 }}>
               <Controller
+                name="clientId"
+                control={control}
+                rules={{ required: 'Client is required' }}
+                render={({ field }) => (
+                  <FormControl fullWidth margin="normal" error={!!errors.clientId}>
+                    <InputLabel>Client</InputLabel>
+                    <Select
+                      {...field}
+                      label="Client"
+                      variant="standard"
+                    >
+                      {(clients || []).map(client => (
+                        <MenuItem key={client._id} value={client._id}>{client.name}</MenuItem>
+                      ))}
+                    </Select>
+                    {errors.clientId && <Typography color="error" variant="caption">{errors.clientId.message}</Typography>}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 4 }}>
+              <Controller
+                name="fitStyleId"
+                control={control}
+                rules={{ required: 'Fit Style is required' }}
+                render={({ field }) => (
+                  <FormControl fullWidth margin="normal" error={!!errors.fitStyleId}>
+                    <InputLabel>Fit Style</InputLabel>
+                    <Select
+                      {...field}
+                      label="Fit Style"
+                      variant="standard"
+                    >
+                      {(fitStyles || []).map(fs => (
+                        <MenuItem key={fs._id} value={fs._id}>{fs.name}</MenuItem>
+                      ))}
+                    </Select>
+                    {errors.fitStyleId && <Typography color="error" variant="caption">{errors.fitStyleId.message}</Typography>}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 4 }}>
+              <Controller
+                name="fabric"
+                control={control}
+                rules={{ required: 'Fabric is required' }}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                    label="Fabric"
+                    fullWidth
+                    margin="normal"
+                    variant="standard"
+                    error={!!errors.fabric}
+                    helperText={errors.fabric?.message}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 4 }}>
+              <Controller
+                name="waistSize"
+                control={control}
+                rules={{ required: 'Waist Size is required' }}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                    label="Waist Size"
+                    fullWidth
+                    margin="normal"
+                    variant="standard"
+                    error={!!errors.waistSize}
+                    helperText={errors.waistSize?.message}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 4 }}>
+              <Controller
                 name="vendorId"
                 control={control}
                 rules={{ required: 'Vendor is required' }}
@@ -323,7 +323,7 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
                 )}
               />
             </Grid>
-            <Grid size={{ xs: 6, md: 4 }}>
+            <Grid size={{ xs: 6, md: 2 }}>
               <Controller
                 name="quantity"
                 control={control}
@@ -347,7 +347,7 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
                 )}
               />
             </Grid>
-            <Grid size={{ xs: 6, md: 4 }}>
+            <Grid size={{ xs: 6, md: 2 }}>
               <Controller
                 name="rate"
                 control={control}

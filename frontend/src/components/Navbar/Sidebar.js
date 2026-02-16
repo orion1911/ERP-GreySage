@@ -8,7 +8,7 @@ import {
   Assessment as AssessmentIcon, Group as GroupIcon, History as AuditIcon,
   DryCleaning as DryCleaningIcon, LocalLaundryService as LaundryIcon,
   AutoAwesome as AutoAwesomeIcon,
-  ShoppingCart as ShoppingCartIcon, Leaderboard as LeaderboardIcon, ContentCut as ContentCutIcon, HorizontalSplit
+  Leaderboard as LeaderboardIcon, ContentCut as ContentCutIcon
 } from '@mui/icons-material';
 import { motion } from 'motion/react';
 
@@ -42,8 +42,7 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
   const navItems = [
     { label: 'Dashboard XL', path: '/dashboardxl', icon: <LeaderboardIcon /> },
     { label: 'Dashboard', path: '/dashboard', icon: <LeaderboardIcon /> },
-    { label: 'Orders', path: '/orders', icon: <ShoppingCartIcon /> },
-    { label: 'Lots', path: '/lots', icon: <HorizontalSplit /> },
+    { label: 'Stitching', path: '/stitching', icon: <ContentCutIcon /> },
     { label: 'Invoices', path: '/invoices', icon: <ReceiptIcon /> },
     { label: 'Clients', path: '/clients', icon: <PeopleIcon /> },
     { label: 'Fit Style', path: '/products', icon: <InventoryIcon /> },

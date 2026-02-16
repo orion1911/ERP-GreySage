@@ -10,13 +10,16 @@ import { MorphDateTextField } from '../../components/MuiCustom';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 
-function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, editRecord }) {
+function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddStitching, editRecord }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
   const isEditMode = !!editRecord;
   const [loading, setLoading] = React.useState(false);
 
   const defaultValues = {
-    orderId,
+    clientId: '',
+    fabric: '',
+    fitStyleId: '',
+    waistSize: '',
     lotNumber: '',
     invoiceNumber: '',
     vendorId: '',
@@ -42,7 +45,10 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
 
   useEffect(() => {
     if (isEditMode && editRecord) {
-      setValue('orderId', editRecord.orderId || orderId);
+      setValue('clientId', editRecord.lotId?.clientId?._id || '');
+      setValue('fabric', editRecord.lotId?.fabric || '');
+      setValue('fitStyleId', editRecord.lotId?.fitStyleId?._id || '');
+      setValue('waistSize', editRecord.lotId?.waistSize || '');
       setValue('lotNumber', editRecord.lotId?.lotNumber || '');
       setValue('invoiceNumber', editRecord.lotId?.invoiceNumber || '');
       setValue('vendorId', editRecord.vendorId?._id || '');
@@ -57,7 +63,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
     } else {
       reset(defaultValues);
     }
-  }, [editRecord, isEditMode, orderId, reset, setValue]);
+  }, [editRecord, isEditMode, reset, setValue]);
 
   const validateLotNumber = (value) => {
     if (!value) return 'Lot Number is required';
@@ -87,6 +93,8 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
     const formattedData = {
       ...data,
       lotNumber: data.lotNumber.toUpperCase().replaceAll(' ', ''),
+      fabric: data.fabric.toUpperCase().trim(),
+      waistSize: data.waistSize.toUpperCase().trim(),
       invoiceNumber: parseInt(data.invoiceNumber) || '',
       quantity: parseInt(data.quantity) || '',
       quantityShort: parseInt(data.quantityShort) || '',
@@ -213,6 +221,88 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
             </Grid>
             <Grid size={{ xs: 6, md: 4 }}>
               <Controller
+                name="clientId"
+                control={control}
+                rules={{ required: 'Client is required' }}
+                render={({ field }) => (
+                  <FormControl fullWidth margin="normal" error={!!errors.clientId}>
+                    <InputLabel>Client</InputLabel>
+                    <Select
+                      {...field}
+                      label="Client"
+                      variant="standard"
+                    >
+                      {(clients || []).map(client => (
+                        <MenuItem key={client._id} value={client._id}>{client.name}</MenuItem>
+                      ))}
+                    </Select>
+                    {errors.clientId && <Typography color="error" variant="caption">{errors.clientId.message}</Typography>}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 4 }}>
+              <Controller
+                name="fitStyleId"
+                control={control}
+                rules={{ required: 'Fit Style is required' }}
+                render={({ field }) => (
+                  <FormControl fullWidth margin="normal" error={!!errors.fitStyleId}>
+                    <InputLabel>Fit Style</InputLabel>
+                    <Select
+                      {...field}
+                      label="Fit Style"
+                      variant="standard"
+                    >
+                      {(fitStyles || []).map(fs => (
+                        <MenuItem key={fs._id} value={fs._id}>{fs.name}</MenuItem>
+                      ))}
+                    </Select>
+                    {errors.fitStyleId && <Typography color="error" variant="caption">{errors.fitStyleId.message}</Typography>}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 4 }}>
+              <Controller
+                name="fabric"
+                control={control}
+                rules={{ required: 'Fabric is required' }}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                    label="Fabric"
+                    fullWidth
+                    margin="normal"
+                    variant="standard"
+                    error={!!errors.fabric}
+                    helperText={errors.fabric?.message}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 4 }}>
+              <Controller
+                name="waistSize"
+                control={control}
+                rules={{ required: 'Waist Size is required' }}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                    label="Waist Size"
+                    fullWidth
+                    margin="normal"
+                    variant="standard"
+                    error={!!errors.waistSize}
+                    helperText={errors.waistSize?.message}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 4 }}>
+              <Controller
                 name="vendorId"
                 control={control}
                 rules={{ required: 'Vendor is required' }}
@@ -233,7 +323,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                 )}
               />
             </Grid>
-            <Grid size={{ xs: 6, md: 4 }}>
+            <Grid size={{ xs: 6, md: 2 }}>
               <Controller
                 name="quantity"
                 control={control}
@@ -257,7 +347,7 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                 )}
               />
             </Grid>
-            <Grid size={{ xs: 6, md: 4 }}>
+            <Grid size={{ xs: 6, md: 2 }}>
               <Controller
                 name="rate"
                 control={control}
@@ -347,7 +437,6 @@ function AddStitchingModal({ open, onClose, orderId, vendors, onAddStitching, ed
                 name="quantityShort"
                 control={control}
                 rules={{
-                  // required: 'Quantity is required',
                   pattern: {
                     value: /^\d+$/,
                     message: 'Only numbers allowed',

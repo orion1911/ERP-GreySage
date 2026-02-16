@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import { Container, Paper, Typography, Box, Button, TextField, Skeleton, Link } from '@mui/material';
+import { useOutletContext } from 'react-router-dom';
+import { Typography, Box, Button, TextField } from '@mui/material';
 import { ContentCut } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 import StitchingGrid from './StitchingGrid';
@@ -9,8 +9,6 @@ import AddWashingModal from '../Washing/AddWashingModal';
 import AddFinishingModal from '../Finishing/AddFinishingModal';
 
 function StitchingManagement() {
-  const { orderId } = useParams();
-  const navigate = useNavigate();
   const { showSnackbar } = useOutletContext();
 
   const [stitchingRecords, setStitchingRecords] = useState();
@@ -18,10 +16,11 @@ function StitchingManagement() {
   const [finishingRecords, setFinishingRecords] = useState();
   const [hasWashing, setHasWashing] = useState(false);
   const [hasFinishing, setHasFinishing] = useState(false);
-  const [order, setOrder] = useState(null);
   const [stitchingVendors, setStitchingVendors] = useState([]);
   const [washingVendors, setWashingVendors] = useState([]);
   const [finishingVendors, setFinishingVendors] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [fitStyles, setFitStyles] = useState([]);
   const [openStitchingModal, setOpenStitchingModal] = useState(false);
   const [openWashingModal, setOpenWashingModal] = useState(false);
   const [openFinishingModal, setOpenFinishingModal] = useState(false);
@@ -29,28 +28,24 @@ function StitchingManagement() {
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [selectedWashingRecord, setSelectedWashingRecord] = useState(null);
   const [selectedFinishingRecord, setSelectedFinishingRecord] = useState(null);
-  const [totalStitchedQuantity, setTotalStitchedQuantity] = useState(0);
-  const [totalShort, setTotalShort] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
 
   const fetchData = async () => {
     try {
-      const [stitchingRes, orderRes, stitchingVendorsRes, washingVendorsRes, finishingVendorsRes] = await Promise.all([
-        apiService.stitching.getStitching('', orderId, ''),
-        apiService.orders.getOrderById(orderId),
+      const [stitchingRes, stitchingVendorsRes, washingVendorsRes, finishingVendorsRes, clientsRes, fitStylesRes] = await Promise.all([
+        apiService.stitching.getStitching(),
         apiService.stitchingVendors.getStitchingVendors(),
         apiService.washingVendors.getWashingVendors(),
-        apiService.finishingVendors.getFinishingVendors()
+        apiService.finishingVendors.getFinishingVendors(),
+        apiService.client.getClients(),
+        apiService.fitStyles.getFitstyles()
       ]);
       setTimeout(() => setStitchingRecords(stitchingRes), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
-      setTimeout(() => setOrder(orderRes), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
       setStitchingVendors(stitchingVendorsRes);
       setWashingVendors(washingVendorsRes);
       setFinishingVendors(finishingVendorsRes);
-      const total = stitchingRes.reduce((sum, record) => sum + record.quantity, 0);
-      setTotalStitchedQuantity(total);
-      const short = stitchingRes.reduce((sum, record) => sum + (record.quantityShort || 0), 0);
-      setTotalShort(short);
+      setClients(clientsRes);
+      setFitStyles(fitStylesRes);
     } catch (err) {
       console.log(err.response);
       showSnackbar(err);
@@ -58,8 +53,8 @@ function StitchingManagement() {
   };
 
   useEffect(() => {
-    orderId && fetchData();
-  }, [orderId]);
+    fetchData();
+  }, []);
 
   useEffect(() => {
     washingRecords ? setHasWashing(true) : setHasWashing(false);
@@ -92,13 +87,9 @@ function StitchingManagement() {
         record._id === newStitching._id ? newStitching : record
       );
       setStitchingRecords(updatedRecords);
-      setTotalStitchedQuantity(updatedRecords.reduce((sum, record) => sum + Number(record.quantity), 0));
-      setTotalShort(updatedRecords.reduce((sum, record) => sum + Number(record.quantityShort || 0), 0));
     } else {
       const updatedRecords = [...stitchingRecords, newStitching];
       setStitchingRecords(updatedRecords);
-      setTotalStitchedQuantity(prev => prev + Number(newStitching.quantity));
-      setTotalShort(updatedRecords.reduce((sum, record) => sum + Number(record.quantityShort || 0), 0));
     }
     setSelectedRecord(null);
     setOpenStitchingModal(false);
@@ -185,21 +176,6 @@ function StitchingManagement() {
   return (
     <>
       <Typography variant="h4" sx={{ mb: 1 }}>Stitching Management</Typography>
-      {!order ? (<Skeleton animation="wave" variant="text" sx={{ marginBottom: 2, width: '60%' }} />) : (
-        <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
-          <Link
-            component="button"
-            onClick={() => navigate('/orders')}
-            sx={{ fontSize: '14px', fontWeight: 'bold', textAlign: 'left', textDecoration: 'none !important' }}
-            underline="none"
-          >
-            {order.orderId}
-          </Link>
-          <Typography>Total QTY: <b>{order.totalQuantity}</b></Typography>
-          <Typography>Final QTY: <b>{order.totalQuantity - totalShort}</b></Typography>
-          <Typography>Remaining QTY: <b>{order.totalQuantity - totalStitchedQuantity}</b></Typography>
-        </Box>
-      )}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
         <TextField
           label="Search Stitching"
@@ -235,7 +211,8 @@ function StitchingManagement() {
       <AddStitchingModal
         open={openStitchingModal}
         onClose={() => { setOpenStitchingModal(false); setSelectedRecord(null); }}
-        orderId={orderId}
+        clients={clients}
+        fitStyles={fitStyles}
         vendors={stitchingVendors}
         onAddStitching={handleAddStitching}
         editRecord={selectedRecord}
@@ -243,7 +220,6 @@ function StitchingManagement() {
       <AddWashingModal
         open={openWashingModal}
         onClose={() => { setOpenWashingModal(false); setSelectedWashingRecord(null); }}
-        orderId={orderId}
         lotNumber={selectedWashingRecord?.lotId?.lotNumber || selectedLot?.lotNumber || ''}
         lotId={selectedWashingRecord?.lotId?._id || selectedLot?.lotId || ''}
         invoiceNumber={selectedWashingRecord?.lotId?.invoiceNumber || selectedLot?.invoiceNumber || ''}
@@ -255,7 +231,6 @@ function StitchingManagement() {
       <AddFinishingModal
         open={openFinishingModal}
         onClose={() => { setOpenFinishingModal(false); setSelectedFinishingRecord(null); }}
-        orderId={orderId}
         lotNumber={selectedFinishingRecord?.lotId?.lotNumber || selectedLot?.lotNumber || ''}
         lotId={selectedFinishingRecord?.lotId?._id || selectedLot?.lotId || ''}
         invoiceNumber={selectedFinishingRecord?.lotId?.invoiceNumber || selectedLot?.invoiceNumber || ''}

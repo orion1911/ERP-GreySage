@@ -75,7 +75,7 @@ app.use('/api', userRoutes);
 app.use('/api', clientRoutes);
 app.use('/api', fitStyleRoutes);
 app.use('/api', vendorRoutes);
-app.use('/api', orderRoutes);
+// app.use('/api', orderRoutes); // dormant — Order stage removed
 app.use('/api', lotRoutes);
 app.use('/api', stitchingRoutes);
 app.use('/api', washingRoutes);

@@ -1,21 +1,20 @@
 // controllers/finishingController.js
 const mongoose = require('mongoose');
-const { Finishing, Lot, Order, Washing } = require('../mongodb_schema');
-const { recalcFinalQuantity } = require('../services/orderQuantityService');
+const { Finishing, Lot, Washing } = require('../mongodb_schema');
 // const { updateVendorBalance } = require('../services/vendorBalanceService');
 
 const createFinishing = async (req, res) => {
-  const { invoiceNumber, orderId, vendorId, quantity, quantityShort, rate, date, finishOutDate, description } = req.body;
+  const { invoiceNumber, vendorId, quantity, quantityShort, rate, date, finishOutDate, description } = req.body;
 
-  if (!invoiceNumber || !orderId || !vendorId || !quantity || !rate) {
+  if (!invoiceNumber || !vendorId || !quantity || !rate) {
     return res.status(400).json({ error: 'Required fields missing' });
   }
 
   const parsedInvoiceNumber = parseInt(invoiceNumber);
   if (isNaN(parsedInvoiceNumber)) return res.status(400).json({ error: 'Invalid invoice number' });
 
-  const lot = await Lot.findOne({ invoiceNumber: parsedInvoiceNumber, orderId });
-  if (!lot) return res.status(400).json({ error: 'Invalid invoice number or order ID' });
+  const lot = await Lot.findOne({ invoiceNumber: parsedInvoiceNumber });
+  if (!lot) return res.status(400).json({ error: 'Invalid invoice number' });
 
   const existing = await Finishing.findOne({ lotId: lot._id });
   if (existing) return res.status(400).json({ error: 'Finishing record already exists for this lot' });
@@ -37,7 +36,6 @@ const createFinishing = async (req, res) => {
 
     const finishing = new Finishing({
       lotId: lot._id,
-      orderId,
       date,
       finishOutDate,
       vendorId,
@@ -63,10 +61,7 @@ const createFinishing = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    // Recalculate order's finalTotalQuantity
-    await recalcFinalQuantity(orderId);
-
-    const populated = await Finishing.findById(finishing._id).populate('orderId vendorId lotId');
+    const populated = await Finishing.findById(finishing._id).populate('vendorId lotId');
     res.status(201).json(populated);
   } catch (err) {
     if (session) await session.abortTransaction();
@@ -83,7 +78,7 @@ const updateFinishing = async (req, res) => {
   const finishing = await Finishing.findById(id);
   if (!finishing) return res.status(404).json({ error: 'Finishing record not found' });
 
-  const washing = await Washing.findOne({ lotId: finishing.lotId._id });
+  const washing = await Washing.findOne({ lotId: finishing.lotId._id || finishing.lotId });
   if (!washing) return res.status(400).json({ error: 'Washing record not found for this lot' });
 
   const totalWashQuantity = washing.washDetails.reduce((sum, detail) => sum + parseInt(detail.quantity || 0), 0);
@@ -107,10 +102,7 @@ const updateFinishing = async (req, res) => {
   try {
     await finishing.save();
 
-    // Recalculate order's finalTotalQuantity
-    await recalcFinalQuantity(finishing.orderId._id || finishing.orderId);
-
-    const populated = await Finishing.findById(id).populate('lotId orderId vendorId');
+    const populated = await Finishing.findById(id).populate('lotId vendorId');
     res.json(populated);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -131,11 +123,6 @@ const updateFinishingStatus = async (req, res) => {
     session = await mongoose.startSession();
     session.startTransaction();
 
-    // const finishing = await Finishing.findByIdAndUpdate(
-    //   req.params.id,
-    //   { finishOutDate },
-    //   { new: true }
-    // );
     finishing.finishOutDate = finishOutDate;
     await finishing.save({ session });
 
@@ -146,7 +133,7 @@ const updateFinishingStatus = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    const populated = await Finishing.findById(finishing._id).populate('orderId vendorId lotId');
+    const populated = await Finishing.findById(finishing._id).populate('vendorId lotId');
     res.status(201).json(populated);
 
   } catch (err) {
@@ -174,7 +161,7 @@ const getFinishing = async (req, res) => {
         $in: await Lot.find({ invoiceNumber: parsed }).distinct('_id'),
       };
     }
-    const records = await Finishing.find(query).populate('orderId vendorId lotId');
+    const records = await Finishing.find(query).populate('vendorId lotId');
     res.json(records);
   } catch (err) {
     res.status(400).json({ error: err.message });

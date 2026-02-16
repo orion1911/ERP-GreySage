@@ -186,10 +186,10 @@ const apiService = {
       }
     },
 
-    getStitching: async (search = '', orderId = '', invoiceNumber = '') => {
+    getStitching: async (search = '', invoiceNumber = '') => {
       try {
         const response = await axiosInstance.get('api/stitching', {
-          params: { search, orderId, invoiceNumber },
+          params: { search, invoiceNumber },
         });
         return response.data;
       } catch (error) {

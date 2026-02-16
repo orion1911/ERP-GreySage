@@ -10,14 +10,13 @@ import { MorphDateTextField } from '../../components/MuiCustom';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 
-function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumber, lotQuantity, vendors, onAddWashing, editRecord }) {
+function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQuantity, vendors, onAddWashing, editRecord }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
 
   const isEditMode = !!editRecord;
   const [loading, setLoading] = React.useState(false);
 
   const defaultValues = {
-    orderId,
     lotNumber: lotNumber || '',
     invoiceNumber: invoiceNumber || '',
     vendorId: '',
@@ -39,7 +38,6 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
 
   useEffect(() => {
     if (isEditMode && editRecord) {
-      setValue('orderId', editRecord.orderId || orderId);
       setValue('lotNumber', editRecord.lotNumber || lotNumber || '');
       setValue('invoiceNumber', editRecord.invoiceNumber || invoiceNumber || '');
       setValue('vendorId', editRecord.vendorId?._id || '');
@@ -56,7 +54,7 @@ function AddWashingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumb
       setValue('description', '');
       setValue('washDetails', [{ washColor: '', washCreation: '', quantity: '', rate: '', quantityShort: '' }]);
     }
-  }, [editRecord, isEditMode, lotNumber, invoiceNumber, orderId, setValue]);
+  }, [editRecord, isEditMode, lotNumber, invoiceNumber, setValue]);
 
   const onSubmit = (data) => {
     const formattedData = {

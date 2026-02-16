@@ -1,8 +1,7 @@
 const mongoose = require('mongoose');
-const { Stitching, Order, Lot, Finishing, Washing } = require('../mongodb_schema');
+const { Stitching, Lot, Finishing, Washing, Counter, Client, FitStyle } = require('../mongodb_schema');
 const { updateVendorBalance } = require('../services/vendorBalanceService');
 const { logAction } = require('../utils/logger');
-const { recalcFinalQuantity } = require('../services/orderQuantityService');
 
 // Helper function to parse lotNumber and extract series, sub-series, and lot number
 const parseLotNumber = (lotNumber) => {
@@ -64,19 +63,30 @@ const validateLotNumber = async (lotNumber, excludeLotId = null) => {
 };
 
 const createStitching = async (req, res) => {
-  let { lotNumber, orderId, invoiceNumber, vendorId, quantity, quantityShort, rate, threadColors, date, stitchOutDate, description } = req.body;
+  let { lotNumber, clientId, fabric, fitStyleId, waistSize, invoiceNumber, vendorId, quantity, quantityShort, rate, threadColors, date, stitchOutDate, description } = req.body;
   let session = null;
 
   // Validate required fields
   if (!lotNumber) return res.status(400).json({ error: 'Lot number is required' });
   if (!invoiceNumber) return res.status(400).json({ error: 'Invoice number is required' });
-  if (!orderId) return res.status(400).json({ error: 'Order ID is required' });
+  if (!clientId) return res.status(400).json({ error: 'Client is required' });
+  if (!fabric) return res.status(400).json({ error: 'Fabric is required' });
+  if (!fitStyleId) return res.status(400).json({ error: 'Fit Style is required' });
+  if (!waistSize) return res.status(400).json({ error: 'Waist Size is required' });
   if (!vendorId) return res.status(400).json({ error: 'Vendor ID is required' });
   if (!quantity || quantity <= 0) return res.status(400).json({ error: 'Quantity must be a positive number' });
   if (!rate || rate < 0) return res.status(400).json({ error: 'Rate must be a non-negative number' });
   if (typeof invoiceNumber !== 'number' || isNaN(invoiceNumber)) {
     return res.status(400).json({ error: 'Invoice number must be a valid number' });
   }
+
+  // Validate clientId exists
+  const client = await Client.findById(clientId);
+  if (!client) return res.status(404).json({ error: 'Client not found' });
+
+  // Validate fitStyleId exists
+  const fitStyle = await FitStyle.findById(fitStyleId);
+  if (!fitStyle) return res.status(404).json({ error: 'Fit Style not found' });
 
   quantity = parseInt(quantity);
   threadColors = threadColors.map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity)}))
@@ -89,18 +99,6 @@ const createStitching = async (req, res) => {
 
   // Validate lotNumber format and range constraints
   await validateLotNumber(lotNumber);
-
-  // Check totalQuantity against existing stitching entries
-  const order = await Order.findById(orderId);
-  if (!order) return res.status(404).json({ error: 'Order not found' });
-
-  const existingStitchings = await Stitching.find({ orderId });
-  const totalStitchedQuantity = existingStitchings.reduce((sum, stitching) => sum + stitching.quantity, 0);
-  const newTotal = totalStitchedQuantity + quantity;
-
-  if (newTotal > order.totalQuantity) {
-    return res.status(400).json({ error: `Total stitched quantity (${newTotal}) exceeds order's totalQuantity (${order.totalQuantity})` });
-  }
 
   // Validate lotNumber and invoiceNumber uniqueness (handled by MongoDB unique index, errors caught by error.js)
   const existingLot = await Lot.findOne({
@@ -115,6 +113,16 @@ const createStitching = async (req, res) => {
     }
   }
 
+  // Generate lotId using Counter pattern
+  const counter = await Counter.findByIdAndUpdate(
+    { _id: 'lotId' },
+    { $inc: { sequence: 1 } },
+    { new: true, upsert: true }
+  );
+  const seq = counter.sequence.toString().padStart(3, '0');
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const generatedLotId = `LT-${dateStr}${seq}`;
+
   // Start a MongoDB session and transaction
   session = await mongoose.startSession();
   let transactionCommitted = false;
@@ -125,9 +133,13 @@ const createStitching = async (req, res) => {
 
     // Create Lot document within the transaction
     const lot = new Lot({
+      lotId: generatedLotId,
       lotNumber,
       invoiceNumber,
-      orderId,
+      clientId,
+      fabric,
+      fitStyleId,
+      waistSize,
       date,
       status: 2,
       statusHistory: [{ status: 2, changedAt: new Date() }],
@@ -139,7 +151,6 @@ const createStitching = async (req, res) => {
     // Create Stitching entry within the transaction
     stitching = new Stitching({
       lotId: lot._id,
-      orderId,
       vendorId,
       quantity,
       quantityShort: quantityShort || 0,
@@ -151,13 +162,6 @@ const createStitching = async (req, res) => {
       createdAt: new Date(),
     });
     await stitching.save({ session });
-
-    // Update the Order status to 2 (Order in Stitching) within the transaction
-    if (order.status < 2) {
-      order.status = 2;
-      // order.statusHistory.push({ status: 2, changedAt: new Date() });
-      await order.save({ session });
-    }
 
     // Commit the transaction
     await session.commitTransaction();
@@ -173,19 +177,15 @@ const createStitching = async (req, res) => {
     }
   }
 
-  // Recalculate order's finalTotalQuantity
-  await recalcFinalQuantity(orderId);
-
   const populatedStitching = await Stitching.findById(stitching._id)
-    .populate({ path: 'lotId' })
-    .populate({ path: 'orderId', populate: { path: 'clientId' } })
+    .populate({ path: 'lotId', populate: [{ path: 'clientId' }, { path: 'fitStyleId' }] })
     .populate({ path: 'vendorId' });
   res.status(201).json(populatedStitching);
 };
 
 const updateStitching = async (req, res) => {
   const { id } = req.params;
-  const { lotNumber, orderId, invoiceNumber, vendorId, quantity, quantityShort, quantityShortDesc, rate, threadColors, date, stitchOutDate, description } = req.body;
+  const { lotNumber, clientId, fabric, fitStyleId, waistSize, invoiceNumber, vendorId, quantity, quantityShort, quantityShortDesc, rate, threadColors, date, stitchOutDate, description } = req.body;
 
   // Validate threadColors quantities
   if (threadColors && quantity) {
@@ -196,21 +196,8 @@ const updateStitching = async (req, res) => {
   }
 
   // Find the stitching record
-  const stitching = await Stitching.findById(id).populate('lotId orderId vendorId');
+  const stitching = await Stitching.findById(id).populate('lotId vendorId');
   if (!stitching) return res.status(404).json({ error: 'Stitching record not found' });
-
-  // Validate references
-  const order = await Order.findById(orderId || stitching.orderId);
-  if (!order) return res.status(404).json({ error: 'Order not found' });
-
-  // Validate quantity consistency
-  if (quantity && quantity !== stitching.quantity) {
-    const existingStitchings = await Stitching.find({ orderId: orderId || stitching.orderId });
-    const currentTotal = existingStitchings.reduce((sum, s) => sum + s.quantity, 0) - stitching.quantity + quantity;
-    if (currentTotal > order.totalQuantity) {
-      return res.status(400).json({ error: `Total stitched quantity (${currentTotal}) exceeds order's totalQuantity (${order.totalQuantity})` });
-    }
-  }
 
   // Validate lotNumber if provided
   if (lotNumber) {
@@ -233,10 +220,7 @@ const updateStitching = async (req, res) => {
     }
   }
 
-  // Update fields
-  if (lotNumber) stitching.lotId.lotNumber = lotNumber;
-  if (invoiceNumber) stitching.lotId.invoiceNumber = invoiceNumber;
-  if (orderId) stitching.orderId = orderId;
+  // Update stitching fields
   if (vendorId) stitching.vendorId = vendorId;
   if (quantity) stitching.quantity = quantity;
   if (quantityShort !== undefined) stitching.quantityShort = quantityShort;
@@ -247,20 +231,26 @@ const updateStitching = async (req, res) => {
   if (stitchOutDate) stitching.stitchOutDate = stitchOutDate;
   if (description) stitching.description = description;
 
-  // Update Lot document
-  await Lot.findByIdAndUpdate(stitching.lotId._id, {
-    lotNumber: stitching.lotId.lotNumber,
-    invoiceNumber: stitching.lotId.invoiceNumber,
-    date: stitching.date,
-    description: stitching.description
-  });
+  // Update Lot document with lot-level fields
+  const lotUpdate = {};
+  if (lotNumber) lotUpdate.lotNumber = lotNumber;
+  if (invoiceNumber) lotUpdate.invoiceNumber = invoiceNumber;
+  if (clientId) lotUpdate.clientId = clientId;
+  if (fabric) lotUpdate.fabric = fabric;
+  if (fitStyleId) lotUpdate.fitStyleId = fitStyleId;
+  if (waistSize) lotUpdate.waistSize = waistSize;
+  if (date) lotUpdate.date = date;
+  if (description) lotUpdate.description = description;
+
+  if (Object.keys(lotUpdate).length > 0) {
+    await Lot.findByIdAndUpdate(stitching.lotId._id, lotUpdate);
+  }
 
   const updatedStitching = await stitching.save();
 
-  // Recalculate order's finalTotalQuantity
-  await recalcFinalQuantity(orderId || stitching.orderId);
-
-  const populatedStitching = await Stitching.findById(id).populate('lotId orderId vendorId');
+  const populatedStitching = await Stitching.findById(id)
+    .populate({ path: 'lotId', populate: [{ path: 'clientId' }, { path: 'fitStyleId' }] })
+    .populate({ path: 'vendorId' });
   res.json(populatedStitching);
 };
 
@@ -271,19 +261,18 @@ const updateStitchingStatus = async (req, res) => {
   const stitch = await Stitching.findById(req.params.id);
   if (!stitch) return res.status(404).json({ error: 'Stitching record not found for update operation' });
 
-  const stitching = await Stitching.findByIdAndUpdate(req.params.id, { stitchOutDate }, { new: true, runValidators: true }).populate('lotId orderId vendorId');
+  const stitching = await Stitching.findByIdAndUpdate(req.params.id, { stitchOutDate }, { new: true, runValidators: true })
+    .populate({ path: 'lotId', populate: [{ path: 'clientId' }, { path: 'fitStyleId' }] })
+    .populate({ path: 'vendorId' });
   if (!stitching) return res.status(404).json({ error: 'Stitching record not found' });
-  // await logAction(req.user.userId, 'update_stitching', 'Stitching', stitching._id, 'Stitch out date updated');
   res.json(stitching);
 };
 
 const getStitching = async (req, res) => {
-  const { search, orderId, invoiceNumber } = req.query;
+  const { search, invoiceNumber } = req.query;
   let filter = {};
   if (search) {
     filter.lotId = { $in: await Lot.find({ lotNumber: { $regex: search, $options: 'i' } }).distinct('_id') };
-  } else if (orderId) {
-    filter.orderId = orderId;
   } else if (invoiceNumber) {
     const parsedInvoiceNumber = parseInt(invoiceNumber, 10);
     if (isNaN(parsedInvoiceNumber)) {
@@ -292,45 +281,17 @@ const getStitching = async (req, res) => {
     filter.lotId = { $in: await Lot.find({ invoiceNumber: parsedInvoiceNumber }).distinct('_id') };
   }
 
-  // let query = Stitching.find(filter).populate('lotId orderId vendorId');
   let query = Stitching.find(filter)
     .populate({
-      path: 'lotId'
-    })
-    .populate({
-      path: 'orderId',
-      populate: {
-        path: 'clientId'
-      }
+      path: 'lotId',
+      populate: [{ path: 'clientId' }, { path: 'fitStyleId' }]
     })
     .populate({
       path: 'vendorId'
     });
-  query = query.sort({ 'orderId.date': -1, 'lotId.date': -1 });
+  query = query.sort({ date: -1 });
 
   const stitchingRecords = await query.exec();
-
-  // if (!stitchingRecords || stitchingRecords.length === 0) {
-  //   return res.status(404).json({ error: 'No Stitching Records Found' });
-  // }
-
-  // // Map stitching records to include status
-  // const recordsWithStatus = await Promise.all(
-  //   stitchingRecords.map(async (record) => {
-  //     // Check if lotId exists in Finishing
-  //     const finishingRecord = await Finishing.findOne({ lotId: record.lotId._id }).lean();
-  //     if (finishingRecord) {
-  //       return { ...record, status: 4 }; // Finishing
-  //     }
-  //     // Check if lotId exists in Washing
-  //     const washingRecord = await Washing.findOne({ lotId: record.lotId._id }).lean();
-  //     if (washingRecord) {
-  //       return { ...record, status: 3 }; // Washing
-  //     }
-  //     // Default to Stitching
-  //     return { ...record, status: 2 }; // Stitching
-  //   })
-  // );
 
   res.json(stitchingRecords);
 };

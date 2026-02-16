@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useOutletContext, Link as RouterLink } from 'react-router-dom';
+import { useOutletContext } from 'react-router-dom';
 import { useTheme } from '@mui/material/styles';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, Box, IconButton, Tooltip, Badge, Link, Typography } from '@mui/material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, Box, IconButton, Tooltip, Badge, Typography } from '@mui/material';
 import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon, AutoAwesome } from '@mui/icons-material';
 import WashingGrid from '../Washing/WashingGrid';
 import FinishingGrid from '../Finishing/FinishingGrid';
@@ -89,8 +89,8 @@ function StitchingGrid({
         valueA = a.lotId?.invoiceNumber || '';
         valueB = b.lotId?.invoiceNumber || '';
       } else if (sortKey === 'clientName') {
-        valueA = a.orderId?.clientId?.name || '';
-        valueB = b.orderId?.clientId?.name || '';
+        valueA = a.lotId?.clientId?.name || '';
+        valueB = b.lotId?.clientId?.name || '';
       } else if (sortKey === 'date') {
         valueA = new Date(a.date);
         valueB = new Date(b.date);
@@ -123,7 +123,7 @@ function StitchingGrid({
       !search ||
       record.lotId?.lotNumber?.toLowerCase().includes(search.toLowerCase()) ||
       record.lotId?.invoiceNumber?.toString().toLowerCase().includes(search.toLowerCase()) ||
-      record.orderId?.clientId?.name?.toString().toLowerCase().includes(search.toLowerCase()) ||
+      record.lotId?.clientId?.name?.toString().toLowerCase().includes(search.toLowerCase()) ||
       record.vendorId?.name?.toLowerCase().includes(search.toLowerCase())
     );
   };
@@ -243,20 +243,10 @@ function StitchingGrid({
     //   )
     // },
     {
-      accessorKey: 'orderId',
-      header: 'ORDER ID',
+      accessorKey: 'lotId_display',
+      header: 'LOT ID',
       enableSorting: false,
-      enableHiding: true,
-      cell: ({ row }) => (
-        <Link
-          component={RouterLink}
-          to={`/stitching/${row.original.orderId?._id || ''}`}
-          underline="none"
-          sx={{ fontWeight: 'bold', cursor: 'pointer' }}
-        >
-          {row.original.orderId?.orderId || '—'}
-        </Link>
-      ),
+      cell: ({ row }) => row.original.lotId?.lotId || '—',
     },
     {
       accessorKey: 'lotNumber',
@@ -273,7 +263,7 @@ function StitchingGrid({
     {
       accessorKey: 'clientName',
       header: 'CLIENT',
-      cell: ({ row }) => row.original.orderId?.clientId?.name || 'N/A',
+      cell: ({ row }) => row.original.lotId?.clientId?.name || 'N/A',
       enableSorting: true,
     },
     {
@@ -426,8 +416,7 @@ function StitchingGrid({
     state: {
       // globalFilter: searchTerm,
       columnVisibility: {
-        actions: !readOnly, // Hide the 'actions' column when readOnly is true
-        orderId: readOnly
+        actions: !readOnly,
       },
       pagination: { pageIndex: page, pageSize: rowsPerPage },
     },

@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { Order, Client, FitStyle, Stitching, Washing, Finishing, VendorBalance, Invoice, AuditLog } = require('../mongodb_schema');
+const { Lot, Client, FitStyle, Stitching, Washing, Finishing, VendorBalance, Invoice, AuditLog } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
 
 // Helper function to get date range filter
@@ -28,67 +28,90 @@ const getMonthlyTrendData = async (fromDate, toDate, category, clientId) => {
   }
 
   let trendData = [];
-  if (category.title === 'Open Orders') {
-    matchStage.status = { $in: [1, 2, 3, 4] };
+  if (category.title === 'Active Lots') {
+    matchStage.status = { $in: [2, 3, 4] };
     if (clientId && isValidObjectId(clientId)) {
       matchStage.clientId = new mongoose.Types.ObjectId(clientId);
     }
-    trendData = await Order.aggregate([
+    trendData = await Lot.aggregate([
       { $match: matchStage },
+      {
+        $lookup: {
+          from: Stitching.collection.collectionName,
+          localField: '_id',
+          foreignField: 'lotId',
+          as: 'stitching'
+        }
+      },
+      { $unwind: { path: '$stitching', preserveNullAndEmptyArrays: true } },
       {
         $group: {
           _id: {
             year: { $year: '$date' },
             month: { $month: '$date' }
           },
-          totalQuantity: { $sum: '$finalTotalQuantity' }
+          totalQuantity: { $sum: { $subtract: [{ $ifNull: ['$stitching.quantity', 0] }, { $ifNull: ['$stitching.quantityShort', 0] }] } }
         }
       },
       { $sort: { '_id.year': 1, '_id.month': 1 } }
     ]);
   } else if (category.title === 'In Stitching') {
-    trendData = await Stitching.aggregate([
-      { $match: matchStage },
-      {
-        $lookup: {
-          from: Order.collection.collectionName,
-          localField: 'orderId',
-          foreignField: '_id',
-          as: 'order'
-        }
-      },
-      { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
-      { $match: clientId && isValidObjectId(clientId) ? { 'order.clientId': new mongoose.Types.ObjectId(clientId) } : {} },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$order.date' }, // Use order.date if Stitching.date is inconsistent
-            month: { $month: '$order.date' }
-          },
-          totalQuantity: { $sum: '$quantity' }
-        }
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1 } }
-    ]);
+    if (clientId && isValidObjectId(clientId)) {
+      trendData = await Stitching.aggregate([
+        { $match: matchStage },
+        {
+          $lookup: {
+            from: Lot.collection.collectionName,
+            localField: 'lotId',
+            foreignField: '_id',
+            as: 'lot'
+          }
+        },
+        { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+        { $match: { 'lot.clientId': new mongoose.Types.ObjectId(clientId) } },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$date' },
+              month: { $month: '$date' }
+            },
+            totalQuantity: { $sum: '$quantity' }
+          }
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } }
+      ]);
+    } else {
+      trendData = await Stitching.aggregate([
+        { $match: matchStage },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$date' },
+              month: { $month: '$date' }
+            },
+            totalQuantity: { $sum: '$quantity' }
+          }
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } }
+      ]);
+    }
   } else if (category.title === 'In Washing') {
+    const washMatch = clientId && isValidObjectId(clientId)
+      ? [
+          { $lookup: { from: Lot.collection.collectionName, localField: 'lotId', foreignField: '_id', as: 'lot' } },
+          { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+          { $match: { 'lot.clientId': new mongoose.Types.ObjectId(clientId) } },
+        ]
+      : [];
     trendData = await Washing.aggregate([
       { $match: matchStage },
       { $unwind: '$washDetails' },
-      {
-        $lookup: {
-          from: Order.collection.collectionName,
-          localField: 'orderId',
-          foreignField: '_id',
-          as: 'order'
-        }
-      },
-      { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
-      { $match: clientId && isValidObjectId(clientId) ? { 'order.clientId': new mongoose.Types.ObjectId(clientId) } : {} },
+      ...washMatch,
       {
         $group: {
           _id: {
-            year: { $year: '$order.date' }, // Use order.date if Washing.date is inconsistent
-            month: { $month: '$order.date' }
+            year: { $year: '$date' },
+            month: { $month: '$date' }
           },
           totalQuantity: { $sum: '$washDetails.quantity' }
         }
@@ -96,23 +119,21 @@ const getMonthlyTrendData = async (fromDate, toDate, category, clientId) => {
       { $sort: { '_id.year': 1, '_id.month': 1 } }
     ]);
   } else if (category.title === 'In Finishing') {
+    const finMatch = clientId && isValidObjectId(clientId)
+      ? [
+          { $lookup: { from: Lot.collection.collectionName, localField: 'lotId', foreignField: '_id', as: 'lot' } },
+          { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+          { $match: { 'lot.clientId': new mongoose.Types.ObjectId(clientId) } },
+        ]
+      : [];
     trendData = await Finishing.aggregate([
       { $match: matchStage },
-      {
-        $lookup: {
-          from: Order.collection.collectionName,
-          localField: 'orderId',
-          foreignField: '_id',
-          as: 'order'
-        }
-      },
-      { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
-      { $match: clientId && isValidObjectId(clientId) ? { 'order.clientId': new mongoose.Types.ObjectId(clientId) } : {} },
+      ...finMatch,
       {
         $group: {
           _id: {
-            year: { $year: '$order.date' }, // Use order.date if Finishing.date is inconsistent
-            month: { $month: '$order.date' }
+            year: { $year: '$date' },
+            month: { $month: '$date' }
           },
           totalQuantity: { $sum: '$quantity' }
         }
@@ -124,15 +145,24 @@ const getMonthlyTrendData = async (fromDate, toDate, category, clientId) => {
     if (clientId && isValidObjectId(clientId)) {
       matchStage.clientId = new mongoose.Types.ObjectId(clientId);
     }
-    trendData = await Order.aggregate([
+    trendData = await Lot.aggregate([
       { $match: matchStage },
+      {
+        $lookup: {
+          from: Stitching.collection.collectionName,
+          localField: '_id',
+          foreignField: 'lotId',
+          as: 'stitching'
+        }
+      },
+      { $unwind: { path: '$stitching', preserveNullAndEmptyArrays: true } },
       {
         $group: {
           _id: {
             year: { $year: '$date' },
             month: { $month: '$date' }
           },
-          totalQuantity: { $sum: '$finalTotalQuantity' }
+          totalQuantity: { $sum: { $subtract: [{ $ifNull: ['$stitching.quantity', 0] }, { $ifNull: ['$stitching.quantityShort', 0] }] } }
         }
       },
       { $sort: { '_id.year': 1, '_id.month': 1 } }
@@ -164,21 +194,19 @@ const getMonthlyTrendData = async (fromDate, toDate, category, clientId) => {
   return { labels: months, data: quantities };
 };
 
-// Order Status Summary (Overall and by Client) - Quantity and Count-based
+// Lot Status Summary (replaces Order Status Summary)
 const getOrderStatusSummary = async (req, res) => {
   try {
     const dateFilter = getDateRangeFilter(req.query);
     const { fromDate, toDate } = req.query;
-    const clientId = req.query.clientId; // Optional clientId filter
+    const clientId = req.query.clientId;
 
-    // Format interval string
     const interval = fromDate && toDate
       ? `${new Date(fromDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} - ${new Date(toDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
       : 'Custom Range';
 
-    // Define status categories
     const statusCategories = [
-      { title: 'Open Orders', statusFilter: { $in: [1, 2, 3, 4] }, trend: 'up' },
+      { title: 'Active Lots', statusFilter: { $in: [2, 3, 4] }, trend: 'up' },
       { title: 'In Stitching', statusFilter: 2, trend: 'down' },
       { title: 'In Washing', statusFilter: 3, trend: 'neutral' },
       { title: 'In Finishing', statusFilter: 4, trend: 'neutral' },
@@ -189,13 +217,22 @@ const getOrderStatusSummary = async (req, res) => {
     const overallData = await Promise.all(statusCategories.map(async category => {
       let totalQuantity = 0;
       let count = 0;
-      if (category.title === 'Open Orders') {
-        const stats = await Order.aggregate([
-          { $match: { ...dateFilter, status: { $in: [1, 2, 3, 4] } } },
+      if (category.title === 'Active Lots') {
+        const stats = await Lot.aggregate([
+          { $match: { ...dateFilter, status: { $in: [2, 3, 4] } } },
+          {
+            $lookup: {
+              from: Stitching.collection.collectionName,
+              localField: '_id',
+              foreignField: 'lotId',
+              as: 'stitching'
+            }
+          },
+          { $unwind: { path: '$stitching', preserveNullAndEmptyArrays: true } },
           {
             $group: {
               _id: null,
-              totalQuantity: { $sum: '$finalTotalQuantity' },
+              totalQuantity: { $sum: { $subtract: [{ $ifNull: ['$stitching.quantity', 0] }, { $ifNull: ['$stitching.quantityShort', 0] }] } },
               count: { $sum: 1 }
             }
           }
@@ -205,15 +242,6 @@ const getOrderStatusSummary = async (req, res) => {
       } else if (category.title === 'In Stitching') {
         const stats = await Stitching.aggregate([
           { $match: dateFilter },
-          {
-            $lookup: {
-              from: Order.collection.collectionName,
-              localField: 'orderId',
-              foreignField: '_id',
-              as: 'order'
-            }
-          },
-          { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
           {
             $group: {
               _id: null,
@@ -229,15 +257,6 @@ const getOrderStatusSummary = async (req, res) => {
           { $match: dateFilter },
           { $unwind: '$washDetails' },
           {
-            $lookup: {
-              from: Order.collection.collectionName,
-              localField: 'orderId',
-              foreignField: '_id',
-              as: 'order'
-            }
-          },
-          { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
-          {
             $group: {
               _id: null,
               totalQuantity: { $sum: '$washDetails.quantity' },
@@ -251,15 +270,6 @@ const getOrderStatusSummary = async (req, res) => {
         const stats = await Finishing.aggregate([
           { $match: dateFilter },
           {
-            $lookup: {
-              from: Order.collection.collectionName,
-              localField: 'orderId',
-              foreignField: '_id',
-              as: 'order'
-            }
-          },
-          { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
-          {
             $group: {
               _id: null,
               totalQuantity: { $sum: '$quantity' },
@@ -270,12 +280,21 @@ const getOrderStatusSummary = async (req, res) => {
         totalQuantity = stats[0]?.totalQuantity || 0;
         count = stats[0]?.count || 0;
       } else if (category.title === 'Completed') {
-        const stats = await Order.aggregate([
+        const stats = await Lot.aggregate([
           { $match: { ...dateFilter, status: 5 } },
+          {
+            $lookup: {
+              from: Stitching.collection.collectionName,
+              localField: '_id',
+              foreignField: 'lotId',
+              as: 'stitching'
+            }
+          },
+          { $unwind: { path: '$stitching', preserveNullAndEmptyArrays: true } },
           {
             $group: {
               _id: null,
-              totalQuantity: { $sum: '$finalTotalQuantity' },
+              totalQuantity: { $sum: { $subtract: [{ $ifNull: ['$stitching.quantity', 0] }, { $ifNull: ['$stitching.quantityShort', 0] }] } },
               count: { $sum: 1 }
             }
           }
@@ -285,7 +304,7 @@ const getOrderStatusSummary = async (req, res) => {
       }
       const trend = await getMonthlyTrendData(fromDate, toDate, category);
       return {
-        title: category.title == 'Open Orders' ? `${category.title} / (${count} orders)` : `${category.title} / (${count} lots)`,
+        title: `${category.title} / (${count} lots)`,
         value: totalQuantity >= 1000 ? `${(totalQuantity / 1000).toFixed(1)}k` : totalQuantity.toString(),
         interval,
         trend: category.trend,
@@ -303,13 +322,22 @@ const getOrderStatusSummary = async (req, res) => {
       clientData = await Promise.all(statusCategories.map(async category => {
         let totalQuantity = 0;
         let count = 0;
-        if (category.title === 'Open Orders') {
-          const stats = await Order.aggregate([
-            { $match: { ...dateFilter, clientId: new mongoose.Types.ObjectId(clientId), status: { $in: [1, 2, 3, 4] } } },
+        if (category.title === 'Active Lots') {
+          const stats = await Lot.aggregate([
+            { $match: { ...dateFilter, clientId: new mongoose.Types.ObjectId(clientId), status: { $in: [2, 3, 4] } } },
+            {
+              $lookup: {
+                from: Stitching.collection.collectionName,
+                localField: '_id',
+                foreignField: 'lotId',
+                as: 'stitching'
+              }
+            },
+            { $unwind: { path: '$stitching', preserveNullAndEmptyArrays: true } },
             {
               $group: {
                 _id: null,
-                totalQuantity: { $sum: '$finalTotalQuantity' },
+                totalQuantity: { $sum: { $subtract: [{ $ifNull: ['$stitching.quantity', 0] }, { $ifNull: ['$stitching.quantityShort', 0] }] } },
                 count: { $sum: 1 }
               }
             }
@@ -321,14 +349,14 @@ const getOrderStatusSummary = async (req, res) => {
             { $match: dateFilter },
             {
               $lookup: {
-                from: Order.collection.collectionName,
-                localField: 'orderId',
+                from: Lot.collection.collectionName,
+                localField: 'lotId',
                 foreignField: '_id',
-                as: 'order'
+                as: 'lot'
               }
             },
-            { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
-            { $match: { 'order.clientId': new mongoose.Types.ObjectId(clientId) } },
+            { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+            { $match: { 'lot.clientId': new mongoose.Types.ObjectId(clientId) } },
             {
               $group: {
                 _id: null,
@@ -345,14 +373,14 @@ const getOrderStatusSummary = async (req, res) => {
             { $unwind: '$washDetails' },
             {
               $lookup: {
-                from: Order.collection.collectionName,
-                localField: 'orderId',
+                from: Lot.collection.collectionName,
+                localField: 'lotId',
                 foreignField: '_id',
-                as: 'order'
+                as: 'lot'
               }
             },
-            { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
-            { $match: { 'order.clientId': new mongoose.Types.ObjectId(clientId) } },
+            { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+            { $match: { 'lot.clientId': new mongoose.Types.ObjectId(clientId) } },
             {
               $group: {
                 _id: null,
@@ -368,14 +396,14 @@ const getOrderStatusSummary = async (req, res) => {
             { $match: dateFilter },
             {
               $lookup: {
-                from: Order.collection.collectionName,
-                localField: 'orderId',
+                from: Lot.collection.collectionName,
+                localField: 'lotId',
                 foreignField: '_id',
-                as: 'order'
+                as: 'lot'
               }
             },
-            { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
-            { $match: { 'order.clientId': new mongoose.Types.ObjectId(clientId) } },
+            { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+            { $match: { 'lot.clientId': new mongoose.Types.ObjectId(clientId) } },
             {
               $group: {
                 _id: null,
@@ -387,12 +415,21 @@ const getOrderStatusSummary = async (req, res) => {
           totalQuantity = stats[0]?.totalQuantity || 0;
           count = stats[0]?.count || 0;
         } else if (category.title === 'Completed') {
-          const stats = await Order.aggregate([
+          const stats = await Lot.aggregate([
             { $match: { ...dateFilter, clientId: new mongoose.Types.ObjectId(clientId), status: 5 } },
+            {
+              $lookup: {
+                from: Stitching.collection.collectionName,
+                localField: '_id',
+                foreignField: 'lotId',
+                as: 'stitching'
+              }
+            },
+            { $unwind: { path: '$stitching', preserveNullAndEmptyArrays: true } },
             {
               $group: {
                 _id: null,
-                totalQuantity: { $sum: '$finalTotalQuantity' },
+                totalQuantity: { $sum: { $subtract: [{ $ifNull: ['$stitching.quantity', 0] }, { $ifNull: ['$stitching.quantityShort', 0] }] } },
                 count: { $sum: 1 }
               }
             }
@@ -402,7 +439,7 @@ const getOrderStatusSummary = async (req, res) => {
         }
         const trend = await getMonthlyTrendData(fromDate, toDate, category, clientId);
         return {
-          title: `${category.title} (${clientName}, / ${count} orders)`,
+          title: `${category.title} (${clientName}, / ${count} lots)`,
           value: totalQuantity >= 1000 ? `${(totalQuantity / 1000).toFixed(1)}k` : totalQuantity.toString(),
           interval,
           trend: category.trend,
@@ -413,12 +450,21 @@ const getOrderStatusSummary = async (req, res) => {
     } else {
       // Aggregate by client for all clients
       const clientGroups = await Promise.all([
-        Order.aggregate([
-          { $match: { ...dateFilter, status: { $in: [1, 2, 3, 4, 5] }, clientId: { $ne: null, $type: 'objectId' } } },
+        Lot.aggregate([
+          { $match: { ...dateFilter, status: { $in: [2, 3, 4, 5] }, clientId: { $ne: null, $type: 'objectId' } } },
+          {
+            $lookup: {
+              from: Stitching.collection.collectionName,
+              localField: '_id',
+              foreignField: 'lotId',
+              as: 'stitching'
+            }
+          },
+          { $unwind: { path: '$stitching', preserveNullAndEmptyArrays: true } },
           {
             $group: {
               _id: { clientId: '$clientId', status: '$status' },
-              totalQuantity: { $sum: '$finalTotalQuantity' },
+              totalQuantity: { $sum: { $subtract: [{ $ifNull: ['$stitching.quantity', 0] }, { $ifNull: ['$stitching.quantityShort', 0] }] } },
               count: { $sum: 1 }
             }
           }
@@ -427,17 +473,17 @@ const getOrderStatusSummary = async (req, res) => {
           { $match: dateFilter },
           {
             $lookup: {
-              from: Order.collection.collectionName,
-              localField: 'orderId',
+              from: Lot.collection.collectionName,
+              localField: 'lotId',
               foreignField: '_id',
-              as: 'order'
+              as: 'lot'
             }
           },
-          { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
-          { $match: { 'order.clientId': { $ne: null, $type: 'objectId' } } },
+          { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+          { $match: { 'lot.clientId': { $ne: null, $type: 'objectId' } } },
           {
             $group: {
-              _id: { clientId: '$order.clientId' },
+              _id: { clientId: '$lot.clientId' },
               totalQuantity: { $sum: '$quantity' },
               count: { $sum: 1 }
             }
@@ -448,17 +494,17 @@ const getOrderStatusSummary = async (req, res) => {
           { $unwind: '$washDetails' },
           {
             $lookup: {
-              from: Order.collection.collectionName,
-              localField: 'orderId',
+              from: Lot.collection.collectionName,
+              localField: 'lotId',
               foreignField: '_id',
-              as: 'order'
+              as: 'lot'
             }
           },
-          { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
-          { $match: { 'order.clientId': { $ne: null, $type: 'objectId' } } },
+          { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+          { $match: { 'lot.clientId': { $ne: null, $type: 'objectId' } } },
           {
             $group: {
-              _id: { clientId: '$order.clientId' },
+              _id: { clientId: '$lot.clientId' },
               totalQuantity: { $sum: '$washDetails.quantity' },
               count: { $sum: 1 }
             }
@@ -468,31 +514,31 @@ const getOrderStatusSummary = async (req, res) => {
           { $match: dateFilter },
           {
             $lookup: {
-              from: Order.collection.collectionName,
-              localField: 'orderId',
+              from: Lot.collection.collectionName,
+              localField: 'lotId',
               foreignField: '_id',
-              as: 'order'
+              as: 'lot'
             }
           },
-          { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
-          { $match: { 'order.clientId': { $ne: null, $type: 'objectId' } } },
+          { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+          { $match: { 'lot.clientId': { $ne: null, $type: 'objectId' } } },
           {
             $group: {
-              _id: { clientId: '$order.clientId' },
+              _id: { clientId: '$lot.clientId' },
               totalQuantity: { $sum: '$quantity' },
               count: { $sum: 1 }
             }
           }
         ])
-      ]).then(([orderStats, stitchingStats, washingStats, finishingStats]) => {
-        const allStats = [...orderStats, ...stitchingStats, ...washingStats, ...finishingStats].filter(
+      ]).then(([lotStats, stitchingStats, washingStats, finishingStats]) => {
+        const allStats = [...lotStats, ...stitchingStats, ...washingStats, ...finishingStats].filter(
           curr => curr._id?.clientId && isValidObjectId(curr._id?.clientId)
         );
         return allStats.reduce((acc, curr) => {
           const clientId = curr._id.clientId.toString();
           if (!acc[clientId]) acc[clientId] = { statuses: [] };
           acc[clientId].statuses.push({
-            status: curr._id.status || [2, 3, 4].includes(curr._id.status) ? curr._id.status : null,
+            status: curr._id.status || null,
             totalQuantity: curr.totalQuantity,
             count: curr.count
           });
@@ -513,12 +559,12 @@ const getOrderStatusSummary = async (req, res) => {
         return statusCategories.map(category => {
           let totalQuantity = 0;
           let count = 0;
-          if (category.title === 'Open Orders') {
+          if (category.title === 'Active Lots') {
             totalQuantity = clientGroup.statuses
-              .filter(item => [1, 2, 3, 4].includes(item.status))
+              .filter(item => [2, 3, 4].includes(item.status))
               .reduce((sum, item) => sum + item.totalQuantity, 0);
             count = clientGroup.statuses
-              .filter(item => [1, 2, 3, 4].includes(item.status))
+              .filter(item => [2, 3, 4].includes(item.status))
               .reduce((sum, item) => sum + item.count, 0);
           } else if (category.title === 'In Stitching') {
             const statusMatch = clientGroup.statuses.find(item => item.status === 2);
@@ -539,7 +585,7 @@ const getOrderStatusSummary = async (req, res) => {
           }
           const trend = getMonthlyTrendData(fromDate, toDate, category, clientId);
           return {
-            title: `${category.title} (${clientName}, / ${count} orders)`,
+            title: `${category.title} (${clientName}, / ${count} lots)`,
             value: totalQuantity >= 1000 ? `${(totalQuantity / 1000).toFixed(1)}k` : totalQuantity.toString(),
             interval,
             trend: category.trend,
@@ -551,25 +597,34 @@ const getOrderStatusSummary = async (req, res) => {
     }
 
     // Calculate Overall Quantity Since Inception (unfiltered by date or client)
-    const overallSinceInception = await Order.aggregate([
+    const overallSinceInception = await Lot.aggregate([
       { $match: { status: 5 } },
+      {
+        $lookup: {
+          from: Stitching.collection.collectionName,
+          localField: '_id',
+          foreignField: 'lotId',
+          as: 'stitching'
+        }
+      },
+      { $unwind: { path: '$stitching', preserveNullAndEmptyArrays: true } },
       {
         $group: {
           _id: null,
-          totalQuantity: { $sum: '$finalTotalQuantity' },
+          totalQuantity: { $sum: { $subtract: [{ $ifNull: ['$stitching.quantity', 0] }, { $ifNull: ['$stitching.quantityShort', 0] }] } },
           count: { $sum: 1 }
         }
       }
     ]);
     const sinceInceptionValue = overallSinceInception[0]?.totalQuantity || 0;
     const sinceInceptionCount = overallSinceInception[0]?.count || 0;
-    const sinceInceptionTrend = await getMonthlyTrendData('2023-01-01', new Date().toISOString(), { title: 'Completed' }); // Use a broad range for trend
+    const sinceInceptionTrend = await getMonthlyTrendData('2023-01-01', new Date().toISOString(), { title: 'Completed' });
 
     const sinceInceptionData = {
-      title: `Overall Completed / (${sinceInceptionCount} orders)`,
+      title: `Overall Completed / (${sinceInceptionCount} lots)`,
       value: sinceInceptionValue >= 1000 ? `${(sinceInceptionValue / 1000).toFixed(1)}k` : sinceInceptionValue.toString(),
       interval: 'Since Inception',
-      trend: 'neutral', // Static trend as it's a cumulative total
+      trend: 'neutral',
       data: sinceInceptionTrend.data,
       labels: sinceInceptionTrend.labels
     };
@@ -581,18 +636,27 @@ const getOrderStatusSummary = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Error fetching order status summary' });
+    res.status(500).json({ error: 'Error fetching lot status summary' });
   }
 };
 
 const getAllClientCompletedQuantities = async (req, res) => {
   try {
     const dateFilter = getDateRangeFilter(req.query);
-    const { fromDate, toDate, interval = 'monthly' } = req.query; // Default to monthly if not specified
+    const { fromDate, toDate, interval = 'monthly' } = req.query;
 
-    // Aggregate order quantities by client and time period based on interval
-    const clientMonthlyData = await Order.aggregate([
+    // Aggregate lot quantities by client and time period (joining Stitching for quantity)
+    const clientMonthlyData = await Lot.aggregate([
       { $match: dateFilter },
+      {
+        $lookup: {
+          from: Stitching.collection.collectionName,
+          localField: '_id',
+          foreignField: 'lotId',
+          as: 'stitching'
+        }
+      },
+      { $unwind: { path: '$stitching', preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: Client.collection.collectionName,
@@ -610,7 +674,7 @@ const getAllClientCompletedQuantities = async (req, res) => {
             ...(interval === 'monthly' && { month: { $month: '$date' } }),
             ...(interval === 'quarterly' && { quarter: { $concat: [{ $substr: [{ $toString: { $ceil: { $divide: [{ $month: '$date' }, 3] } } }, 0, 1] }, 'Q'] } }),
           },
-          totalQuantity: { $sum: '$finalTotalQuantity' }
+          totalQuantity: { $sum: { $subtract: [{ $ifNull: ['$stitching.quantity', 0] }, { $ifNull: ['$stitching.quantityShort', 0] }] } }
         }
       },
       {
@@ -705,11 +769,11 @@ const getAllClientCompletedQuantities = async (req, res) => {
   }
 };
 
-// Orders by Status
+// Lots by Status (replaces Orders by Status)
 const getOrdersByStatus = async (req, res) => {
   try {
     const dateFilter = getDateRangeFilter(req.query);
-    const ordersByStatus = await Order.aggregate([
+    const lotsByStatus = await Lot.aggregate([
       { $match: dateFilter },
       {
         $group: {
@@ -720,25 +784,26 @@ const getOrdersByStatus = async (req, res) => {
       { $sort: { _id: 1 } }
     ]);
 
-    const labels = ['Status 1', 'Status 2', 'Status 3', 'Status 4', 'Status 5', 'Status 6'];
-    const data = Array(6).fill(0);
-    ordersByStatus.forEach(item => {
-      data[item._id - 1] = item.count;
+    const labels = ['Status 2', 'Status 3', 'Status 4', 'Status 5', 'Status 6'];
+    const data = Array(5).fill(0);
+    lotsByStatus.forEach(item => {
+      const idx = item._id - 2; // status 2 maps to index 0
+      if (idx >= 0 && idx < 5) data[idx] = item.count;
     });
 
     res.json({
       labels,
       datasets: [{
-        label: 'Number of Orders',
+        label: 'Number of Lots',
         data,
-        backgroundColor: ['#36A2EB', '#FF6384', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'],
-        borderColor: ['#2A8CBF', '#CC4B67', '#CCA33D', '#3A9999', '#7A52CC', '#CC7A30'],
+        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'],
+        borderColor: ['#CC4B67', '#2A8CBF', '#CCA33D', '#3A9999', '#7A52CC'],
         borderWidth: 1
       }]
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Error fetching order status data' });
+    res.status(500).json({ error: 'Error fetching lot status data' });
   }
 };
 
@@ -908,16 +973,25 @@ const getAuditLog = async (req, res) => {
   }
 };
 
-// Top Fit Styles
+// Top Fit Styles (from Lot.fitStyleId + Stitching for quantities)
 const getTopFitStyles = async (req, res) => {
   try {
     const dateFilter = getDateRangeFilter(req.query);
-    const topFitStyles = await Order.aggregate([
+    const topFitStyles = await Lot.aggregate([
       { $match: dateFilter },
+      {
+        $lookup: {
+          from: Stitching.collection.collectionName,
+          localField: '_id',
+          foreignField: 'lotId',
+          as: 'stitching'
+        }
+      },
+      { $unwind: { path: '$stitching', preserveNullAndEmptyArrays: true } },
       {
         $group: {
           _id: '$fitStyleId',
-          totalQuantity: { $sum: '$finalTotalQuantity' }
+          totalQuantity: { $sum: { $subtract: [{ $ifNull: ['$stitching.quantity', 0] }, { $ifNull: ['$stitching.quantityShort', 0] }] } }
         }
       },
       {
@@ -973,9 +1047,7 @@ const getProductionDashboard = async (req, res) => {
       { $match: stitchingMatch },
       { $lookup: { from: 'lots', localField: 'lotId', foreignField: '_id', as: 'lot' } },
       { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
-      { $lookup: { from: 'orders', localField: 'orderId', foreignField: '_id', as: 'order' } },
-      { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
-      { $lookup: { from: 'clients', localField: 'order.clientId', foreignField: '_id', as: 'client' } },
+      { $lookup: { from: 'clients', localField: 'lot.clientId', foreignField: '_id', as: 'client' } },
       { $unwind: { path: '$client', preserveNullAndEmptyArrays: true } },
       { $project: {
         _lotId: '$lot._id',

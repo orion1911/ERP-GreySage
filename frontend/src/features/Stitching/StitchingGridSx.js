@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
-import { Box, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, Link, TablePagination } from '@mui/material';
+import { Box, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, TablePagination } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, ContentCut, Add, MoreVert as MoreVertIcon, AutoAwesome } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'motion/react';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
@@ -176,16 +175,7 @@ function StitchingGridSx({
                         {record.lotId?.lotNumber || 'N/A'}
                       </Typography>
                       <Typography variant="caption" color="textSecondary">
-                        {readOnly && (
-                          <Link
-                            component={RouterLink}
-                            to={`/stitching/${record.orderId?._id || ''}`}
-                            underline="none"
-                            sx={{ cursor: 'pointer' }}
-                          >
-                            {record.orderId?.orderId || '—'}
-                          </Link>
-                        )}
+                        {record.lotId?.lotId || ''}
                       </Typography>
                     </Grid>
                     <Grid size={{ xs: 4, sm: 4 }} sx={{ mt: 0.5 }}>
@@ -275,7 +265,7 @@ function StitchingGridSx({
                           <Grid size={{ xs: 4, sm: 4 }}>
                             <Typography variant="body2">
                               <strong>Client</strong><br />
-                              {record.orderId?.clientId?.name || 'N/A'}
+                              {record.lotId?.clientId?.name || 'N/A'}
                             </Typography>
                           </Grid>
                           <Grid size={{ xs: 4, sm: 4 }}>

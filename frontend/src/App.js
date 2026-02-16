@@ -24,9 +24,7 @@ import FabricVendorCatalog from './features/Catalogs/FabricVendorCatalog';
 import StitchingVendorCatalog from './features/Catalogs/StitchingVendorCatalog';
 import WashingVendorCatalog from './features/Catalogs/WashingVendorCatalog';
 import FinishingVendorCatalog from './features/Catalogs/FinishingVendorCatalog';
-import OrderManagement from './features/Orders/OrderManagement';
 import StitchingManagement from './features/Stitching/StitchingManagement';
-import LotsManagement from './features/Stitching/LotsManagement';
 import NotFound from './components/NotFound';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -199,9 +197,7 @@ function App() {
             <Route element={<AuthenticatedLayout isMobile={isMobile} variant={variant} setVariant={setVariant} />}>
               <Route path="/dashboardxl" element={<DashboardExcel />} />
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/orders" element={<OrderManagement />} />
-              <Route path="/stitching/:orderId" element={<StitchingManagement />} />
-              <Route path="/lots" element={<LotsManagement />} />
+              <Route path="/stitching" element={<StitchingManagement />} />
               <Route path="/invoices" element={<InvoiceManagement />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/clients" element={<ClientCatalog />} />

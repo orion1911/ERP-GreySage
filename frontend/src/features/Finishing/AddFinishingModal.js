@@ -10,13 +10,12 @@ import { MorphDateTextField } from '../../components/MuiCustom';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 
-function AddFinishingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNumber, lotQuantity, vendors, onAddFinishing, editRecord }) {
+function AddFinishingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQuantity, vendors, onAddFinishing, editRecord }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
   const isEditMode = !!editRecord;
   const [loading, setLoading] = useState(false);
 
   const defaultValues = {
-    orderId,
     lotNumber: lotNumber || '',
     invoiceNumber: invoiceNumber || '',
     vendorId: '',
@@ -36,7 +35,6 @@ function AddFinishingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNu
 
   useEffect(() => {
     if (isEditMode && editRecord) {
-      setValue('orderId', editRecord.orderId || orderId);
       setValue('lotNumber', editRecord.lotId?.lotNumber || lotNumber || '');
       setValue('invoiceNumber', editRecord.lotId?.invoiceNumber || invoiceNumber || '');
       setValue('vendorId', editRecord.vendorId?._id || '');
@@ -59,7 +57,7 @@ function AddFinishingModal({ open, onClose, orderId, lotNumber, lotId, invoiceNu
       setValue('finishOutDate', null);
       setValue('description', '');
     }
-  }, [editRecord, isEditMode, lotNumber, invoiceNumber, orderId, setValue]);
+  }, [editRecord, isEditMode, lotNumber, invoiceNumber, setValue]);
 
   const onSubmit = (data) => {
     const formattedData = {

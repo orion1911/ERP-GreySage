@@ -1,18 +1,16 @@
 const mongoose = require('mongoose');
-const { Washing, Lot, Order, Stitching } = require('../mongodb_schema');
+const { Washing, Lot, Stitching } = require('../mongodb_schema');
 const { updateVendorBalance } = require('../services/vendorBalanceService');
-const { recalcFinalQuantity } = require('../services/orderQuantityService');
 // const { logAction } = require('../utils/logger');
 
 const createWashing = async (req, res) => {
-  const { invoiceNumber, orderId, vendorId, quantityShort, rate, date, washOutDate, description, washDetails } = req.body;
+  const { invoiceNumber, vendorId, quantityShort, rate, date, washOutDate, description, washDetails } = req.body;
   let session = null;
   let transactionCommitted = false;
   let washing = null;
 
   // Validate required fields
   if (!invoiceNumber) return res.status(400).json({ error: 'Invoice number is required' });
-  if (!orderId) return res.status(400).json({ error: 'Order ID is required' });
   if (!vendorId) return res.status(400).json({ error: 'Vendor ID is required' });
   if (!washDetails || !Array.isArray(washDetails) || washDetails.length === 0) {
     return res.status(400).json({ error: 'washDetails must be a non-empty array' });
@@ -24,10 +22,10 @@ const createWashing = async (req, res) => {
     return res.status(400).json({ error: 'Invoice number must be a valid number' });
   }
 
-  // Validate invoiceNumber and orderId
-  const lot = await Lot.findOne({ invoiceNumber: parsedInvoiceNumber, orderId });
+  // Validate invoiceNumber
+  const lot = await Lot.findOne({ invoiceNumber: parsedInvoiceNumber });
   if (!lot) {
-    return res.status(400).json({ error: 'Invalid invoiceNumber or orderId' });
+    return res.status(400).json({ error: 'Invalid invoiceNumber' });
   }
 
   // Validate existing washing entry against the lot
@@ -41,9 +39,6 @@ const createWashing = async (req, res) => {
   if (!stitching) {
     return res.status(400).json({ error: 'Stitching record not found for this lot' });
   }
-
-  const order = await Order.findById(orderId);
-  if (!order) return res.status(400).json({ error: 'Order not found' });
 
   const availableQty = stitching.quantity - (stitching.quantityShort || 0);
   const totalWashQuantity = washDetails.reduce((sum, item) => sum + parseInt(item.quantity || 0), 0);
@@ -59,7 +54,6 @@ const createWashing = async (req, res) => {
     // Create the Washing record within the transaction
     washing = new Washing({
       lotId: lot._id,
-      orderId,
       date: date || new Date(),
       washOutDate,
       vendorId,
@@ -71,12 +65,6 @@ const createWashing = async (req, res) => {
     });
     await washing.save({ session });
 
-    // Update the Order status to 3 (Order in Washing) within the transaction
-    // if (order.status < 3) {
-    //   order.status = 3;
-    //   order.statusHistory.push({ status: 3, changedAt: new Date() });
-    //   await order.save({ session });
-    // }
     lot.status = 3;
     lot.statusHistory.push({ status: 3, changedAt: new Date() });
     await lot.save({ session });
@@ -92,10 +80,7 @@ const createWashing = async (req, res) => {
     transactionCommitted = true;
 
     // Populate the washing record for response
-    const populatedWashing = await Washing.findById(washing._id).populate('orderId vendorId lotId').session(null);
-
-    // Recalculate order's finalTotalQuantity
-    await recalcFinalQuantity(orderId);
+    const populatedWashing = await Washing.findById(washing._id).populate('vendorId lotId').session(null);
 
     res.status(201).json(populatedWashing);
   } catch (error) {
@@ -117,7 +102,7 @@ const updateWashing = async (req, res) => {
   const { vendorId, quantityShort, rate, date, washOutDate, description, washDetails } = req.body;
 
   // Find the washing record
-  const washing = await Washing.findById(id).populate('lotId orderId vendorId');
+  const washing = await Washing.findById(id).populate('lotId vendorId');
   if (!washing) return res.status(404).json({ error: 'Washing record not found' });
 
   // Validate references
@@ -126,8 +111,6 @@ const updateWashing = async (req, res) => {
 
   if (vendorId) {
     // Assuming vendorId is a valid reference; add validation if needed
-    // const vendor = await Vendor.findById(vendorId); // Uncomment and implement if Vendor schema exists
-    // if (!vendor) return res.status(404).json({ error: 'Vendor not found' });
   }
 
   // Validate washDetails quantities
@@ -151,10 +134,7 @@ const updateWashing = async (req, res) => {
   try {
     await washing.save();
 
-    // Recalculate order's finalTotalQuantity
-    await recalcFinalQuantity(washing.orderId._id || washing.orderId);
-
-    const populatedWashing = await Washing.findById(id).populate('lotId orderId vendorId');
+    const populatedWashing = await Washing.findById(id).populate('lotId vendorId');
     res.json(populatedWashing);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -164,9 +144,8 @@ const updateWashing = async (req, res) => {
 const updateWashingStatus = async (req, res) => {
   const { washOutDate } = req.body;
   try {
-    const washing = await Washing.findByIdAndUpdate(req.params.id, { washOutDate }, { new: true }).populate('lotId orderId vendorId');
+    const washing = await Washing.findByIdAndUpdate(req.params.id, { washOutDate }, { new: true }).populate('lotId vendorId');
     if (!washing) return res.status(404).json({ error: 'Washing record not found' });
-    // await logAction(req.user.userId, 'update_washing', 'Washing', washing._id, 'Wash out date updated');
     res.json(washing);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -188,7 +167,7 @@ const getWashing = async (req, res) => {
       }
       query.lotId = { $in: await Lot.find({ invoiceNumber: parsedInvoiceNumber }).distinct('_id') };
     }
-    const washingRecords = await Washing.find(query).populate('orderId vendorId lotId');
+    const washingRecords = await Washing.find(query).populate('vendorId lotId');
     res.json(washingRecords);
   } catch (error) {
     res.status(400).json({ error: error.message });

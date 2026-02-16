@@ -28,6 +28,17 @@
             "console": "integratedTerminal",
             "envFile": "${workspaceFolder}/.env",
             "program": "./backend/server.js"
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Debug Tests",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env",
+            "program": "./backend/migrations/migrate-orders-to-lots.js"
         }
     ]
 }

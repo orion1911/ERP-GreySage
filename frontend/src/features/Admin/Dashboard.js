@@ -50,7 +50,7 @@ const Dashboard = () => {
     const [expandedRows, setExpandedRows] = useState({});
     const [breakdownPage, setBreakdownPage] = useState(0);
     const [breakdownRowsPerPage, setBreakdownRowsPerPage] = useState(25);
-    const [dateRange, setDateRange] = useState([dayjs().startOf('month'), dayjs()]);
+    const [dateRange, setDateRange] = useState([dayjs('2026-01-01'), dayjs(new Date())]);
 
     // KPI Data
     const [kpiData, setKpiData] = useState({

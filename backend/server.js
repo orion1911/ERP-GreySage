@@ -27,48 +27,82 @@ const errorHandler = require('./middleware/error');
 
 const app = express();
 
-// Middleware Setup
+// ─── CORS ────────────────────────────────────────────────────────────────────
 const allowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+  ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
   : ['https://greysage.vercel.app'];
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (Postman, mobile apps, server-to-server)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS blocked: ${origin}`));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 }));
+
+// Handle preflight for all routes
 app.options('*', cors());
 app.use(express.json());
 
-// MongoDB Connection
+// ─── MONGODB CONNECTION (Optimized for Vercel Serverless + Atlas M0) ─────────
+// global._mongoConnection persists across warm serverless invocations
+// so we reuse the same connection instead of opening a new pool every request
+
 const connectDB = async () => {
-  if (mongoose.connection.readyState >= 1) {
-    // console.log('Already connected to MongoDB');
-    return;
+  // Reuse cached live connection from a warm instance
+  if (global._mongoConnection && mongoose.connection.readyState === 1) {
+    return global._mongoConnection;
+  }
+
+  // If mongoose is mid-connection, wait and return existing connection
+  if (mongoose.connection.readyState === 2) {
+    await new Promise(res => setTimeout(res, 1000));
+    return mongoose.connection;
   }
 
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      maxPoolSize: 100,
-      minPoolSize: 2,
+    const conn = await mongoose.connect(process.env.MONGO_URI, {
+      maxPoolSize: 3,              // ✅ Critical for serverless — was 100, spikes Atlas M0 to limit
+      minPoolSize: 1,              // ✅ Don't hold unnecessary idle connections
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000,
+      bufferCommands: false,       // ✅ Fail fast if DB not ready, don't silently queue ops
+      autoIndex: false,            // ✅ Skip index rebuild on every cold start
     });
-    console.log('Connected to MongoDB');
+
+    global._mongoConnection = conn;
+    console.log('MongoDB connected');
+    return conn;
   } catch (err) {
-    console.error('MongoDB connection error:', err);
-    // process.exit(1);
+    global._mongoConnection = null;
+    console.error('MongoDB connection error:', err.message);
+    throw err;
   }
 };
 
-// Log connection events
-// mongoose.connection.on('connected', () => console.log('Mongoose connected'));
-// mongoose.connection.on('disconnected', () => console.log('Mongoose disconnected'));
-// mongoose.connection.on('error', (err) => console.error('Mongoose error:', err));
+// Ensure DB is connected before every request
+// This is the serverless-safe pattern — connectDB is idempotent and cached
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    // Return a clean error instead of a CORS-less 500 crash
+    res.status(503).json({
+      success: false,
+      error: 'Database unavailable. Please try again shortly.',
+    });
+  }
+});
 
-// Route Setup
+// ─── ROUTES ──────────────────────────────────────────────────────────────────
 app.use('/api', authRoutes);
 app.use('/api', dashboardRoutes);
 app.use('/api', userRoutes);
@@ -87,14 +121,19 @@ app.use('/api', reportRoutes);
 app.use('/api', auditLogRoutes);
 app.use('/api', emailRoutes);
 
-// 404 Catch-All
+// ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((req, res) => res.status(404).json({ success: false, error: 'Route not found' }));
 
-// Error Handling Middleware
+// ─── ERROR HANDLER ───────────────────────────────────────────────────────────
 app.use(errorHandler);
 
-// Start server
-connectDB().then(() => {
+// ─── LOCAL DEV: listen normally / VERCEL: export app as handler ──────────────
+if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-});
+  connectDB().then(() => {
+    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  });
+}
+
+// ✅ Required for Vercel — without this export you get "No exports found" error
+module.exports = app;

@@ -67,7 +67,7 @@ function StitchingManagement() {
       const washingRes = await apiService.washing.getWashing('', lotId, '');
       setWashingRecords(prev => ({ ...prev, [lotId]: washingRes }));
     } catch (err) {
-      alert(err.response?.error || 'An error occurred while fetching washing records');
+      showSnackbar(err.response?.error || 'An error occurred while fetching washing records');
     }
   };
 
@@ -77,7 +77,7 @@ function StitchingManagement() {
       const finishingRes = await apiService.finishing.getFinishing('', lotId, '');
       setFinishingRecords(prev => ({ ...prev, [lotId]: finishingRes }));
     } catch (err) {
-      alert(err.response?.error || 'An error occurred while fetching finishing records');
+      showSnackbar(err.response?.error || 'An error occurred while fetching finishing records');
     }
   };
 

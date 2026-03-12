@@ -54,18 +54,23 @@ app.use(express.json());
 // global._mongoConnection persists across warm serverless invocations
 // so we reuse the same connection instead of opening a new pool every request
 
+let isConnecting = false;
+
 const connectDB = async () => {
   // Reuse cached live connection from a warm instance
   if (global._mongoConnection && mongoose.connection.readyState === 1) {
     return global._mongoConnection;
   }
 
-  // If mongoose is mid-connection, wait and return existing connection
-  if (mongoose.connection.readyState === 2) {
-    await new Promise(res => setTimeout(res, 1000));
+  // Wait if another request is already mid-connection
+  // readyState === 2 catches mongoose's own connecting state
+  // isConnecting flag catches the race BEFORE readyState changes to 2
+  if (mongoose.connection.readyState === 2 || isConnecting) {
+    await new Promise(res => setTimeout(res, 500));
     return mongoose.connection;
   }
 
+  isConnecting = true;
   try {
     const conn = await mongoose.connect(process.env.MONGO_URI, {
       maxPoolSize: 3,              // ✅ Critical for serverless — was 100, spikes Atlas M0 to limit
@@ -73,7 +78,6 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
       connectTimeoutMS: 10000,
-      bufferCommands: false,       // ✅ Fail fast if DB not ready, don't silently queue ops
       autoIndex: false,            // ✅ Skip index rebuild on every cold start
     });
 
@@ -84,6 +88,8 @@ const connectDB = async () => {
     global._mongoConnection = null;
     console.error('MongoDB connection error:', err.message);
     throw err;
+  } finally {
+    isConnecting = false;          // ✅ Always reset — even if connect throws
   }
 };
 

@@ -63,13 +63,19 @@ const Dashboard = () => {
     // Table Data
     const [clientSummary, setClientSummary] = useState([]);
     const [washerSummary, setWasherSummary] = useState([]);
+    const [stitchingVendorSummary, setStitchingVendorSummary] = useState([]);
     const [breakdownData, setBreakdownData] = useState([]);
+    const [stitchingBreakdownData, setStitchingBreakdownData] = useState([]);
+    const [stitchingBreakdownPage, setStitchingBreakdownPage] = useState(0);
+    const [stitchingBreakdownRowsPerPage, setStitchingBreakdownRowsPerPage] = useState(25);
+    const [expandedStitchingRows, setExpandedStitchingRows] = useState({});
 
     // Fetch Dashboard Data from MongoDB backend
     const loadData = async () => {
         setLoading(true);
         setError('');
         setBreakdownPage(0);
+        setStitchingBreakdownPage(0);
 
         try {
             const params = {};
@@ -92,7 +98,10 @@ const Dashboard = () => {
 
             setClientSummary(data.client_summary || []);
             setWasherSummary(data.washer_summary || []);
+            setStitchingVendorSummary(data.stitching_vendor_summary || []);
             setBreakdownData(data.rows || []);
+            setStitchingBreakdownData(data.stitching_breakdown || []);
+            // setBreakdownData(data.rows?.sort((a, b) => a.CLIENT.localeCompare(b.CLIENT)) || []);
 
             const ts = new Date(data.timestamp);
             setTimestamp(ts.toLocaleString());
@@ -497,12 +506,203 @@ const Dashboard = () => {
                 </Grid>
             </Grid>
 
+            {/* Stitching Vendor Summary */}
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
+                        <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                Stitching Summary
+                            </Typography>
+                        </Box>
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={loading ? 'stitching-vendor-loading' : 'stitching-vendor-data'}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.15 }}
+                                style={{ flex: 1, overflow: 'auto' }}
+                            >
+                                <TableContainer sx={{ height: '100%' }}>
+                                    <Table>
+                                        <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
+                                            <TableRow>
+                                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Vendor</TableCell>
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Total
+                                                </TableCell>
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    In Stitching
+                                                </TableCell>
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Completed
+                                                </TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {loading ? (
+                                                <TableRowsLoader colsNum={4} rowsNum={5} />
+                                            ) : stitchingVendorSummary.length > 0 ? (
+                                                stitchingVendorSummary.map((row, idx) => (
+                                                    <TableRow key={idx} hover>
+                                                        <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.STITCHING_VENDOR}</TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.TOTAL || 0)} size="small" color="default" variant="outlined" />
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.IN_STITCHING || 0)} size="small" color="error" variant="filled" />
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.COMPLETED || 0)} size="small" color="success" variant="filled" />
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            ) : (
+                                                <TableRow>
+                                                    <TableCell colSpan={4} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                                        No data available
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            </motion.div>
+                        </AnimatePresence>
+                    </Paper>
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
+                        <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                Stitching Breakdown
+                            </Typography>
+                        </Box>
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={loading ? 'stitching-breakdown-loading' : 'stitching-breakdown-data'}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.15 }}
+                                style={{ flex: 1, overflow: 'auto' }}
+                            >
+                                <TableContainer sx={{ height: '100%' }}>
+                                    <Table>
+                                        <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
+                                            <TableRow>
+                                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 70, pl: 2 }}>Client</TableCell>
+                                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', maxWidth: 100 }}>
+                                                    Lot Count
+                                                </TableCell>
+                                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>Vendor</TableCell>
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Pcs
+                                                </TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {loading ? (
+                                                <TableRowsLoader colsNum={4} rowsNum={10} />
+                                            ) : stitchingBreakdownData.length > 0 ? (
+                                                stitchingBreakdownData.slice(stitchingBreakdownPage * stitchingBreakdownRowsPerPage, stitchingBreakdownPage * stitchingBreakdownRowsPerPage + stitchingBreakdownRowsPerPage).map((row, idx) => (
+                                                    <React.Fragment key={idx}>
+                                                        <TableRow hover>
+                                                            <TableCell sx={{ fontWeight: 600, maxWidth: 70, pl: 2 }}>{row.CLIENT}</TableCell>
+                                                            <TableCell title={row.LOT_NO || ''} sx={{ cursor: row.LOT_COUNT > 2 ? 'pointer' : 'default', maxWidth: 100 }}>
+                                                                {row.LOT_COUNT > 0 && (
+                                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                                        <Chip label={row.LOT_COUNT} size="small" sx={{ minWidth: 35, bgcolor: 'primary.soft', fontWeight: 600 }} />
+                                                                        <IconButton
+                                                                            onClick={() => setExpandedStitchingRows(prev => ({
+                                                                                ...prev,
+                                                                                [stitchingBreakdownPage * stitchingBreakdownRowsPerPage + idx]: !prev[stitchingBreakdownPage * stitchingBreakdownRowsPerPage + idx]
+                                                                            }))}
+                                                                            sx={{ padding: 0, size: 'small' }}
+                                                                        >
+                                                                            {expandedStitchingRows[stitchingBreakdownPage * stitchingBreakdownRowsPerPage + idx] ? (
+                                                                                <ExpandMoreIcon fontSize='small' />
+                                                                            ) : (
+                                                                                <ChevronRightIcon fontSize='small' />
+                                                                            )}
+                                                                        </IconButton>
+                                                                        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 80 }}>
+                                                                            {row.LOT_NO}
+                                                                        </Typography>
+                                                                    </Box>
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell sx={{ color: 'text.secondary' }}>{row.STITCHING_VENDOR || '—'}</TableCell>
+                                                            <TableCell align="center">
+                                                                <Chip label={formatNumber(row.PCS || 0)} size="small" color="default" variant="outlined" />
+                                                            </TableCell>
+                                                        </TableRow>
+                                                        {row.LOT_NO && (
+                                                            <TableRow
+                                                                sx={{
+                                                                    backgroundColor: 'background.paper',
+                                                                    '& td': { border: expandedStitchingRows[stitchingBreakdownPage * stitchingBreakdownRowsPerPage + idx] ? undefined : 0, p: 0 },
+                                                                    '&:last-child td, &:last-child th': { border: 0 },
+                                                                }}
+                                                            >
+                                                                <TableCell colSpan={4} sx={{ p: 0 }}>
+                                                                    <AnimatePresence>
+                                                                        {expandedStitchingRows[stitchingBreakdownPage * stitchingBreakdownRowsPerPage + idx] && (
+                                                                            <motion.div
+                                                                                initial={{ opacity: 0, height: 0 }}
+                                                                                animate={{ opacity: 1, height: 'auto' }}
+                                                                                exit={{ opacity: 0, height: 0 }}
+                                                                                transition={{ duration: 0.3 }}
+                                                                                style={{ overflow: 'hidden', paddingLeft: 16 }}
+                                                                            >
+                                                                                {row.LOT_NO.split(',').map((lotNo) => (
+                                                                                    <React.Fragment key={lotNo}>
+                                                                                        <Chip label={lotNo.trim()} size="small" sx={{ bgcolor: 'primary.soft', mr: 0.5, mb: 0.5 }} />
+                                                                                    </React.Fragment>
+                                                                                ))}
+                                                                            </motion.div>
+                                                                        )}
+                                                                    </AnimatePresence>
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        )}
+                                                    </React.Fragment>
+                                                ))
+                                            ) : (
+                                                <TableRow>
+                                                    <TableCell colSpan={4} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                                        No data available
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            </motion.div>
+                        </AnimatePresence>
+                        {!loading && stitchingBreakdownData.length > 0 && (
+                            <TablePagination
+                                component="div"
+                                count={stitchingBreakdownData.length}
+                                page={stitchingBreakdownPage}
+                                onPageChange={(_, newPage) => setStitchingBreakdownPage(newPage)}
+                                rowsPerPage={stitchingBreakdownRowsPerPage}
+                                onRowsPerPageChange={(e) => setStitchingBreakdownRowsPerPage(parseInt(e.target.value, 10))}
+                                rowsPerPageOptions={[10, 25, 50, 100]}
+                            />
+                        )}
+                    </Paper>
+                </Grid>
+            </Grid>
+
             {/* Detailed Breakdown */}
             <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden' }}>
                 <Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                         <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                            Complete Breakdown
+                            Washing Breakdown
                         </Typography>
                         {!loading && <Chip label={`${breakdownData.length} items`} size="small" variant="outlined" />}
                     </Stack>
@@ -525,10 +725,7 @@ const Dashboard = () => {
                                         </TableCell>
                                         <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>Washer</TableCell>
                                         <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                            Pcs
-                                        </TableCell>
-                                        <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                            Making
+                                            Total
                                         </TableCell>
                                         <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
                                             In Washing
@@ -575,9 +772,6 @@ const Dashboard = () => {
                                                     <TableCell sx={{ color: 'text.secondary' }}>{row.WASHING || '\u2014'}</TableCell>
                                                     <TableCell align="center">
                                                         <Chip label={formatNumber(row.PCS || 0)} size="small" color="default" variant="outlined" />
-                                                    </TableCell>
-                                                    <TableCell align="center">
-                                                        {row.MAKING > 0 && <Chip label={formatNumber(row.MAKING)} size="small" color="error" variant="filled" />}
                                                     </TableCell>
                                                     <TableCell align="center">
                                                         {row.IN_WASHING > 0 && <Chip label={formatNumber(row.IN_WASHING)} size="small" color="primary" variant="filled" />}

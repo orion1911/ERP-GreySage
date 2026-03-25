@@ -12,7 +12,7 @@ function NotFound() {
       <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
         The page you are looking for does not exist or has been moved.
       </Typography>
-      <Button variant="contained" onClick={() => navigate('/dashboardxl')} size="large">
+      <Button variant="contained" onClick={() => navigate('/dashboard')} size="large">
         Go to Dashboard
       </Button>
     </Box>

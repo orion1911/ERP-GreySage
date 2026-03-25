@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { Lot, Client, FitStyle, Stitching, Washing, Finishing, VendorBalance, Invoice, AuditLog } = require('../mongodb_schema');
+const { Lot, Client, FitStyle, Stitching, Washing, Finishing, VendorBalance, Invoice, AuditLog, StitchingVendor, WashingVendor } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
 
 // Helper function to get date range filter
@@ -1049,12 +1049,15 @@ const getProductionDashboard = async (req, res) => {
       { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
       { $lookup: { from: 'clients', localField: 'lot.clientId', foreignField: '_id', as: 'client' } },
       { $unwind: { path: '$client', preserveNullAndEmptyArrays: true } },
+      { $lookup: { from: 'stitchingvendors', localField: 'vendorId', foreignField: '_id', as: 'vendor' } },
+      { $unwind: { path: '$vendor', preserveNullAndEmptyArrays: true } },
       { $project: {
         _lotId: '$lot._id',
         lotNumber: '$lot.lotNumber',
         quantity: 1,
         quantityShort: 1,
-        clientName: { $ifNull: ['$client.name', 'Unknown'] }
+        clientName: { $ifNull: ['$client.name', 'Unknown'] },
+        stitchingVendorName: { $ifNull: ['$vendor.name', 'Unknown'] }
       }}
     ]);
 
@@ -1113,6 +1116,14 @@ const getProductionDashboard = async (req, res) => {
       lotData[lotId].quantity -= (fr.quantityShort || 0);
     }
 
+    // Filter stitching records for lots not in washing or finishing
+    const lotsInWashing = new Set(washingRecords.map(w => w.lotId?.toString()).filter(Boolean));
+    const lotsInFinishing = new Set(finishingRecords.map(f => f.lotId?.toString()).filter(Boolean));
+    const filteredStitchingRecords = stitchingRecords.filter(st => {
+      const lotId = st._lotId?.toString();
+      return lotId && !lotsInWashing.has(lotId) && !lotsInFinishing.has(lotId);
+    });
+
     // Compute KPIs, client summary, washer summary, breakdown
     let totalPcs = 0, totalMaking = 0, totalInWashing = 0, totalOutWashing = 0;
     const clientMap = {};
@@ -1134,33 +1145,34 @@ const getProductionDashboard = async (req, res) => {
         washerMap[washerName].total += quantity;
       }
 
-      // Breakdown map (grouped by client + washer)
-      const bKey = `${clientName}|${washer}`;
-      if (!breakdownMap[bKey]) {
-        breakdownMap[bKey] = { client: clientName, lots: new Set(), washer, pcs: 0, making: 0, inWashing: 0, outWashing: 0 };
-      }
-      if (lotNumber) breakdownMap[bKey].lots.add(lotNumber);
-      breakdownMap[bKey].pcs += quantity;
+      // Breakdown map (grouped by client + washer), exclude raw stitching/making rows from washing breakdown
+      if (status !== 'making') {
+        const bKey = `${clientName}|${washer}`;
+        if (!breakdownMap[bKey]) {
+          breakdownMap[bKey] = { client: clientName, lots: new Set(), washer, pcs: 0, making: 0, inWashing: 0, outWashing: 0 };
+        }
+        if (lotNumber) breakdownMap[bKey].lots.add(lotNumber);
+        breakdownMap[bKey].pcs += quantity;
 
-      if (status === 'making') {
+        if (status === 'inWashing') {
+          totalInWashing += quantity;
+          clientMap[clientName].inWashing += quantity;
+          if (washerName) {
+            washerMap[washerName].inWashing += quantity;
+            washerMap[washerName].pending += quantity;
+          }
+          breakdownMap[bKey].inWashing += quantity;
+        } else if (status === 'outWashing') {
+          totalOutWashing += quantity;
+          clientMap[clientName].outWashing += quantity;
+          if (washerName) {
+            washerMap[washerName].outWashing += quantity;
+          }
+          breakdownMap[bKey].outWashing += quantity;
+        }
+      } else {
         totalMaking += quantity;
         clientMap[clientName].making += quantity;
-        breakdownMap[bKey].making += quantity;
-      } else if (status === 'inWashing') {
-        totalInWashing += quantity;
-        clientMap[clientName].inWashing += quantity;
-        if (washerName) {
-          washerMap[washerName].inWashing += quantity;
-          washerMap[washerName].pending += quantity;
-        }
-        breakdownMap[bKey].inWashing += quantity;
-      } else if (status === 'outWashing') {
-        totalOutWashing += quantity;
-        clientMap[clientName].outWashing += quantity;
-        if (washerName) {
-          washerMap[washerName].outWashing += quantity;
-        }
-        breakdownMap[bKey].outWashing += quantity;
       }
     }
 
@@ -1173,7 +1185,7 @@ const getProductionDashboard = async (req, res) => {
         IN_WASHING: data.inWashing,
         OUT_WASHING: data.outWashing,
       }))
-      .sort((a, b) => b.TOTAL - a.TOTAL);
+      .sort((a, b) => a.CLIENT.localeCompare(b.CLIENT));
 
     const washer_summary = Object.entries(washerMap)
       .map(([name, data]) => ({
@@ -1183,7 +1195,63 @@ const getProductionDashboard = async (req, res) => {
         OUT_WASHING: data.outWashing,
         PENDING: data.pending,
       }))
-      .sort((a, b) => b.PENDING - a.PENDING);
+      .sort((a, b) => a.WASHER.localeCompare(b.WASHER));
+
+    // Build stitching vendor map
+    const stitchingVendorMap = {};
+    for (const st of stitchingRecords) {
+      const vendorName = st.stitchingVendorName;
+      const lotId = st._lotId?.toString();
+      const quantity = (st.quantity || 0) - (st.quantityShort || 0);
+      
+      if (!stitchingVendorMap[vendorName]) {
+        stitchingVendorMap[vendorName] = { total: 0, inStitching: 0, completed: 0 };
+      }
+      stitchingVendorMap[vendorName].total += quantity;
+      
+      // If lot is in washing or finishing, stitching is completed
+      if (lotsInWashing.has(lotId) || lotsInFinishing.has(lotId)) {
+        stitchingVendorMap[vendorName].completed += quantity;
+      } else {
+        stitchingVendorMap[vendorName].inStitching += quantity;
+      }
+    }
+
+    const stitching_vendor_summary = Object.entries(stitchingVendorMap)
+      .map(([name, data]) => ({
+        STITCHING_VENDOR: name,
+        TOTAL: data.total,
+        IN_STITCHING: data.inStitching,
+        COMPLETED: data.completed,
+      }))
+      .sort((a, b) => a.STITCHING_VENDOR.localeCompare(b.STITCHING_VENDOR));
+
+    // Build stitching breakdown
+    const stitchingBreakdownMap = {};
+    for (const st of filteredStitchingRecords) {
+      const clientName = st.clientName;
+      const vendorName = st.stitchingVendorName;
+      const quantity = (st.quantity || 0) - (st.quantityShort || 0);
+      const key = `${clientName}|${vendorName}`;
+      if (!stitchingBreakdownMap[key]) {
+        stitchingBreakdownMap[key] = { client: clientName, vendor: vendorName, pcs: 0, lots: new Set() };
+      }
+      stitchingBreakdownMap[key].pcs += quantity;
+      if (st.lotNumber) stitchingBreakdownMap[key].lots.add(st.lotNumber);
+    }
+
+    const stitching_rows = Object.values(stitchingBreakdownMap)
+      .map(b => ({
+        CLIENT: b.client,
+        LOT_COUNT: b.lots.size,
+        LOT_NO: Array.from(b.lots).sort().join(', '),
+        STITCHING_VENDOR: b.vendor,
+        PCS: b.pcs,
+      }))
+      .sort((a, b) => {
+        const clientSort = a.CLIENT.localeCompare(b.CLIENT);
+        return clientSort || a.STITCHING_VENDOR.localeCompare(b.STITCHING_VENDOR);
+      });
 
     const rows = Object.values(breakdownMap)
       .map(b => ({
@@ -1196,7 +1264,11 @@ const getProductionDashboard = async (req, res) => {
         IN_WASHING: b.inWashing,
         OUT_WASHING: b.outWashing,
       }))
-      .sort((a, b) => b.PCS - a.PCS);
+      .sort((a, b) => {
+        const clientSort = a.CLIENT.localeCompare(b.CLIENT);
+        return clientSort || a.WASHING.localeCompare(b.WASHING);
+      });
+      // .sort((a, b) => b.PCS - a.PCS);
 
     const processingTime = (Date.now() - startTime) / 1000;
 
@@ -1207,7 +1279,9 @@ const getProductionDashboard = async (req, res) => {
       total_out_washing: totalOutWashing,
       client_summary,
       washer_summary,
+      stitching_vendor_summary,
       rows,
+      stitching_breakdown: stitching_rows,
       processing_time: processingTime,
       timestamp: new Date().toISOString(),
     });

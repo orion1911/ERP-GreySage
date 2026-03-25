@@ -40,8 +40,8 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
   const drawerWidth = collapsed ? 60 : 240;
 
   const navItems = [
-    { label: 'Dashboard XL', path: '/dashboardxl', icon: <PieChartIcon /> },
-    { label: 'Dashboard', path: '/dashboard', icon: <LeaderboardIcon /> },
+    { label: 'Dashboard', path: '/dashboard', icon: <PieChartIcon /> },
+    { label: 'Dashboard XL', path: '/dashboardxl', icon: <LeaderboardIcon /> },
     { label: 'Stitching', path: '/stitching', icon: <ContentCutIcon /> },
     { label: 'Invoices', path: '/invoices', icon: <ReceiptIcon /> },
     { label: 'Clients', path: '/clients', icon: <PeopleIcon /> },

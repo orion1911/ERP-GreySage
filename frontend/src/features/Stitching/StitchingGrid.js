@@ -83,8 +83,21 @@ function StitchingGrid({
     return [...data].sort((a, b) => {
       let valueA, valueB;
       if (sortKey === 'lotNumber') {
-        valueA = a.lotId?.lotNumber || '';
-        valueB = b.lotId?.lotNumber || '';
+        const lotA = a.lotId?.lotNumber || '';
+        const lotB = b.lotId?.lotNumber || '';
+        const partsA = lotA.split('/').map(p => { const n = Number(p); return Number.isNaN(n) ? p : n; });
+        const partsB = lotB.split('/').map(p => { const n = Number(p); return Number.isNaN(n) ? p : n; });
+        const maxLen = Math.max(partsA.length, partsB.length);
+        for (let i = 0; i < maxLen; i++) {
+          if (partsA[i] === undefined) return direction === 'asc' ? -1 : 1;
+          if (partsB[i] === undefined) return direction === 'asc' ? 1 : -1;
+          if (partsA[i] === partsB[i]) continue;
+          if (typeof partsA[i] === 'number' && typeof partsB[i] === 'number') {
+            return direction === 'asc' ? partsA[i] - partsB[i] : partsB[i] - partsA[i];
+          }
+          return direction === 'asc' ? partsA[i].toString().localeCompare(partsB[i].toString()) : partsB[i].toString().localeCompare(partsA[i].toString());
+        }
+        return 0;
       } else if (sortKey === 'invoiceNumber') {
         valueA = a.lotId?.invoiceNumber || '';
         valueB = b.lotId?.invoiceNumber || '';
@@ -107,8 +120,8 @@ function StitchingGrid({
         valueA = a.rate || 0;
         valueB = b.rate || 0;
       } else if (sortKey === 'status') {
-        valueA = a.status || 0;
-        valueB = b.status || 0;
+        valueA = a.lotId?.status || 0;
+        valueB = b.lotId?.status || 0;
       }
       if (typeof valueA === 'string' && typeof valueB === 'string') {
         return direction === 'asc' ? valueA.localeCompare(valueB) : valueB.localeCompare(valueA); // Fixed typo

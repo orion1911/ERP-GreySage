@@ -32,7 +32,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user'));
   if (!token) return <Navigate to="/login" />;
-  if (allowedRoles && !allowedRoles.includes(user?.role)) return <Navigate to="/dashboardxl" />;
+  if (allowedRoles && !allowedRoles.includes(user?.role)) return <Navigate to="/dashboard" />;
   return children;
 };
 
@@ -195,8 +195,8 @@ function App() {
             <Route path="/login" element={<Login isMobile={isMobile} variant={variant} setVariant={setVariant} />} />
             <Route path="/register" element={<Register isMobile={isMobile} variant={variant} setVariant={setVariant} />} />
             <Route element={<AuthenticatedLayout isMobile={isMobile} variant={variant} setVariant={setVariant} />}>
-              <Route path="/dashboardxl" element={<DashboardExcel />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/dashboardxl" element={<DashboardExcel />} />
               <Route path="/stitching" element={<StitchingManagement />} />
               <Route path="/invoices" element={<InvoiceManagement />} />
               <Route path="/reports" element={<Reports />} />

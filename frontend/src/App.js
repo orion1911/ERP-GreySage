@@ -25,6 +25,7 @@ import StitchingVendorCatalog from './features/Catalogs/StitchingVendorCatalog';
 import WashingVendorCatalog from './features/Catalogs/WashingVendorCatalog';
 import FinishingVendorCatalog from './features/Catalogs/FinishingVendorCatalog';
 import StitchingManagement from './features/Stitching/StitchingManagement';
+import { VendorPaymentManagement } from './features/VendorPayments';
 import NotFound from './components/NotFound';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -198,6 +199,7 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/dashboardxl" element={<DashboardExcel />} />
               <Route path="/stitching" element={<StitchingManagement />} />
+              <Route path="/vendor-payments" element={<VendorPaymentManagement />} />
               <Route path="/invoices" element={<InvoiceManagement />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/clients" element={<ClientCatalog />} />

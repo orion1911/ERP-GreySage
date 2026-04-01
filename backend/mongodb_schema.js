@@ -166,18 +166,37 @@ const FinishingSchema = new mongoose.Schema({
 FinishingSchema.index({ lotId: 1 }); // Index for joining with Lot
 FinishingSchema.index({ date: 1 }); // Index for dashboard date range queries
 
-// VendorBalance Schema: Tracks payments and balances
+// VendorPaymentEntry Schema: Records individual payments and short adjustments
+const VendorPaymentEntrySchema = new mongoose.Schema({
+  vendorId: { type: mongoose.Schema.Types.ObjectId, required: true },
+  vendorType: { type: String, enum: ['stitching', 'washing', 'finishing'], required: true },
+  paymentScope: { type: String, enum: ['vendor', 'lot'], default: 'vendor' }, // vendor = lump sum, lot = specific lot
+  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot' }, // Optional for vendor-level payments
+  paymentType: { type: String, enum: ['payment', 'short_adjustment'], required: true },
+  amount: { type: Number, required: true, min: 0 },
+  paymentDate: { type: Date, required: true }, // Date when payment was made
+  shortQuantity: { type: Number, default: 0, min: 0 }, // For short adjustment entries
+  shortRate: { type: Number, default: 0, min: 0 }, // For short adjustment entries
+  notes: { type: String },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Track who updated the entry
+  updatedAt: { type: Date } // Track when the entry was last updated
+});
+VendorPaymentEntrySchema.index({ vendorId: 1, vendorType: 1, paymentScope: 1 });
+VendorPaymentEntrySchema.index({ vendorId: 1, vendorType: 1, lotId: 1 });
+VendorPaymentEntrySchema.index({ vendorId: 1, vendorType: 1, createdAt: 1 });
+
+// VendorBalance Schema: Aggregated balance tracking (denormalized from payment entries)
 const VendorBalanceSchema = new mongoose.Schema({
   vendorId: { type: mongoose.Schema.Types.ObjectId, required: true },
   vendorType: { type: String, enum: ['stitching', 'washing', 'finishing'], required: true },
-  orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
-  lotNumber: { type: String },
-  totalAmount: { type: Number, required: true, default: 0 },
-  paymentsMade: { type: Number, default: 0 },
-  remainingBalance: { type: Number, default: 0 },
+  totalDue: { type: Number, default: 0 }, // Total amount from all lots
+  totalPaid: { type: Number, default: 0 }, // Total payments made
+  remainingBalance: { type: Number, default: 0 }, // totalDue - totalPaid
   lastUpdated: { type: Date, default: Date.now }
 });
-VendorBalanceSchema.index({ vendorId: 1, vendorType: 1, orderId: 1, lotNumber: 1 });
+VendorBalanceSchema.index({ vendorId: 1, vendorType: 1 });
 
 // Invoice Schema: References Orders
 const InvoiceSchema = new mongoose.Schema({
@@ -241,6 +260,7 @@ module.exports = {
   Stitching: mongoose.model('Stitching', StitchingSchema),
   Washing: mongoose.model('Washing', WashingSchema),
   Finishing: mongoose.model('Finishing', FinishingSchema),
+  VendorPaymentEntry: mongoose.model('VendorPaymentEntry', VendorPaymentEntrySchema),
   VendorBalance: mongoose.model('VendorBalance', VendorBalanceSchema),
   Invoice: mongoose.model('Invoice', InvoiceSchema),
   Balance: mongoose.model('Balance', BalanceSchema),

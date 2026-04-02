@@ -574,6 +574,133 @@ const apiService = {
     },
   },
 
+  // Vendor Payments API calls
+  vendorPayments: {
+    getVendorsByType: async (vendorType) => {
+      try {
+        const response = await axiosInstance.get('api/vendor-balances/vendors-by-type', {
+          params: { vendorType },
+        });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    getVendorLotsDetails: async (vendorId, vendorType) => {
+      try {
+        const response = await axiosInstance.get('api/vendor-balances/vendor-lots-details', {
+          params: { vendorId, vendorType },
+        });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    getVendorPaymentEntries: async (vendorId, vendorType) => {
+      try {
+        const response = await axiosInstance.get('api/vendor-balances/vendor-payment-entries', {
+          params: { vendorId, vendorType },
+        });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    getVendorBalanceSummary: async (vendorId, vendorType) => {
+      try {
+        const response = await axiosInstance.get('api/vendor-balances/vendor-balance-summary', {
+          params: { vendorId, vendorType },
+        });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    addVendorPayment: async (paymentData) => {
+      try {
+        const response = await axiosInstance.post('api/vendor-balances/vendor-payment', paymentData);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    addShortAdjustment: async (adjustmentData) => {
+      try {
+        const response = await axiosInstance.post('api/vendor-balances/short-adjustment', adjustmentData);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    updatePaymentEntry: async (entryId, updateData) => {
+      try {
+        const response = await axiosInstance.put(`api/vendor-balances/vendor-payment/${entryId}`, updateData);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    deletePaymentEntry: async (entryId) => {
+      try {
+        const response = await axiosInstance.delete(`api/vendor-balances/vendor-payment/${entryId}`);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    getPaymentEntryHistory: async (entryId) => {
+      try {
+        const response = await axiosInstance.get(`api/vendor-balances/vendor-payment-history/${entryId}`);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    getVendorPaymentHistory: async (vendorId, vendorType) => {
+      try {
+        const response = await axiosInstance.get('api/vendor-balances/vendor-payment-changes', {
+          params: { vendorId, vendorType },
+        });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    exportLotsToExcel: async (vendorId, vendorType) => {
+      try {
+        const response = await axiosInstance.get('api/vendor-balances/export-lots-excel', {
+          params: { vendorId, vendorType },
+          responseType: 'blob',
+        });
+        return response;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    exportPaymentsToExcel: async (vendorId, vendorType) => {
+      try {
+        const response = await axiosInstance.get('api/vendor-balances/export-payments-excel', {
+          params: { vendorId, vendorType },
+          responseType: 'blob',
+        });
+        return response;
+      } catch (error) {
+        throw error;
+      }
+    },
+  },
+
   fitStyles: {
     createFitstyles: async (fitStyleData) => {
       try {

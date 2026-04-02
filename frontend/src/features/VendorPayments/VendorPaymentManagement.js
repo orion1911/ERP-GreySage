@@ -5,7 +5,7 @@ import {
     useTheme, Container, Box, Button, Card, CardContent, Modal, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, FormControl, Grid, InputLabel, MenuItem, Select,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, TablePagination, TextField, Typography, Paper, Alert, CircularProgress, Chip, IconButton, Tooltip
 } from '@mui/material';
-import { Close as CloseIcon, CreditCard as CreditCardIcon, Shortcut as ShortcutIcon, Save as SaveIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { Close as CloseIcon, CreditCard as CreditCardIcon, Shortcut as ShortcutIcon, Save as SaveIcon, Edit as EditIcon, Delete as DeleteIcon, FileDownload as FileDownloadIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -197,7 +197,7 @@ const VendorPaymentManagement = () => {
     };
 
     const submitPayment = async (data) => {
-        if (!data.amount || data.amount <= 0) {
+        if (!data.amount) {
             showSnackbar('Please enter a valid amount', 'error');
             return;
         }
@@ -282,6 +282,72 @@ const VendorPaymentManagement = () => {
         }).format(value || 0);
     };
 
+    // Export lots data to Excel (server-side)
+    const exportLotsToExcel = async () => {
+        if (!lotsData.length) {
+            showSnackbar('No lots data to export', 'warning');
+            return;
+        }
+
+        try {
+            const response = await apiService.vendorPayments.exportLotsToExcel(selectedVendor, vendorType);
+
+            // Create download link
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            
+            // Get vendor name for filename
+            const selectedVendorObj = vendors.find(v => v._id === selectedVendor);
+            const vendorName = selectedVendorObj ? selectedVendorObj.name : 'Unknown';
+            const fileName = `${vendorTypeLabel[vendorType]}_${vendorName}_Lots_${new Date().toISOString().split('T')[0]}.xlsx`;
+            
+            link.setAttribute('download', fileName);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+
+            showSnackbar('Lots data exported successfully', 'success');
+        } catch (error) {
+            console.error('Export error:', error);
+            showSnackbar('Failed to export lots data', 'error');
+        }
+    };
+
+    // Export payment entries to Excel (server-side)
+    const exportPaymentsToExcel = async () => {
+        if (!paymentEntries.length) {
+            showSnackbar('No payment data to export', 'warning');
+            return;
+        }
+
+        try {
+            const response = await apiService.vendorPayments.exportPaymentsToExcel(selectedVendor, vendorType);
+
+            // Create download link
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            
+            // Get vendor name for filename
+            const selectedVendorObj = vendors.find(v => v._id === selectedVendor);
+            const vendorName = selectedVendorObj ? selectedVendorObj.name : 'Unknown';
+            const fileName = `${vendorTypeLabel[vendorType]}_${vendorName}_Payments_${new Date().toISOString().split('T')[0]}.xlsx`;
+            
+            link.setAttribute('download', fileName);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+
+            showSnackbar('Payment data exported successfully', 'success');
+        } catch (error) {
+            console.error('Export error:', error);
+            showSnackbar('Failed to export payment data', 'error');
+        }
+    };
+
     const sortedPaymentEntries = React.useMemo(() => {
         const entries = [...paymentEntries];
         const compare = (a, b) => {
@@ -301,7 +367,50 @@ const VendorPaymentManagement = () => {
     }, [sortedPaymentEntries, paymentPage, paymentRowsPerPage]);
 
     const sortedLotsData = React.useMemo(() => {
-        const entries = [...lotsData];
+        const entries = [];
+        
+        if (vendorType === 'washing') {
+            // For washing, expand each lot into multiple rows for each wash detail
+            lotsData.forEach(lot => {
+                if (lot.washDetails && lot.washDetails.length > 0) {
+                    lot.washDetails.forEach((wash, index) => {
+                        entries.push({
+                            ...lot,
+                            washDetail: wash,
+                            isWashDetail: true,
+                            washIndex: index,
+                            displayQuantity: wash.quantity,
+                            displayRate: wash.rate,
+                            displayAmount: wash.amount,
+                            displayQuantityShort: wash.quantityShort
+                        });
+                    });
+                } else {
+                    // Fallback for lots without wash details
+                    entries.push({
+                        ...lot,
+                        isWashDetail: false,
+                        displayQuantity: lot.quantity,
+                        displayRate: lot.rate,
+                        displayAmount: lot.amount,
+                        displayQuantityShort: lot.quantityShort
+                    });
+                }
+            });
+        } else {
+            // For stitching and finishing, use original format
+            lotsData.forEach(lot => {
+                entries.push({
+                    ...lot,
+                    isWashDetail: false,
+                    displayQuantity: lot.quantity,
+                    displayRate: lot.rate,
+                    displayAmount: lot.amount,
+                    displayQuantityShort: lot.quantityShort
+                });
+            });
+        }
+        
         const compare = (a, b) => {
             let aValue = a[lotSortBy];
             let bValue = b[lotSortBy];
@@ -311,7 +420,7 @@ const VendorPaymentManagement = () => {
                 bValue = new Date(bValue);
             }
             if (typeof aValue === 'string') aValue = aValue.toLowerCase();
-            if (typeof bValue === 'string') bValue = bValue.toLowerCase();
+            if (typeof bValue === 'string') bValue = aValue.toLowerCase();
 
             if (aValue < bValue) return lotSortOrder === 'asc' ? -1 : 1;
             if (aValue > bValue) return lotSortOrder === 'asc' ? 1 : -1;
@@ -319,7 +428,7 @@ const VendorPaymentManagement = () => {
         };
 
         return entries.sort(compare);
-    }, [lotsData, lotSortBy, lotSortOrder]);
+    }, [lotsData, lotSortBy, lotSortOrder, vendorType]);
 
     const pagedLotsData = React.useMemo(() => {
         const start = lotPage * lotRowsPerPage;
@@ -366,7 +475,7 @@ const VendorPaymentManagement = () => {
         .filter((entry) => entry.paymentType === 'short_adjustment')
         .reduce((sum, entry) => sum + (entry.shortQuantity || 0), 0);
 
-    const shortLots = lotsData.filter((lot) => lot.quantityShort > 0);
+    const shortLots = lotsData.filter((lot) => lot.displayQuantityShort > 0);
 
     const vendorTypeLabel = {
         'stitching': 'Stitching',
@@ -497,10 +606,20 @@ const VendorPaymentManagement = () => {
                         {/* Left Column: Current Lots Table */}
                         <Grid size={{ xs: 12, md: 6 }}>
                             <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                                <Box sx={{ p: 1, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                                <Box sx={{ p: 1, pl: 2, borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
                                         Lots
                                     </Typography>
+                                    <Button
+                                        variant="outlined"
+                                        size="small"
+                                        startIcon={<FileDownloadIcon />}
+                                        onClick={exportLotsToExcel}
+                                        disabled={!lotsData.length}
+                                        sx={{ mr: 1 }}
+                                    >
+                                        Export Excel
+                                    </Button>
                                 </Box>
                                 <TableContainer>
                                     <Table size="small">
@@ -533,38 +652,43 @@ const VendorPaymentManagement = () => {
                                                         CLIENT
                                                     </TableSortLabel>
                                                 </TableCell>
-                                                <TableCell sortDirection={lotSortBy === 'quantity' ? lotSortOrder : false} align="right">
+                                                {vendorType === 'washing' && (
+                                                    <TableCell>
+                                                        WASH COLOR
+                                                    </TableCell>
+                                                )}
+                                                <TableCell sortDirection={lotSortBy === 'displayQuantity' ? lotSortOrder : false} align="center">
                                                     <TableSortLabel
-                                                        active={lotSortBy === 'quantity'}
+                                                        active={lotSortBy === 'displayQuantity'}
                                                         direction={lotSortOrder}
-                                                        onClick={() => handleLotSort('quantity')}
+                                                        onClick={() => handleLotSort('displayQuantity')}
                                                     >
                                                         PCS
                                                     </TableSortLabel>
                                                 </TableCell>
-                                                <TableCell sortDirection={lotSortBy === 'rate' ? lotSortOrder : false} align="center">
+                                                <TableCell sortDirection={lotSortBy === 'displayRate' ? lotSortOrder : false} align="center">
                                                     <TableSortLabel
-                                                        active={lotSortBy === 'rate'}
+                                                        active={lotSortBy === 'displayRate'}
                                                         direction={lotSortOrder}
-                                                        onClick={() => handleLotSort('rate')}
+                                                        onClick={() => handleLotSort('displayRate')}
                                                     >
                                                         RATE
                                                     </TableSortLabel>
                                                 </TableCell>
-                                                <TableCell sortDirection={lotSortBy === 'amount' ? lotSortOrder : false} align="right">
+                                                <TableCell sortDirection={lotSortBy === 'displayAmount' ? lotSortOrder : false} align="center">
                                                     <TableSortLabel
-                                                        active={lotSortBy === 'amount'}
+                                                        active={lotSortBy === 'displayAmount'}
                                                         direction={lotSortOrder}
-                                                        onClick={() => handleLotSort('amount')}
+                                                        onClick={() => handleLotSort('displayAmount')}
                                                     >
                                                         AMOUNT
                                                     </TableSortLabel>
                                                 </TableCell>
-                                                <TableCell sortDirection={lotSortBy === 'quantityShort' ? lotSortOrder : false} align="center">
+                                                <TableCell sortDirection={lotSortBy === 'displayQuantityShort' ? lotSortOrder : false} align="center">
                                                     <TableSortLabel
-                                                        active={lotSortBy === 'quantityShort'}
+                                                        active={lotSortBy === 'displayQuantityShort'}
                                                         direction={lotSortOrder}
-                                                        onClick={() => handleLotSort('quantityShort')}
+                                                        onClick={() => handleLotSort('displayQuantityShort')}
                                                     >
                                                         SHORT
                                                     </TableSortLabel>
@@ -574,20 +698,20 @@ const VendorPaymentManagement = () => {
                                         <TableBody>
                                             {loading && (
                                                 <TableRow>
-                                                    <TableCell colSpan={7} align="center">
+                                                    <TableCell colSpan={vendorType === 'washing' ? 8 : 7} align="center">
                                                         <CircularProgress size={20} />
                                                     </TableCell>
                                                 </TableRow>
                                             )}
                                             {!loading && lotsData.length === 0 && (
                                                 <TableRow>
-                                                    <TableCell colSpan={7} align="center">
+                                                    <TableCell colSpan={vendorType === 'washing' ? 8 : 7} align="center">
                                                         No lots found for this vendor
                                                     </TableCell>
                                                 </TableRow>
                                             )}
                                             {!loading && pagedLotsData.map((lot) => (
-                                                <TableRow key={lot._id} hover>
+                                                <TableRow key={lot.isWashDetail ? `${lot._id}-${lot.washIndex}` : lot._id} hover>
                                                     <TableCell sx={{ fontSize: '0.85rem' }}>
                                                         {new Date(lot.date).toLocaleDateString('en-IN')}
                                                     </TableCell>
@@ -596,26 +720,36 @@ const VendorPaymentManagement = () => {
                                                     </TableCell>
                                                     <TableCell sx={{ fontSize: '0.85rem' }}>
                                                         {lot.clientName}
-                                                        {/* <div>{lot.clientCode}</div>
-                                                                <div style={{ fontSize: '0.8rem', color: '#666' }}>{lot.clientName}</div> */}
                                                     </TableCell>
-                                                    <TableCell align="right" sx={{ fontSize: '0.85rem' }}>
-                                                        {lot.quantity}
+                                                    {vendorType === 'washing' && (
+                                                        <TableCell sx={{ fontSize: '0.85rem' }}>
+                                                            {lot.isWashDetail ? (
+                                                                <Box>
+                                                                    <div style={{ fontWeight: 'bold' }}>{lot.washDetail.washColor}</div>
+                                                                    <div style={{ fontSize: '0.75rem', color: '#666' }}>{lot.washDetail.washCreation}</div>
+                                                                </Box>
+                                                            ) : (
+                                                                '-'
+                                                            )}
+                                                        </TableCell>
+                                                    )}
+                                                    <TableCell align="center" sx={{ fontSize: '0.85rem' }}>
+                                                        {lot.displayQuantity}
                                                     </TableCell>
                                                     <TableCell align="center" sx={{ fontSize: '0.85rem' }}>
-                                                        {lot.rate}
+                                                        {lot.displayRate}
                                                     </TableCell>
                                                     <TableCell align="right" sx={{ fontSize: '0.85rem', fontWeight: 'bold' }}>
-                                                        {formatCurrency(lot.amount)}
+                                                        {formatCurrency(lot.displayAmount)}
                                                     </TableCell>
                                                     <TableCell align="center"
                                                         sx={{
                                                             fontSize: '0.85rem',
-                                                            fontWeight: lot.quantityShort > 0 ? 'bold' : 'normal',
-                                                            color: lot.quantityShort > 0 && 'red'
+                                                            fontWeight: lot.displayQuantityShort > 0 ? 'bold' : 'normal',
+                                                            color: lot.displayQuantityShort > 0 && 'red'
                                                         }}
                                                     >
-                                                        {lot.quantityShort}
+                                                        {lot.displayQuantityShort}
                                                     </TableCell>
                                                 </TableRow>
                                             ))}
@@ -637,10 +771,20 @@ const VendorPaymentManagement = () => {
                         {/* Right Column: Payment History */}
                         <Grid size={{ xs: 12, md: 6 }}>
                             <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column'}}>
-                                <Box sx={{ p: 1, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                                <Box sx={{ p: 1, pl: 2, borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Typography variant="h6" sx={{ fontWeight: 600 }}>
                                         Payment History
                                     </Typography>
+                                    <Button
+                                        variant="outlined"
+                                        size="small"
+                                        startIcon={<FileDownloadIcon />}
+                                        onClick={exportPaymentsToExcel}
+                                        disabled={!paymentEntries.length}
+                                        sx={{ mr: 1 }}
+                                    >
+                                        Export Excel
+                                    </Button>
                                 </Box>
                                 <TableContainer component={Paper}>
                                     <Table size="small">
@@ -665,7 +809,7 @@ const VendorPaymentManagement = () => {
                                                         TYPE
                                                     </TableSortLabel>
                                                 </TableCell>
-                                                <TableCell align="right" sortDirection={paymentSortBy === 'amount' ? paymentSortOrder : false}>
+                                                <TableCell align="center" sortDirection={paymentSortBy === 'amount' ? paymentSortOrder : false}>
                                                     <TableSortLabel
                                                         active={paymentSortBy === 'amount'}
                                                         direction={paymentSortOrder}
@@ -832,7 +976,7 @@ const VendorPaymentManagement = () => {
                                     rules={{
                                         required: 'Amount is required',
                                         pattern: {
-                                            value: /^\d+(\.\d{1,2})?$/,
+                                            value: /^-?\d+(\.\d{1,2})?$/,
                                             message: 'Please enter a valid amount',
                                         },
                                     }}

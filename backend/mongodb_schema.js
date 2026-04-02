@@ -173,7 +173,7 @@ const VendorPaymentEntrySchema = new mongoose.Schema({
   paymentScope: { type: String, enum: ['vendor', 'lot'], default: 'vendor' }, // vendor = lump sum, lot = specific lot
   lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot' }, // Optional for vendor-level payments
   paymentType: { type: String, enum: ['payment', 'short_adjustment'], required: true },
-  amount: { type: Number, required: true, min: 0 },
+  amount: { type: Number, required: true },
   paymentDate: { type: Date, required: true }, // Date when payment was made
   shortQuantity: { type: Number, default: 0, min: 0 }, // For short adjustment entries
   shortRate: { type: Number, default: 0, min: 0 }, // For short adjustment entries
@@ -186,6 +186,43 @@ const VendorPaymentEntrySchema = new mongoose.Schema({
 VendorPaymentEntrySchema.index({ vendorId: 1, vendorType: 1, paymentScope: 1 });
 VendorPaymentEntrySchema.index({ vendorId: 1, vendorType: 1, lotId: 1 });
 VendorPaymentEntrySchema.index({ vendorId: 1, vendorType: 1, createdAt: 1 });
+
+// VendorPaymentEntryHistory Schema: Tracks all changes to payment entries
+const VendorPaymentEntryHistorySchema = new mongoose.Schema({
+  entryId: { type: mongoose.Schema.Types.ObjectId, ref: 'VendorPaymentEntry', required: true }, // Reference to the original entry (or null if deleted)
+  vendorId: { type: mongoose.Schema.Types.ObjectId, required: true },
+  vendorType: { type: String, enum: ['stitching', 'washing', 'finishing'], required: true },
+  action: { type: String, enum: ['create', 'update', 'delete'], required: true },
+  paymentType: { type: String, enum: ['payment', 'short_adjustment'], required: true },
+  
+  // Current/Before state
+  beforeData: {
+    amount: Number,
+    paymentDate: Date,
+    paymentScope: String,
+    lotId: mongoose.Schema.Types.ObjectId,
+    shortQuantity: Number,
+    shortRate: Number,
+    notes: String
+  },
+  
+  // After state (for updates)
+  afterData: {
+    amount: Number,
+    paymentDate: Date,
+    paymentScope: String,
+    lotId: mongoose.Schema.Types.ObjectId,
+    shortQuantity: Number,
+    shortRate: Number,
+    notes: String
+  },
+  
+  changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+VendorPaymentEntryHistorySchema.index({ vendorId: 1, vendorType: 1 });
+VendorPaymentEntryHistorySchema.index({ entryId: 1 });
+VendorPaymentEntryHistorySchema.index({ createdAt: -1 });
 
 // VendorBalance Schema: Aggregated balance tracking (denormalized from payment entries)
 const VendorBalanceSchema = new mongoose.Schema({
@@ -261,6 +298,7 @@ module.exports = {
   Washing: mongoose.model('Washing', WashingSchema),
   Finishing: mongoose.model('Finishing', FinishingSchema),
   VendorPaymentEntry: mongoose.model('VendorPaymentEntry', VendorPaymentEntrySchema),
+  VendorPaymentEntryHistory: mongoose.model('VendorPaymentEntryHistory', VendorPaymentEntryHistorySchema),
   VendorBalance: mongoose.model('VendorBalance', VendorBalanceSchema),
   Invoice: mongoose.model('Invoice', InvoiceSchema),
   Balance: mongoose.model('Balance', BalanceSchema),

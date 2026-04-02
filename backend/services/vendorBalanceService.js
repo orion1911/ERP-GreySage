@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { VendorBalance, VendorPaymentEntry, Stitching, Washing, Finishing, Lot, Client, FitStyle } = require('../mongodb_schema');
+const { VendorBalance, VendorPaymentEntry, VendorPaymentEntryHistory, Stitching, Washing, Finishing, Lot, Client, FitStyle } = require('../mongodb_schema');
 
 /**
  * Get all lots for a vendor with their amounts and payments
@@ -69,18 +69,29 @@ const getVendorLotsDetails = async (vendorId, vendorType) => {
         lotData.rate = record.rate;
         lotData.amount += record.quantity * record.rate;
       } else if (vendorType === 'washing') {
-        // For washing, sum all wash details
-        let washQuantity = 0;
-        let washAmount = 0;
+        // For washing, store individual wash details instead of aggregating
+        if (!lotData.washDetails) {
+          lotData.washDetails = [];
+        }
+        
         if (record.washDetails && record.washDetails.length > 0) {
           for (const wash of record.washDetails) {
-            washQuantity += wash.quantity;
-            washAmount += wash.quantity * wash.rate;
+            lotData.washDetails.push({
+              washColor: wash.washColor,
+              washCreation: wash.washCreation,
+              quantity: wash.quantity,
+              rate: wash.rate,
+              quantityShort: wash.quantityShort || 0,
+              quantityShortDesc: wash.quantityShortDesc,
+              amount: wash.quantity * wash.rate
+            });
+            
+            // Still aggregate for totals
+            lotData.quantity += wash.quantity;
             lotData.quantityShort += wash.quantityShort || 0;
+            lotData.amount += wash.quantity * wash.rate;
           }
         }
-        lotData.quantity += washQuantity;
-        lotData.amount += washAmount;
       } else if (vendorType === 'finishing') {
         lotData.quantity += record.quantity;
         lotData.quantityShort += record.quantityShort || 0;
@@ -344,6 +355,62 @@ const getVendorPaymentEntriesForLot = async (vendorId, vendorType, lotId) => {
   }
 };
 
+/**
+ * Record history for payment entry creation
+ */
+const recordPaymentEntryHistory = async (entryId, vendorId, vendorType, paymentType, action, beforeData, afterData, userId) => {
+  try {
+    const historyEntry = new VendorPaymentEntryHistory({
+      entryId,
+      vendorId,
+      vendorType,
+      action,
+      paymentType,
+      beforeData: beforeData || null,
+      afterData: afterData || null,
+      changedBy: userId
+    });
+
+    await historyEntry.save();
+    return historyEntry;
+  } catch (error) {
+    throw new Error(`Failed to record payment entry history: ${error.message}`);
+  }
+};
+
+/**
+ * Get history for a specific payment entry
+ */
+const getPaymentEntryHistory = async (entryId) => {
+  try {
+    const history = await VendorPaymentEntryHistory.find({ entryId })
+      .populate('changedBy', 'username email')
+      .sort({ createdAt: -1 });
+
+    return history;
+  } catch (error) {
+    throw new Error(`Failed to get payment entry history: ${error.message}`);
+  }
+};
+
+/**
+ * Get history for a vendor (all payment entry changes)
+ */
+const getVendorPaymentHistory = async (vendorId, vendorType) => {
+  try {
+    const history = await VendorPaymentEntryHistory.find({
+      vendorId,
+      vendorType
+    })
+      .populate('changedBy', 'username email')
+      .sort({ createdAt: -1 });
+
+    return history;
+  } catch (error) {
+    throw new Error(`Failed to get vendor payment history: ${error.message}`);
+  }
+};
+
 module.exports = {
   getVendorLotsDetails,
   recordVendorPayment,
@@ -351,5 +418,8 @@ module.exports = {
   updateAggregatedBalance,
   getVendorBalance,
   getVendorPaymentEntries,
-  getVendorPaymentEntriesForLot
+  getVendorPaymentEntriesForLot,
+  recordPaymentEntryHistory,
+  getPaymentEntryHistory,
+  getVendorPaymentHistory
 };

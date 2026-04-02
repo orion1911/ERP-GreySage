@@ -8,7 +8,11 @@ const {
   getVendorPaymentEntries,
   getVendorBalanceSummary,
   updatePaymentEntry,
-  deletePaymentEntry
+  deletePaymentEntry,
+  getPaymentEntryChangeHistory,
+  getVendorPaymentChangeHistory,
+  exportLotsToExcel,
+  exportPaymentsToExcel
 } = require('../controllers/vendorBalanceController');
 const { authenticateToken } = require('../middleware/auth');
 
@@ -30,6 +34,16 @@ router.get('/vendor-payment-entries', authenticateToken, getVendorPaymentEntries
 // Get vendor balance summary
 router.get('/vendor-balance-summary', authenticateToken, getVendorBalanceSummary);
 
+// Get payment history for a specific entry
+router.get('/vendor-payment-history/:entryId', authenticateToken, getPaymentEntryChangeHistory);
+
+// Get all payment changes for a vendor
+router.get('/vendor-payment-changes', authenticateToken, getVendorPaymentChangeHistory);
+// Export lots data to Excel
+router.get('/export-lots-excel', authenticateToken, exportLotsToExcel);
+
+// Export payment entries to Excel
+router.get('/export-payments-excel', authenticateToken, exportPaymentsToExcel);
 // Update a payment entry
 router.put('/vendor-payment/:entryId', authenticateToken, updatePaymentEntry);
 

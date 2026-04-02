@@ -2,10 +2,14 @@ const { VendorBalance, VendorPaymentEntry, StitchingVendor, WashingVendor, Finis
 const { 
   getVendorLotsDetails, 
   recordVendorPayment, 
-  recordShortAdjustment, 
+  recordShortAdjustment,
+  recordPaymentEntryHistory,
+  getPaymentEntryHistory,
+  getVendorPaymentHistory,
   getVendorBalance
 } = require('../services/vendorBalanceService');
 const { logAction } = require('../utils/logger');
+const XLSX = require('xlsx');
 
 /**
  * Get all vendors and balances for a vendor type
@@ -106,9 +110,9 @@ const addVendorPayment = async (req, res) => {
       return res.status(400).json({ error: 'vendorId, vendorType, amount, and paymentDate required' });
     }
 
-    if (amount <= 0) {
-      return res.status(400).json({ error: 'Amount must be greater than 0' });
-    }
+    // if (amount <= 0) {
+    //   return res.status(400).json({ error: 'Amount must be greater than 0' });
+    // }
 
     const paymentEntry = await recordVendorPayment(
       vendorId,
@@ -234,13 +238,41 @@ const updatePaymentEntry = async (req, res) => {
       return res.status(404).json({ error: 'Payment entry not found' });
     }
 
+    // Store before state for history
+    const beforeData = {
+      amount: entry.amount,
+      paymentDate: entry.paymentDate,
+      paymentScope: entry.paymentScope,
+      lotId: entry.lotId,
+      shortQuantity: entry.shortQuantity,
+      shortRate: entry.shortRate,
+      notes: entry.notes
+    };
+
     // Update fields
     const updateData = {};
-    if (amount !== undefined) updateData.amount = amount;
+    
+    // For short_adjustment type, calculate amount from shortQuantity and shortRate
+    if (entry.paymentType === 'short_adjustment') {
+      if (shortQuantity !== undefined) {
+        updateData.shortQuantity = shortQuantity;
+      }
+      if (shortRate !== undefined) {
+        updateData.shortRate = shortRate;
+      }
+      // Calculate amount based on updated or existing values
+      const finalQuantity = shortQuantity !== undefined ? shortQuantity : entry.shortQuantity;
+      const finalRate = shortRate !== undefined ? shortRate : entry.shortRate;
+      updateData.amount = finalQuantity * finalRate;
+    } else {
+      // For payment type, use the provided amount
+      if (amount !== undefined) {
+        updateData.amount = amount;
+      }
+    }
+    
     if (paymentDate) updateData.paymentDate = paymentDate;
     if (notes !== undefined) updateData.notes = notes;
-    if (shortQuantity !== undefined) updateData.shortQuantity = shortQuantity;
-    if (shortRate !== undefined) updateData.shortRate = shortRate;
     if (lotId !== undefined) updateData.lotId = lotId;
     updateData.updatedAt = new Date();
     updateData.updatedBy = req.user.userId;
@@ -251,12 +283,27 @@ const updatePaymentEntry = async (req, res) => {
       { new: true }
     ).populate('createdBy', 'username').populate('lotId', 'lotNumber');
 
-    await logAction(
-      req.user.userId,
-      'update_payment_entry',
-      'VendorBalance',
+    // Store after state for history
+    const afterData = {
+      amount: updatedEntry.amount,
+      paymentDate: updatedEntry.paymentDate,
+      paymentScope: updatedEntry.paymentScope,
+      lotId: updatedEntry.lotId,
+      shortQuantity: updatedEntry.shortQuantity,
+      shortRate: updatedEntry.shortRate,
+      notes: updatedEntry.notes
+    };
+
+    // Record in history table instead of audit log
+    await recordPaymentEntryHistory(
       entryId,
-      `Updated ${entry.paymentType} entry for vendor ${vendorId}`
+      entry.vendorId,
+      entry.vendorType,
+      entry.paymentType,
+      'update',
+      beforeData,
+      afterData,
+      req.user.userId
     );
 
     res.json({ message: 'Payment entry updated successfully', entry: updatedEntry });
@@ -281,19 +328,255 @@ const deletePaymentEntry = async (req, res) => {
       return res.status(404).json({ error: 'Payment entry not found' });
     }
 
+    // Store the entry data before deletion for history
+    const deletedData = {
+      amount: entry.amount,
+      paymentDate: entry.paymentDate,
+      paymentScope: entry.paymentScope,
+      lotId: entry.lotId,
+      shortQuantity: entry.shortQuantity,
+      shortRate: entry.shortRate,
+      notes: entry.notes
+    };
+
+    // Delete the entry
     await VendorPaymentEntry.findByIdAndDelete(entryId);
 
-    await logAction(
-      req.user.userId,
-      'delete_payment_entry',
-      'VendorBalance',
+    // Record in history table instead of audit log
+    await recordPaymentEntryHistory(
       entryId,
-      `Deleted ${entry.paymentType} entry for vendor ${entry.vendorId}`
+      entry.vendorId,
+      entry.vendorType,
+      entry.paymentType,
+      'delete',
+      deletedData,
+      null,
+      req.user.userId
     );
 
     res.json({ message: 'Payment entry deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Get payment entry history (all changes for a specific entry)
+ */
+const getPaymentEntryChangeHistory = async (req, res) => {
+  try {
+    const { entryId } = req.params;
+
+    if (!entryId) {
+      return res.status(400).json({ error: 'Entry ID required' });
+    }
+
+    const history = await getPaymentEntryHistory(entryId);
+    res.json(history);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Get vendor payment history (all payment entry changes for a vendor)
+ */
+const getVendorPaymentChangeHistory = async (req, res) => {
+  try {
+    const { vendorId, vendorType } = req.query;
+
+    if (!vendorId || !vendorType) {
+      return res.status(400).json({ error: 'vendorId and vendorType required' });
+    }
+
+    if (!['stitching', 'washing', 'finishing'].includes(vendorType)) {
+      return res.status(400).json({ error: 'Invalid vendor type' });
+    }
+
+    const history = await getVendorPaymentHistory(vendorId, vendorType);
+    res.json(history);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Export lots data to Excel
+ */
+const exportLotsToExcel = async (req, res) => {
+  try {
+    const { vendorId, vendorType } = req.query;
+
+    if (!vendorId || !vendorType) {
+      return res.status(400).json({ error: 'vendorId and vendorType required' });
+    }
+
+    if (!['stitching', 'washing', 'finishing'].includes(vendorType)) {
+      return res.status(400).json({ error: 'Invalid vendor type' });
+    }
+
+    const result = await getVendorLotsDetails(vendorId, vendorType);
+    const lotsData = result.lots;
+
+    if (!lotsData || lotsData.length === 0) {
+      return res.status(404).json({ error: 'No lots data found for export' });
+    }
+
+    // Get vendor name for filename
+    const VendorModel = {
+      'stitching': StitchingVendor,
+      'washing': WashingVendor,
+      'finishing': FinishingVendor
+    }[vendorType];
+
+    const vendor = await VendorModel.findById(vendorId);
+    const vendorName = vendor ? vendor.name : 'Unknown';
+
+    const exportData = [];
+
+    if (vendorType === 'washing') {
+      // For washing, expand each lot into multiple rows for wash details
+      lotsData.forEach(lot => {
+        if (lot.washDetails && lot.washDetails.length > 0) {
+          lot.washDetails.forEach(wash => {
+            exportData.push({
+              'Date': new Date(lot.date).toLocaleDateString('en-IN'),
+              'Lot Number': lot.lotNumber,
+              'Client': lot.clientName,
+              'Wash Color': wash.washColor,
+              'Wash Creation': wash.washCreation,
+              'Quantity': wash.quantity,
+              'Rate': wash.rate,
+              'Amount': wash.amount,
+              'Short Qty': wash.quantityShort || 0,
+              'Short Desc': wash.quantityShortDesc || '',
+              'Total Payment': lot.totalPayment || 0,
+              'Short Adjustment': lot.shortAdjustmentAmount || 0,
+              'Balance': lot.balance || 0
+            });
+          });
+        } else {
+          // Fallback for lots without wash details
+          exportData.push({
+            'Date': new Date(lot.date).toLocaleDateString('en-IN'),
+            'Lot Number': lot.lotNumber,
+            'Client': lot.clientName,
+            'Wash Color': '-',
+            'Wash Creation': '-',
+            'Quantity': lot.quantity,
+            'Rate': lot.rate,
+            'Amount': lot.amount,
+            'Short Qty': lot.quantityShort || 0,
+            'Short Desc': '',
+            'Total Payment': lot.totalPayment || 0,
+            'Short Adjustment': lot.shortAdjustmentAmount || 0,
+            'Balance': lot.balance || 0
+          });
+        }
+      });
+    } else {
+      // For stitching and finishing, use original format
+      lotsData.forEach(lot => {
+        exportData.push({
+          'Date': new Date(lot.date).toLocaleDateString('en-IN'),
+          'Lot Number': lot.lotNumber,
+          'Client': lot.clientName,
+          'Quantity': lot.quantity,
+          'Rate': lot.rate,
+          'Amount': lot.amount,
+          'Short Qty': lot.quantityShort || 0,
+          'Total Payment': lot.totalPayment || 0,
+          'Short Adjustment': lot.shortAdjustmentAmount || 0,
+          'Balance': lot.balance || 0
+        });
+      });
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Lots Data');
+
+    // Generate buffer
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    // Set headers for file download
+    const fileName = `${vendorType}_${vendorName}_Lots_${new Date().toISOString().split('T')[0]}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(buffer);
+
+  } catch (error) {
+    console.error('Export lots error:', error);
+    res.status(500).json({ error: 'Failed to export lots data' });
+  }
+};
+
+/**
+ * Export payment entries to Excel
+ */
+const exportPaymentsToExcel = async (req, res) => {
+  try {
+    const { vendorId, vendorType } = req.query;
+
+    if (!vendorId || !vendorType) {
+      return res.status(400).json({ error: 'vendorId and vendorType required' });
+    }
+
+    if (!['stitching', 'washing', 'finishing'].includes(vendorType)) {
+      return res.status(400).json({ error: 'Invalid vendor type' });
+    }
+
+    const entries = await VendorPaymentEntry.find({
+      vendorId,
+      vendorType
+    })
+    .populate('createdBy', 'username')
+    .populate('lotId', 'lotNumber')
+    .sort({ paymentDate: -1, createdAt: -1 });
+
+    if (!entries || entries.length === 0) {
+      return res.status(404).json({ error: 'No payment data found for export' });
+    }
+
+    // Get vendor name for filename
+    const VendorModel = {
+      'stitching': StitchingVendor,
+      'washing': WashingVendor,
+      'finishing': FinishingVendor
+    }[vendorType];
+
+    const vendor = await VendorModel.findById(vendorId);
+    const vendorName = vendor ? vendor.name : 'Unknown';
+
+    const exportData = entries.map(entry => ({
+      'Payment Date': new Date(entry.paymentDate).toLocaleDateString('en-IN'),
+      'Lot Number': entry.lotId?.lotNumber || '-',
+      'Type': entry.paymentType === 'payment' ? 'Payment' : 'Short Adjustment',
+      'Amount': entry.amount,
+      'Short Quantity': entry.shortQuantity || 0,
+      'Short Rate': entry.shortRate || 0,
+      'Notes': entry.notes || '',
+      'Created By': entry.createdBy?.username || 'Unknown',
+      'Created Date': new Date(entry.createdAt).toLocaleDateString('en-IN'),
+      'Updated Date': entry.updatedAt ? new Date(entry.updatedAt).toLocaleDateString('en-IN') : ''
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Payment History');
+
+    // Generate buffer
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    // Set headers for file download
+    const fileName = `${vendorType}_${vendorName}_Payments_${new Date().toISOString().split('T')[0]}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(buffer);
+
+  } catch (error) {
+    console.error('Export payments error:', error);
+    res.status(500).json({ error: 'Failed to export payment data' });
   }
 };
 
@@ -305,5 +588,9 @@ module.exports = {
   getVendorPaymentEntries,
   getVendorBalanceSummary,
   updatePaymentEntry,
-  deletePaymentEntry
+  deletePaymentEntry,
+  getPaymentEntryChangeHistory,
+  getVendorPaymentChangeHistory,
+  exportLotsToExcel,
+  exportPaymentsToExcel
 };

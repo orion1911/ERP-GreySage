@@ -121,7 +121,7 @@ app.use('/api', stitchingRoutes);
 app.use('/api', washingRoutes);
 app.use('/api', finishingRoutes);
 app.use('/api', invoiceRoutes);
-app.use('/api', vendorBalanceRoutes);
+app.use('/api/vendor-balances', vendorBalanceRoutes);
 app.use('/api', balancesRoutes);
 app.use('/api', reportRoutes);
 app.use('/api', auditLogRoutes);

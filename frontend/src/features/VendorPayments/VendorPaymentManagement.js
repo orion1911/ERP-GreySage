@@ -495,7 +495,7 @@ const VendorPaymentManagement = () => {
             <Card sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
                 <CardContent>
                     <Grid container spacing={2} sx={{ mt: 1 }}>
-                        <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+                        <Grid size={{ xs: 6, sm: 6, md: 2 }}>
                             <FormControl fullWidth>
                                 <InputLabel>Vendor Type</InputLabel>
                                 <Select
@@ -509,7 +509,7 @@ const VendorPaymentManagement = () => {
                                 </Select>
                             </FormControl>
                         </Grid>
-                        <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+                        <Grid size={{ xs: 6, sm: 6, md: 2 }}>
                             <FormControl fullWidth disabled={!vendorType}>
                                 <InputLabel>Vendor</InputLabel>
                                 <Select
@@ -529,7 +529,7 @@ const VendorPaymentManagement = () => {
                         </Grid>
                         {summary && selectedVendor !== '' && (
                             <Grid container spacing={2} sx={{ mt: 2 }}>
-                                <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+                                <Grid size={{ xs: 6, sm: 6, md: 2 }}>
                                     <Typography color="textSecondary" gutterBottom>
                                         Total Due
                                     </Typography>
@@ -537,7 +537,7 @@ const VendorPaymentManagement = () => {
                                         {formatCurrency(summary.totalAmount)}
                                     </Typography>
                                 </Grid>
-                                <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+                                <Grid size={{ xs: 6, sm: 6, md: 2 }}>
                                     <Typography color="textSecondary" gutterBottom>
                                         Total Paid
                                     </Typography>
@@ -545,7 +545,7 @@ const VendorPaymentManagement = () => {
                                         {formatCurrency(summary.totalPayment)}
                                     </Typography>
                                 </Grid>
-                                <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+                                <Grid size={{ xs: 6, sm: 6, md: 2 }}>
                                     <Typography color="textSecondary" gutterBottom>
                                         Remaining Balance
                                     </Typography>
@@ -556,13 +556,13 @@ const VendorPaymentManagement = () => {
                                         {formatCurrency(summary.totalBalance)}
                                     </Typography>
                                 </Grid>
-                                <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+                                <Grid size={{ xs: 6, sm: 6, md: 2 }}>
                                     <Typography color="textSecondary" gutterBottom>
                                         Total Quantity
                                     </Typography>
                                     <Typography variant="h6">{summary.totalQuantity}</Typography>
                                 </Grid>
-                                <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+                                <Grid size={{ xs: 6, sm: 6, md: 2 }}>
                                     <Typography color="textSecondary" gutterBottom>
                                         Short Qty
                                     </Typography>

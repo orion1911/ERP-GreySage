@@ -574,7 +574,7 @@ const Dashboard = () => {
                 </Grid>
 
                 <Grid size={{ xs: 12, md: 6 }}>
-                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
+                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 562 }}>
                         <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
                             <Typography variant="h6" sx={{ fontWeight: 600 }}>
                                 Stitching Breakdown

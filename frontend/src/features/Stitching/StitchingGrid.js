@@ -78,29 +78,54 @@ function StitchingGrid({
     });
   };
 
+  const parseLotNumber = (lotNumber = '') => {
+    return lotNumber.toString().split('/').map(segment => {
+      const num = Number(segment);
+      return Number.isFinite(num) ? num : segment.toString().toLowerCase();
+    });
+  };
+
+  const compareLotNumbers = (lotA, lotB, direction = 'asc') => {
+    const partsA = parseLotNumber(lotA);
+    const partsB = parseLotNumber(lotB);
+    const maxLen = Math.max(partsA.length, partsB.length);
+    for (let i = 0; i < maxLen; i += 1) {
+      const partA = partsA[i];
+      const partB = partsB[i];
+      if (partA === undefined) return direction === 'asc' ? -1 : 1;
+      if (partB === undefined) return direction === 'asc' ? 1 : -1;
+      if (partA === partB) continue;
+      if (typeof partA === 'number' && typeof partB === 'number') {
+        return direction === 'asc' ? partA - partB : partB - partA;
+      }
+      const aStr = partA.toString();
+      const bStr = partB.toString();
+      return direction === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+    }
+    return 0;
+  };
+
+  const compareInvoiceValues = (invoiceA, invoiceB, direction = 'asc') => {
+    const numA = Number(invoiceA);
+    const numB = Number(invoiceB);
+    if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
+      return direction === 'asc' ? numA - numB : numB - numA;
+    }
+    const aStr = invoiceA?.toString().toLowerCase() || '';
+    const bStr = invoiceB?.toString().toLowerCase() || '';
+    if (aStr < bStr) return direction === 'asc' ? -1 : 1;
+    if (aStr > bStr) return direction === 'asc' ? 1 : -1;
+    return 0;
+  };
+
   const sortData = (data, sortKey, direction) => {
     if (!data || !Array.isArray(data)) return undefined;
     return [...data].sort((a, b) => {
       let valueA, valueB;
       if (sortKey === 'lotNumber') {
-        const lotA = a.lotId?.lotNumber || '';
-        const lotB = b.lotId?.lotNumber || '';
-        const partsA = lotA.split('/').map(p => { const n = Number(p); return Number.isNaN(n) ? p : n; });
-        const partsB = lotB.split('/').map(p => { const n = Number(p); return Number.isNaN(n) ? p : n; });
-        const maxLen = Math.max(partsA.length, partsB.length);
-        for (let i = 0; i < maxLen; i++) {
-          if (partsA[i] === undefined) return direction === 'asc' ? -1 : 1;
-          if (partsB[i] === undefined) return direction === 'asc' ? 1 : -1;
-          if (partsA[i] === partsB[i]) continue;
-          if (typeof partsA[i] === 'number' && typeof partsB[i] === 'number') {
-            return direction === 'asc' ? partsA[i] - partsB[i] : partsB[i] - partsA[i];
-          }
-          return direction === 'asc' ? partsA[i].toString().localeCompare(partsB[i].toString()) : partsB[i].toString().localeCompare(partsA[i].toString());
-        }
-        return 0;
+        return compareLotNumbers(a.lotId?.lotNumber, b.lotId?.lotNumber, direction);
       } else if (sortKey === 'invoiceNumber') {
-        valueA = a.lotId?.invoiceNumber || '';
-        valueB = b.lotId?.invoiceNumber || '';
+        return compareInvoiceValues(a.lotId?.invoiceNumber, b.lotId?.invoiceNumber, direction);
       } else if (sortKey === 'clientName') {
         valueA = a.lotId?.clientId?.name || '';
         valueB = b.lotId?.clientId?.name || '';

@@ -74,8 +74,8 @@ const createStitching = async (req, res) => {
   if (!fitStyleId) return res.status(400).json({ error: 'Fit Style is required' });
   if (!waistSize) return res.status(400).json({ error: 'Waist Size is required' });
   if (!vendorId) return res.status(400).json({ error: 'Vendor ID is required' });
-  if (!quantity || quantity <= 0) return res.status(400).json({ error: 'Quantity must be a positive number' });
-  if (!rate || rate < 0) return res.status(400).json({ error: 'Rate must be a non-negative number' });
+  if ((quantity ?? '') === '' || quantity < 0) return res.status(400).json({ error: 'Quantity must be a positive number' });
+  if ((rate ?? '') === '' || rate < 0) return res.status(400).json({ error: 'Rate must be a non-negative number' });
   if (typeof invoiceNumber !== 'number' || isNaN(invoiceNumber)) {
     return res.status(400).json({ error: 'Invoice number must be a valid number' });
   }

@@ -116,13 +116,13 @@ const StitchingSchema = new mongoose.Schema({
   date: { type: Date, required: true },
   stitchOutDate: { type: Date },
   vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'StitchingVendor', required: true },
-  quantity: { type: Number, required: true, min: 1 },
+  quantity: { type: Number, required: true, min: 0 },
   quantityShort: { type: Number, default: 0, min: 0 },
   quantityShortDesc: { type: String },
   rate: { type: Number, required: true, min: 0 },
   threadColors: [{
     color: { type: String, required: true },
-    quantity: { type: Number, required: true, min: 1 }
+    quantity: { type: Number, required: true, min: 0 }
   }],
   description: { type: String },
   createdAt: { type: Date, default: Date.now }

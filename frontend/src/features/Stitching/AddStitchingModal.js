@@ -96,9 +96,9 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
       fabric: data.fabric.toUpperCase().trim(),
       waistSize: data.waistSize.toUpperCase().trim(),
       invoiceNumber: parseInt(data.invoiceNumber) || '',
-      quantity: parseInt(data.quantity) || '',
+      quantity: parseInt(data.quantity) ?? '',
       quantityShort: parseInt(data.quantityShort) || '',
-      rate: parseInt(data.rate) || '',
+      rate: parseInt(data.rate) ?? '',
       threadColors: data.threadColors.map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity) })),
       date: data.date.toISOString(),
       stitchOutDate: data.stitchOutDate ? data.stitchOutDate.toISOString() : null,
@@ -330,7 +330,7 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
                 rules={{
                   required: 'Quantity is required',
                   pattern: {
-                    value: /^\d+$/,
+                    value: /^[0-9]+$/,
                     message: 'Only numbers allowed',
                   },
                 }}

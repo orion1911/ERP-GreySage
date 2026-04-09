@@ -282,6 +282,46 @@ const VendorPaymentManagement = () => {
         }).format(value || 0);
     };
 
+    const parseLotNumber = (lotNumber = '') => {
+        return lotNumber.toString().split('/').map(segment => {
+            const num = Number(segment);
+            return Number.isFinite(num) ? num : segment.toString().toLowerCase();
+        });
+    };
+
+    const compareLotNumbers = (lotA, lotB, direction = 'asc') => {
+        const partsA = parseLotNumber(lotA);
+        const partsB = parseLotNumber(lotB);
+        const maxLen = Math.max(partsA.length, partsB.length);
+        for (let i = 0; i < maxLen; i += 1) {
+            const partA = partsA[i];
+            const partB = partsB[i];
+            if (partA === undefined) return direction === 'asc' ? -1 : 1;
+            if (partB === undefined) return direction === 'asc' ? 1 : -1;
+            if (partA === partB) continue;
+            if (typeof partA === 'number' && typeof partB === 'number') {
+                return direction === 'asc' ? partA - partB : partB - partA;
+            }
+            const aStr = partA.toString();
+            const bStr = partB.toString();
+            return direction === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+        }
+        return 0;
+    };
+
+    const compareInvoiceValues = (invoiceA, invoiceB, direction = 'asc') => {
+        const numA = Number(invoiceA);
+        const numB = Number(invoiceB);
+        if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
+            return direction === 'asc' ? numA - numB : numB - numA;
+        }
+        const aStr = invoiceA?.toString().toLowerCase() || '';
+        const bStr = invoiceB?.toString().toLowerCase() || '';
+        if (aStr < bStr) return direction === 'asc' ? -1 : 1;
+        if (aStr > bStr) return direction === 'asc' ? 1 : -1;
+        return 0;
+    };
+
     // Export lots data to Excel (server-side)
     const exportLotsToExcel = async () => {
         if (!lotsData.length) {
@@ -351,8 +391,28 @@ const VendorPaymentManagement = () => {
     const sortedPaymentEntries = React.useMemo(() => {
         const entries = [...paymentEntries];
         const compare = (a, b) => {
-            const aValue = paymentSortBy === 'paymentDate' ? new Date(a.paymentDate) : paymentSortBy === 'amount' ? a.amount : a.paymentType;
-            const bValue = paymentSortBy === 'paymentDate' ? new Date(b.paymentDate) : paymentSortBy === 'amount' ? b.amount : b.paymentType;
+            const aValue = paymentSortBy === 'paymentDate'
+                ? new Date(a.paymentDate)
+                : paymentSortBy === 'amount'
+                    ? a.amount
+                    : paymentSortBy === 'invoiceNumber'
+                        ? a.lotId?.invoiceNumber || ''
+                        : a.paymentType;
+            const bValue = paymentSortBy === 'paymentDate'
+                ? new Date(b.paymentDate)
+                : paymentSortBy === 'amount'
+                    ? b.amount
+                    : paymentSortBy === 'invoiceNumber'
+                        ? b.lotId?.invoiceNumber || ''
+                        : b.paymentType;
+
+            if (typeof aValue === 'string' && typeof bValue === 'string') {
+                const aLower = aValue.toLowerCase();
+                const bLower = bValue.toLowerCase();
+                if (aLower < bLower) return paymentSortOrder === 'asc' ? -1 : 1;
+                if (aLower > bLower) return paymentSortOrder === 'asc' ? 1 : -1;
+                return 0;
+            }
 
             if (aValue < bValue) return paymentSortOrder === 'asc' ? -1 : 1;
             if (aValue > bValue) return paymentSortOrder === 'asc' ? 1 : -1;
@@ -412,15 +472,49 @@ const VendorPaymentManagement = () => {
         }
         
         const compare = (a, b) => {
-            let aValue = a[lotSortBy];
-            let bValue = b[lotSortBy];
-
             if (lotSortBy === 'date') {
-                aValue = new Date(aValue);
-                bValue = new Date(bValue);
+                const aValue = new Date(a.date);
+                const bValue = new Date(b.date);
+                if (aValue < bValue) return lotSortOrder === 'asc' ? -1 : 1;
+                if (aValue > bValue) return lotSortOrder === 'asc' ? 1 : -1;
+                return 0;
             }
-            if (typeof aValue === 'string') aValue = aValue.toLowerCase();
-            if (typeof bValue === 'string') bValue = aValue.toLowerCase();
+
+            if (lotSortBy === 'lotNumber') {
+                return compareLotNumbers(a.lotNumber, b.lotNumber, lotSortOrder);
+            }
+
+            if (lotSortBy === 'invoiceNumber') {
+                return compareInvoiceValues(a.invoiceNumber, b.invoiceNumber, lotSortOrder);
+            }
+
+            let aValue;
+            let bValue;
+
+            if (lotSortBy === 'clientName') {
+                aValue = a.clientName || '';
+                bValue = b.clientName || '';
+            } else if (lotSortBy === 'displayQuantity') {
+                aValue = a.displayQuantity || 0;
+                bValue = b.displayQuantity || 0;
+            } else if (lotSortBy === 'displayRate') {
+                aValue = a.displayRate || 0;
+                bValue = b.displayRate || 0;
+            } else if (lotSortBy === 'displayAmount') {
+                aValue = a.displayAmount || 0;
+                bValue = b.displayAmount || 0;
+            } else if (lotSortBy === 'displayQuantityShort') {
+                aValue = a.displayQuantityShort || 0;
+                bValue = b.displayQuantityShort || 0;
+            } else {
+                aValue = a[lotSortBy] || '';
+                bValue = b[lotSortBy] || '';
+            }
+
+            if (typeof aValue === 'string' && typeof bValue === 'string') {
+                aValue = aValue.toLowerCase();
+                bValue = bValue.toLowerCase();
+            }
 
             if (aValue < bValue) return lotSortOrder === 'asc' ? -1 : 1;
             if (aValue > bValue) return lotSortOrder === 'asc' ? 1 : -1;
@@ -643,6 +737,15 @@ const VendorPaymentManagement = () => {
                                                         LOT
                                                     </TableSortLabel>
                                                 </TableCell>
+                                                <TableCell sortDirection={lotSortBy === 'invoiceNumber' ? lotSortOrder : false}>
+                                                    <TableSortLabel
+                                                        active={lotSortBy === 'invoiceNumber'}
+                                                        direction={lotSortOrder}
+                                                        onClick={() => handleLotSort('invoiceNumber')}
+                                                    >
+                                                        INVOICE
+                                                    </TableSortLabel>
+                                                </TableCell>
                                                 <TableCell sortDirection={lotSortBy === 'clientName' ? lotSortOrder : false}>
                                                     <TableSortLabel
                                                         active={lotSortBy === 'clientName'}
@@ -705,7 +808,7 @@ const VendorPaymentManagement = () => {
                                             )}
                                             {!loading && lotsData.length === 0 && (
                                                 <TableRow>
-                                                    <TableCell colSpan={vendorType === 'washing' ? 8 : 7} align="center">
+                                                    <TableCell colSpan={vendorType === 'washing' ? 9 : 8} align="center">
                                                         No lots found for this vendor
                                                     </TableCell>
                                                 </TableRow>
@@ -717,6 +820,9 @@ const VendorPaymentManagement = () => {
                                                     </TableCell>
                                                     <TableCell sx={{ fontSize: '0.85rem', fontWeight: 'bold' }}>
                                                         {lot.lotNumber}
+                                                    </TableCell>
+                                                    <TableCell sx={{ fontSize: '0.85rem' }}>
+                                                        {lot.invoiceNumber || '-'}
                                                     </TableCell>
                                                     <TableCell sx={{ fontSize: '0.85rem' }}>
                                                         {lot.clientName}
@@ -825,14 +931,14 @@ const VendorPaymentManagement = () => {
                                         <TableBody>
                                             {loading && (
                                                 <TableRow>
-                                                    <TableCell colSpan={6} align="center">
+                                                    <TableCell colSpan={7} align="center">
                                                         <CircularProgress size={20} />
                                                     </TableCell>
                                                 </TableRow>
                                             )}
                                             {!loading && paymentEntries.length === 0 && (
                                                 <TableRow>
-                                                    <TableCell colSpan={6} align="center">
+                                                    <TableCell colSpan={7} align="center">
                                                         No payment entries found
                                                     </TableCell>
                                                 </TableRow>
@@ -849,6 +955,7 @@ const VendorPaymentManagement = () => {
                                                         <Chip
                                                             label={entry.paymentType === 'payment' ? 'Payment' : 'Short Adj'}
                                                             size="small"
+                                                            sx={{ fontSize: '10px', height: '21px' }}
                                                             color={entry.paymentType === 'payment' ? 'primary' : 'secondary'}
                                                             variant="outlined"
                                                         />
@@ -876,7 +983,7 @@ const VendorPaymentManagement = () => {
                                                                         "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
                                                                     }}
                                                                 >
-                                                                    <EditIcon fontSize='small' />
+                                                                    <EditIcon fontSize='small' sx={{ fontSize: '14px' }} />
                                                                 </IconButton>
                                                             </Tooltip>
                                                             <Tooltip title={entry.paymentType === 'payment' ? 'Delete Payment' : 'Delete Adjustment'} placement='bottom' arrow>
@@ -888,7 +995,7 @@ const VendorPaymentManagement = () => {
                                                                         "&.MuiButtonBase-root:hover": { bgcolor: "transparent" }
                                                                     }}
                                                                 >
-                                                                    <DeleteIcon fontSize='small' />
+                                                                    <DeleteIcon fontSize='small' sx={{ fontSize: '14px' }} />
                                                                 </IconButton>
                                                             </Tooltip>
                                                         </Box>

@@ -246,25 +246,30 @@ function CompanySettings() {
               onChange={(e) => setCounterDraft(e.target.value)}
               fullWidth variant="standard"
               inputProps={{ min: 0 }}
+              helperText="Next invoice will be one higher"
             />
           </Grid>
           <Grid size={{ xs: 12, md: 4 }}>
-            {counterInfo && (
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Typography variant="body2" color="text.secondary">Next invoice will be:</Typography>
-                <Chip
-                  label={`INV${counterFy}/${(parseInt(counterDraft, 10) || 0) + 1}`}
-                  color="primary"
-                  variant="outlined"
-                />
-              </Stack>
-            )}
+            {/* Helper-row spacer (pb≈helperText height) so Stack bottom aligns with TextField input bottom */}
+            <Box sx={{ pb: '20px', minHeight: 32, display: 'flex', alignItems: 'center' }}>
+              {counterInfo && (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="body2" color="text.secondary">Next invoice will be:</Typography>
+                  <Chip
+                    label={`INV${counterFy}/${(parseInt(counterDraft, 10) || 0) + 1}`}
+                    color="primary"
+                    variant="outlined"
+                  />
+                </Stack>
+              )}
+            </Box>
           </Grid>
           <Grid size={{ xs: 12, md: 3 }}>
             <Button
               variant="contained" fullWidth
               onClick={handleSetCounter}
               disabled={counterSaving || counterDraft === String(counterInfo?.sequence ?? '')}
+              sx={{ mb: '20px' }}
             >
               {counterSaving ? 'Saving…' : 'Update Counter'}
             </Button>

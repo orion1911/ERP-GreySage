@@ -66,6 +66,7 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
     const line = {
       lineNo: i + 1,
       description: String(raw.description).trim(),
+      remark: raw.remark ? String(raw.remark).trim() : undefined,
       hsnSac: raw.hsnSac ? String(raw.hsnSac).trim() : undefined,
       pcs,
       unit: raw.unit ? String(raw.unit).trim() : '',
@@ -120,7 +121,6 @@ const createInvoice = async (req, res) => {
     placeOfSupply,
     lines,
     roundOff = 0,
-    notes,
     documentType
   } = req.body;
 
@@ -159,7 +159,6 @@ const createInvoice = async (req, res) => {
     placeOfSupply: placeOfSupply || derivedPos,
     lines: builtLines,
     roundOff: Number(roundOff) || 0,
-    notes,
     status: 'issued',
     createdBy: req.user.userId
   });
@@ -196,7 +195,6 @@ const updateInvoice = async (req, res) => {
     placeOfSupply,
     lines,
     roundOff,
-    notes,
     documentType
   } = req.body;
 
@@ -206,7 +204,6 @@ const updateInvoice = async (req, res) => {
   if (date) existing.date = new Date(date);
   if (placeOfSupply) existing.placeOfSupply = placeOfSupply;
   if (roundOff !== undefined) existing.roundOff = Number(roundOff) || 0;
-  if (notes !== undefined) existing.notes = notes;
   if (documentType) existing.documentType = documentType;
 
   // Refresh client snapshot if the underlying client was updated since issue?

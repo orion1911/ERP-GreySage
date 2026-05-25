@@ -298,6 +298,7 @@ const InvoiceLineSchema = new mongoose.Schema({
   lotNumberSnapshot: { type: String, trim: true },     // frozen lot # for printing
   lotInvoiceNumberSnapshot: { type: Number },          // frozen upstream invoice #
   description: { type: String, required: true, trim: true }, // free-form; prefilled from lot
+  remark: { type: String, trim: true }, // optional secondary line printed under description in PDF
   hsnSac: { type: String, trim: true },
   pcs: { type: Number, required: true, min: 1, validate: { validator: Number.isInteger, message: 'pcs must be integer' } },
   unit: { type: String, trim: true, default: '' },
@@ -335,7 +336,6 @@ const InvoiceSchema = new mongoose.Schema({
   total: { type: Number, default: 0, min: 0 },
   totalQty: { type: Number, default: 0, min: 0 },
   amountInWords: { type: String, trim: true },
-  notes: { type: String, trim: true },
   status: { type: String, enum: ['draft', 'issued', 'cancelled'], default: 'issued' },
   pdfMeta: { filename: String, generatedAt: Date },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },

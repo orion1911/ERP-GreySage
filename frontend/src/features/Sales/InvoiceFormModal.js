@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { useForm, Controller, useFieldArray } from 'react-hook-form';
+import { useForm, Controller, useFieldArray, useWatch } from 'react-hook-form';
 import {
   Box, Modal, Typography, TextField, Button, IconButton, Grid,
   Autocomplete, MenuItem, Table, TableHead, TableRow, TableCell, TableBody,
@@ -23,6 +23,7 @@ const emptyLine = {
   lotNumber: '',
   lotInvoiceNumber: '',
   description: '',
+  remark: '',
   hsnSac: '',
   pcs: '',
   unit: '',
@@ -44,14 +45,15 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
       client: null,
       documentType: 'BILL_OF_SUPPLY',
       roundOff: 0,
-      notes: '',
       lines: [{ ...emptyLine }]
     }
   });
   const { fields, append, remove } = useFieldArray({ control, name: 'lines' });
-  const lines = watch('lines');
+  // useWatch (not watch) — watch('lines') returns stale references and the totals
+  // didn't recompute on each keystroke until something else re-rendered (e.g. "Add Line").
+  const lines = useWatch({ control, name: 'lines' });
   const client = watch('client');
-  const roundOff = Number(watch('roundOff')) || 0;
+  const roundOff = Number(useWatch({ control, name: 'roundOff' })) || 0;
 
   // Fetch clients on open
   useEffect(() => {
@@ -89,12 +91,12 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
         } : null,
         documentType: editInvoice.documentType || 'BILL_OF_SUPPLY',
         roundOff: editInvoice.roundOff || 0,
-        notes: editInvoice.notes || '',
         lines: (editInvoice.lines || []).map((l) => ({
           lotId: l.lotId || null,
           lotNumber: l.lotNumberSnapshot || '',
           lotInvoiceNumber: l.lotInvoiceNumberSnapshot || '',
           description: l.description || '',
+          remark: l.remark || '',
           hsnSac: l.hsnSac || '',
           pcs: l.pcs,
           unit: l.unit || '',
@@ -109,7 +111,6 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
         client: null,
         documentType: 'BILL_OF_SUPPLY',
         roundOff: 0,
-        notes: '',
         lines: [{ ...emptyLine }]
       });
     }
@@ -170,10 +171,10 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
       // placeOfSupply omitted on purpose — server derives from client's shipping address.
       // For edits, the snapshot is already frozen and not refreshed.
       roundOff: Number(data.roundOff) || 0,
-      notes: data.notes,
       lines: data.lines.map((l) => ({
         lotId: l.lotId || null,
         description: l.description,
+        remark: l.remark,
         hsnSac: l.hsnSac,
         pcs: parseInt(l.pcs, 10),
         unit: l.unit,
@@ -217,7 +218,16 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
           <IconButton onClick={onClose}><CloseIcon /></IconButton>
         </Box>
 
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          onKeyDown={(e) => {
+            // Prevent Enter inside any non-textarea input from submitting the form.
+            // Allows Enter in multiline TextField (rendered as textarea) to insert newlines.
+            if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+              e.preventDefault();
+            }
+          }}
+        >
           <LocalizationProvider dateAdapter={AdapterDayjs}>
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 3 }}>
@@ -350,7 +360,21 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
                           control={control}
                           rules={{ required: true }}
                           render={({ field }) => (
-                            <TextField {...field} variant="standard" fullWidth multiline maxRows={3} />
+                            <TextField {...field} variant="standard" fullWidth multiline maxRows={3} placeholder="Description (bold)" />
+                          )}
+                        />
+                        <Controller
+                          name={`lines.${idx}.remark`}
+                          control={control}
+                          render={({ field }) => (
+                            <TextField
+                              {...field}
+                              variant="standard"
+                              fullWidth multiline maxRows={2}
+                              placeholder="Remark (optional)"
+                              sx={{ mt: 0.5 }}
+                              InputProps={{ sx: { fontSize: '0.85rem', color: 'text.secondary' } }}
+                            />
                           )}
                         />
                       </TableCell>
@@ -417,15 +441,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
           </Box>
 
           <Grid container spacing={2} sx={{ mt: 2 }}>
-            <Grid size={{ xs: 12, md: 8 }}>
-              <Controller
-                name="notes"
-                control={control}
-                render={({ field }) => (
-                  <TextField {...field} label="Notes" fullWidth multiline minRows={2} variant="standard" />
-                )}
-              />
-            </Grid>
+            <Grid size={{ xs: 12, md: 8 }} />
             <Grid size={{ xs: 12, md: 4 }}>
               <Stack spacing={1} sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>

@@ -78,14 +78,14 @@ function InvoiceManagement() {
       // We have most of the invoice already; but listInvoices may not include lines.
       // Fetch the full doc so the PDF has line items and snapshots.
       const full = await apiService.salesInvoices.getInvoiceById(inv._id);
-      downloadInvoicePdf(full, settings);
+      await downloadInvoicePdf(full, settings);
     } catch (e) { showSnackbar(e); }
   };
 
   const handlePreview = async (inv) => {
     try {
       const full = await apiService.salesInvoices.getInvoiceById(inv._id);
-      const result = previewInvoicePdf(full, settings);
+      const result = await previewInvoicePdf(full, settings);
       setPreviewUrl(result?.url || null);
     } catch (e) { showSnackbar(e); }
   };

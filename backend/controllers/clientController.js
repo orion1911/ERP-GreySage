@@ -18,7 +18,7 @@ const getNextClientCodeNumber = async () => {
 };
 
 const createClient = async (req, res) => {
-  const { name, clientCodePrefix, contact, email, address } = req.body;
+  const { name, clientCodePrefix, billingName, contact, email, address, gstin, pan, billingAddress, shippingAddress } = req.body;
 
   const normalizedName = name.replace(/\s\s+/g, ' ').trim();
 
@@ -31,7 +31,13 @@ const createClient = async (req, res) => {
   const prefix = clientCodePrefix || generateClientCodePrefix(name);
   const number = await getNextClientCodeNumber();
   const clientCode = `${prefix}-${number}`;
-  const client = new Client({ name, clientCode, contact, email, address, isActive: true });
+  const client = new Client({
+    name, clientCode, billingName, contact, email, address,
+    gstin, pan,
+    billingAddress: billingAddress || {},
+    shippingAddress: shippingAddress || {},
+    isActive: true
+  });
   await client.save();
   //await logAction(req.user.userId, 'create_client', 'Client', client._id, `Created client: ${client.name}`);
   res.status(201).json(client);
@@ -57,7 +63,7 @@ const toggleClientActive = async (req, res) => {
 
 const updateClient = async (req, res) => {
   const { id } = req.params;
-  const { name, clientCode, contact, email, address } = req.body;
+  const { name, clientCode, billingName, contact, email, address, gstin, pan, billingAddress, shippingAddress } = req.body;
 
   const client = await Client.findById(id);
   if (!client) return res.status(404).json({ error: 'Client not found' });
@@ -67,6 +73,11 @@ const updateClient = async (req, res) => {
   client.contact = contact || client.contact;
   client.email = email || client.email;
   client.address = address || client.address;
+  if (billingName !== undefined) client.billingName = billingName;
+  if (gstin !== undefined) client.gstin = gstin;
+  if (pan !== undefined) client.pan = pan;
+  if (billingAddress !== undefined) client.billingAddress = billingAddress;
+  if (shippingAddress !== undefined) client.shippingAddress = shippingAddress;
 
   await client.save();
   //await logAction(req.user.userId, 'update_client', 'Client', client._id, `Updated client: ${client.name}`);

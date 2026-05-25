@@ -701,6 +701,156 @@ const apiService = {
     },
   },
 
+  // Sales invoices (dispatch + billing)
+  salesInvoices: {
+    listInvoices: async (params = {}) => {
+      try {
+        const response = await axiosInstance.get('api/sales-invoices', { params });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getInvoiceById: async (id) => {
+      try {
+        const response = await axiosInstance.get(`api/sales-invoices/${id}`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    createInvoice: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/sales-invoices', payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    updateInvoice: async (id, payload) => {
+      try {
+        const response = await axiosInstance.patch(`api/sales-invoices/${id}`, payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    cancelInvoice: async (id) => {
+      try {
+        const response = await axiosInstance.post(`api/sales-invoices/${id}/cancel`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    deleteInvoice: async (id) => {
+      try {
+        const response = await axiosInstance.delete(`api/sales-invoices/${id}`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getInvoiceHistory: async (id) => {
+      try {
+        const response = await axiosInstance.get(`api/sales-invoices/${id}/history`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getLotsAvailable: async (params = {}) => {
+      try {
+        const response = await axiosInstance.get('api/sales-invoices/lots-available', { params });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getInvoiceCounter: async (fyShort) => {
+      try {
+        const response = await axiosInstance.get('api/sales-invoices/counter', { params: fyShort ? { fyShort } : {} });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    setInvoiceCounter: async (fyShort, sequence) => {
+      try {
+        const response = await axiosInstance.put('api/sales-invoices/counter', { fyShort, sequence });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+  },
+
+  // Client balances and payments (mirror of vendorPayments)
+  clientPayments: {
+    getClientsWithBalance: async () => {
+      try {
+        const response = await axiosInstance.get('api/client-balances/clients-with-balance');
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getClientLedger: async (clientId) => {
+      try {
+        const response = await axiosInstance.get('api/client-balances/client-invoices-payments', { params: { clientId } });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getClientBalanceSummary: async (clientId) => {
+      try {
+        const response = await axiosInstance.get('api/client-balances/client-balance-summary', { params: { clientId } });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    setOpeningBalance: async (clientId, openingBalance) => {
+      try {
+        const response = await axiosInstance.patch('api/client-balances/opening-balance', { clientId, openingBalance });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    addClientPayment: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/client-balances/client-payment', payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    addClientAdjustment: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/client-balances/client-adjustment', payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getClientPaymentEntries: async (clientId) => {
+      try {
+        const response = await axiosInstance.get('api/client-balances/client-payment-entries', { params: { clientId } });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    updatePaymentEntry: async (entryId, payload) => {
+      try {
+        const response = await axiosInstance.put(`api/client-balances/client-payment/${entryId}`, payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    deletePaymentEntry: async (entryId) => {
+      try {
+        const response = await axiosInstance.delete(`api/client-balances/client-payment/${entryId}`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getEntryHistory: async (entryId) => {
+      try {
+        const response = await axiosInstance.get(`api/client-balances/client-payment-history/${entryId}`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getClientPaymentHistory: async (clientId) => {
+      try {
+        const response = await axiosInstance.get('api/client-balances/client-payment-changes', { params: { clientId } });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+  },
+
+  // Company settings (singleton — seller side of invoice)
+  companySettings: {
+    getSettings: async () => {
+      try {
+        const response = await axiosInstance.get('api/company-settings');
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    updateSettings: async (payload) => {
+      try {
+        const response = await axiosInstance.put('api/company-settings', payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+  },
+
   fitStyles: {
     createFitstyles: async (fitStyleData) => {
       try {

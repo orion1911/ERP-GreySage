@@ -299,64 +299,69 @@ const Dashboard = () => {
                             ))}
                         </Grid>
                     ) : (
-                        <Grid container spacing={3} sx={{ mb: 4, alignItems: 'stretch' }}>
-                            <Grid size={{ xs: 12, sm: 6, md: 6 }}>
-                                <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
-                                    <Stack spacing={2} sx={{ flex: 1 }}>
-                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                                Client Stats
-                                            </Typography>
-                                            <Chip label="Top 10" size="small" variant="outlined" />
-                                        </Box>
-                                        <Box sx={{ width: '100%' }}>
-                                            <BarChart
-                                                series={clientSeries}
-                                                xAxis={[{
-                                                    height: 70,
-                                                    scaleType: 'band', data: clientLabels,
-                                                    labelStyle: {
-                                                        fontSize: 14,
-                                                    },
-                                                    tickLabelStyle: {
-                                                        angle: -45,
-                                                        fontSize: 11,
-                                                    }
-                                                }]}
-                                                height={300}
-                                                colors={[chartColors.indigo, chartColors.coral, chartColors.amber, chartColors.teal]}
-                                                margin={{ left: 0, right: 0, top: 10, bottom: 40 }}
-                                                slotProps={{
-                                                    legend: { hidden: false },
-                                                }}
-                                            />
-                                        </Box>
-                                    </Stack>
-                                </Paper>
-                            </Grid>
+                        // Client Stats + Washing Stats — flex row with both Papers at the same
+                        // fixed height (420px). Chart heights unified at 320 inside each.
+                        <Box sx={{
+                            display: 'flex',
+                            flexDirection: { xs: 'column', sm: 'row' },
+                            gap: 3,
+                            mb: 4,
+                            alignItems: 'stretch',
+                            height: { xs: 'auto', sm: 420 }
+                        }}>
+                            <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column', flex: { xs: '0 0 420px', sm: '1 1 0' }, minHeight: 0 }}>
+                                <Stack spacing={2} sx={{ flex: 1, minHeight: 0 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                            Client Stats
+                                        </Typography>
+                                        <Chip label="Top 10" size="small" variant="outlined" />
+                                    </Box>
+                                    <Box sx={{ width: '100%', flex: 1, minHeight: 0 }}>
+                                        <BarChart
+                                            series={clientSeries}
+                                            xAxis={[{
+                                                height: 70,
+                                                scaleType: 'band', data: clientLabels,
+                                                labelStyle: {
+                                                    fontSize: 14,
+                                                },
+                                                tickLabelStyle: {
+                                                    angle: -45,
+                                                    fontSize: 11,
+                                                }
+                                            }]}
+                                            height={320}
+                                            colors={[chartColors.indigo, chartColors.coral, chartColors.amber, chartColors.teal]}
+                                            margin={{ left: 0, right: 0, top: 10, bottom: 40 }}
+                                            slotProps={{
+                                                legend: { hidden: false },
+                                            }}
+                                        />
+                                    </Box>
+                                </Stack>
+                            </Paper>
 
-                            <Grid size={{ xs: 12, sm: 6, md: 6 }}>
-                                <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
-                                    <Stack spacing={2} sx={{ flex: 1 }}>
-                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                                Washing Stats
-                                            </Typography>
-                                            <Chip label="Pending" size="small" variant="outlined" />
-                                        </Box>
-                                        <Box sx={{ width: '100%' }}>
-                                            <PieChart
-                                                series={washerSeries}
-                                                height={320}
-                                                innerRadius={0.62}
-                                                colors={pieColors}
-                                                slotProps={{ legend: { position: 'bottom' } }}
-                                            />
-                                        </Box>
-                                    </Stack>
-                                </Paper>
-                            </Grid>
-                        </Grid>
+                            <Paper elevation={1} sx={{ p: 2, borderRadius: 2, display: 'flex', flexDirection: 'column', flex: { xs: '0 0 420px', sm: '1 1 0' }, minHeight: 0 }}>
+                                <Stack spacing={2} sx={{ flex: 1, minHeight: 0 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                            Washing Stats
+                                        </Typography>
+                                        <Chip label="Pending" size="small" variant="outlined" />
+                                    </Box>
+                                    <Box sx={{ width: '100%', flex: 1, minHeight: 0 }}>
+                                        <PieChart
+                                            series={washerSeries}
+                                            height={320}
+                                            innerRadius={0.62}
+                                            colors={pieColors}
+                                            slotProps={{ legend: { position: 'bottom' } }}
+                                        />
+                                    </Box>
+                                </Stack>
+                            </Paper>
+                        </Box>
                     )}
                 </motion.div>
             </AnimatePresence>
@@ -506,10 +511,18 @@ const Dashboard = () => {
                 </Grid>
             </Grid>
 
-            {/* Stitching Vendor Summary */}
-            <Grid container spacing={3} sx={{ mb: 4 }}>
-                <Grid size={{ xs: 12, md: 6 }}>
-                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
+            {/* Stitching Vendor Summary + Breakdown — flex row with both Papers at the same
+                fixed height so they end at the same Y. Fixed (not vh) so the dashboard's
+                overall flow stays predictable; 600px fits ~10 breakdown rows + chrome. */}
+            <Box sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', md: 'row' },
+                gap: 3,
+                mb: 4,
+                alignItems: 'stretch',
+                height: { xs: 'auto', md: 600 }
+            }}>
+                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: { xs: '0 0 500px', md: '1 1 0' }, minHeight: 0 }}>
                         <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
                             <Typography variant="h6" sx={{ fontWeight: 600 }}>
                                 Stitching Summary
@@ -571,11 +584,9 @@ const Dashboard = () => {
                             </motion.div>
                         </AnimatePresence>
                     </Paper>
-                </Grid>
 
-                <Grid size={{ xs: 12, md: 6 }}>
-                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 562 }}>
-                        <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: { xs: '0 0 562px', md: '1 1 0' }, minHeight: 0 }}>
+                        <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}`, flexShrink: 0 }}>
                             <Typography variant="h6" sx={{ fontWeight: 600 }}>
                                 Stitching Breakdown
                             </Typography>
@@ -691,11 +702,11 @@ const Dashboard = () => {
                                 rowsPerPage={stitchingBreakdownRowsPerPage}
                                 onRowsPerPageChange={(e) => setStitchingBreakdownRowsPerPage(parseInt(e.target.value, 10))}
                                 rowsPerPageOptions={[10, 25, 50, 100]}
+                                sx={{ flexShrink: 0, borderTop: `1px solid ${theme.palette.divider}` }}
                             />
                         )}
                     </Paper>
-                </Grid>
-            </Grid>
+            </Box>
 
             {/* Detailed Breakdown */}
             <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden' }}>

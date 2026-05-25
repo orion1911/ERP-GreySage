@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useOutletContext } from 'react-router-dom';
 import { LicenseInfo } from '@mui/x-license';
 import { Box, Stack, Container, useMediaQuery, useTheme } from '@mui/material';
 import { SnackBar } from './components/SnackBar';
@@ -13,7 +13,7 @@ import Appbar from './components/Navbar/Appbar';
 import Login from './features/Login/Login';
 import Register from './features/Login/Register';
 import UserManagement from './features/Admin/UserManagement';
-import InvoiceManagement from './features/Admin/InvoiceManagement';
+import CompanySettings from './features/Admin/CompanySettings';
 import Reports from './features/Admin/Reports';
 import AuditLogs from './features/Admin/AuditLogs';
 import Dashboard from './features/Admin/Dashboard';
@@ -26,6 +26,8 @@ import WashingVendorCatalog from './features/Catalogs/WashingVendorCatalog';
 import FinishingVendorCatalog from './features/Catalogs/FinishingVendorCatalog';
 import StitchingManagement from './features/Stitching/StitchingManagement';
 import { VendorPaymentManagement } from './features/VendorPayments';
+import { InvoiceManagement } from './features/Sales';
+import { ClientPaymentManagement } from './features/ClientPayments';
 import NotFound from './components/NotFound';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -37,42 +39,42 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   return children;
 };
 
-const AdminLayout = () => (
-  <ProtectedRoute allowedRoles={['admin']}>
-    <Outlet />
-  </ProtectedRoute>
-);
+const AdminLayout = () => {
+  // Forward the parent AuthenticatedLayout's context (isMobile, drawerWidth, showSnackbar)
+  // down to nested admin pages. Without this, useOutletContext() in child pages returns undefined.
+  const parentContext = useOutletContext();
+  return (
+    <ProtectedRoute allowedRoles={['admin']}>
+      <Outlet context={parentContext} />
+    </ProtectedRoute>
+  );
+};
 
 const AuthenticatedLayout = ({ isMobile, variant, setVariant }) => {
   const theme = useTheme();
   
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
   
-  const [collapsed, setCollapsed] = React.useState(isMobile); // Ensure collapsed by default in mobile
-  const drawerWidth = collapsed ? 60 : 240;
+  // Collapsed by default on every screen size; user expands via the hamburger.
+  const [collapsed, setCollapsed] = React.useState(true);
+  const drawerWidth = collapsed ? 60 : 200;
 
   const handleDrawerToggle = () => {
     setCollapsed(!collapsed);
   };
 
+  // Auto-collapse on any click outside the sidebar (desktop and mobile).
   React.useEffect(() => {
+    if (collapsed) return; // already collapsed, nothing to do
     const handleClickOutside = (event) => {
-      if (isMobile && !collapsed) {
-        const navbar = document.querySelector('.navbar');
-        if (navbar && !navbar.contains(event.target)) {
-          setCollapsed(true);
-        }
+      const navbar = document.querySelector('.navbar');
+      if (navbar && !navbar.contains(event.target)) {
+        setCollapsed(true);
       }
     };
-
-    if (isMobile && !collapsed) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isMobile, collapsed]);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [collapsed]);
 
   let snackbarTimeout;
   const showSnackbar = (error, severity = 'error') => {
@@ -200,7 +202,8 @@ function App() {
               <Route path="/dashboardxl" element={<DashboardExcel />} />
               <Route path="/stitching" element={<StitchingManagement />} />
               <Route path="/vendor-payments" element={<VendorPaymentManagement />} />
-              <Route path="/invoices" element={<InvoiceManagement />} />
+              <Route path="/sales/invoices" element={<InvoiceManagement />} />
+              <Route path="/sales/client-payments" element={<ClientPaymentManagement />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/clients" element={<ClientCatalog />} />
               <Route path="/products" element={<ProductCatalog />} />
@@ -211,6 +214,7 @@ function App() {
               <Route element={<AdminLayout />}>
                 <Route path="/users" element={<UserManagement />} />
                 <Route path="/audit-logs" element={<AuditLogs />} />
+                <Route path="/admin/company-settings" element={<CompanySettings />} />
               </Route>
             </Route>
             <Route path="/" element={<Navigate to="/login" />} />

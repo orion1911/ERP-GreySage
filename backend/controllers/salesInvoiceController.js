@@ -1,0 +1,406 @@
+const mongoose = require('mongoose');
+const {
+  Invoice,
+  Client,
+  Lot,
+  CompanySettings
+} = require('../mongodb_schema');
+const {
+  getLotsAvailableForDispatch,
+  getFinalPcsForLot,
+  sumInvoicedPcsForLot,
+  recalcLotInvoiced,
+  generateInvoiceNumber,
+  generateInvoiceInternalId,
+  recomputeInvoiceTotals,
+  recordInvoiceHistory,
+  getInvoiceHistory
+} = require('../services/invoiceService');
+const { updateClientBalance } = require('../services/clientBalanceService');
+const { logAction } = require('../utils/logger');
+
+/**
+ * Snapshot a client into the shape stored on the Invoice. Frozen at issue time.
+ */
+const snapshotClient = (client) => ({
+  clientSnapshot: {
+    name: client.name,
+    // Firm name printed on the invoice. Falls back to display name if billingName is blank.
+    billingName: client.billingName || client.name,
+    clientCode: client.clientCode,
+    gstin: client.gstin,
+    pan: client.pan,
+    phone: client.contact,
+    email: client.email
+  },
+  billTo: client.billingAddress?.toObject ? client.billingAddress.toObject() : (client.billingAddress || {}),
+  shipTo: client.shippingAddress?.toObject ? client.shippingAddress.toObject() : (client.shippingAddress || {})
+});
+
+/**
+ * Validate the incoming line payload — return the line subdoc shape after enrichment.
+ * Verifies pcs ≤ remaining for the lot (excluding the invoice we're editing).
+ */
+const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
+  if (!Array.isArray(rawLines) || rawLines.length === 0) {
+    throw new Error('Invoice must have at least one line item');
+  }
+  const lines = [];
+  // Track per-lot pcs being added in this single invoice (across multiple lines on same lot)
+  const lotPcsInThisInvoice = new Map();
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i];
+    const pcs = parseInt(raw.pcs, 10);
+    const rate = Number(raw.rate);
+    if (!Number.isInteger(pcs) || pcs < 1) {
+      throw new Error(`Line ${i + 1}: pcs must be a positive integer`);
+    }
+    if (!Number.isFinite(rate) || rate < 0) {
+      throw new Error(`Line ${i + 1}: rate must be a non-negative number`);
+    }
+    if (!raw.description || !String(raw.description).trim()) {
+      throw new Error(`Line ${i + 1}: description is required`);
+    }
+
+    const line = {
+      lineNo: i + 1,
+      description: String(raw.description).trim(),
+      hsnSac: raw.hsnSac ? String(raw.hsnSac).trim() : undefined,
+      pcs,
+      unit: raw.unit ? String(raw.unit).trim() : '',
+      rate,
+      amount: pcs * rate
+    };
+
+    if (raw.lotId) {
+      const lot = await Lot.findById(raw.lotId).lean();
+      if (!lot) throw new Error(`Line ${i + 1}: lot not found`);
+      line.lotId = lot._id;
+      line.lotNumberSnapshot = lot.lotNumber;
+      line.lotInvoiceNumberSnapshot = lot.invoiceNumber;
+
+      const finalPcs = await getFinalPcsForLot(lot._id);
+      const otherInvoicedPcs = await sumInvoicedPcsForLot(lot._id, excludeInvoiceId);
+      const alreadyInThisInvoice = lotPcsInThisInvoice.get(String(lot._id)) || 0;
+      const remaining = finalPcs - otherInvoicedPcs - alreadyInThisInvoice;
+      if (pcs > remaining) {
+        throw new Error(
+          `Line ${i + 1}: lot ${lot.lotNumber} only has ${remaining} pcs remaining ` +
+          `(final ${finalPcs}, already invoiced elsewhere ${otherInvoicedPcs}` +
+          (alreadyInThisInvoice > 0 ? `, in this invoice ${alreadyInThisInvoice}` : '') + ')'
+        );
+      }
+      lotPcsInThisInvoice.set(String(lot._id), alreadyInThisInvoice + pcs);
+    }
+
+    lines.push(line);
+  }
+  return lines;
+};
+
+// ─── ROUTES ──────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/sales-invoices/lots-available?clientId=&search=
+ */
+const getLotsAvailable = async (req, res) => {
+  const { clientId, search } = req.query;
+  const lots = await getLotsAvailableForDispatch({ clientId, search });
+  res.json(lots);
+};
+
+/**
+ * POST /api/sales-invoices
+ */
+const createInvoice = async (req, res) => {
+  const {
+    date,
+    clientId,
+    placeOfSupply,
+    lines,
+    roundOff = 0,
+    notes,
+    documentType
+  } = req.body;
+
+  if (!date) return res.status(400).json({ error: 'Date is required' });
+  if (!clientId) return res.status(400).json({ error: 'Client is required' });
+
+  const client = await Client.findById(clientId);
+  if (!client) return res.status(404).json({ error: 'Client not found' });
+
+  const builtLines = await buildAndValidateLines(lines);
+
+  const settings = await CompanySettings.findOne();
+  const prefix = settings?.defaultInvoicePrefix || 'INV';
+  const docType = documentType || settings?.defaultDocumentType || 'BILL_OF_SUPPLY';
+
+  const invoiceNumber = await generateInvoiceNumber(date, prefix);
+  const invoiceId = await generateInvoiceInternalId();
+
+  // Derive Place of Supply from the client's shipping address (fall back to billing).
+  // Client request may still override by passing an explicit placeOfSupply object.
+  const ship = client.shippingAddress;
+  const bill = client.billingAddress;
+  const posSrc = (ship?.state || ship?.stateCode) ? ship : bill;
+  const derivedPos = {
+    stateName: posSrc?.state || '',
+    stateCode: posSrc?.stateCode || ''
+  };
+
+  const invoice = new Invoice({
+    invoiceId,
+    invoiceNumber,
+    documentType: docType,
+    date: new Date(date),
+    clientId,
+    ...snapshotClient(client),
+    placeOfSupply: placeOfSupply || derivedPos,
+    lines: builtLines,
+    roundOff: Number(roundOff) || 0,
+    notes,
+    status: 'issued',
+    createdBy: req.user.userId
+  });
+  recomputeInvoiceTotals(invoice);
+  await invoice.save();
+
+  // Update per-lot invoicedPcs cache and the client balance
+  const affectedLotIds = [...new Set(builtLines.map((l) => l.lotId).filter(Boolean).map(String))];
+  await Promise.all(affectedLotIds.map((id) => recalcLotInvoiced(id)));
+  await updateClientBalance(clientId);
+
+  await recordInvoiceHistory(invoice._id, 'create', null, invoice.toObject(), req.user.userId);
+  await logAction(req.user.userId, 'create_invoice', 'Invoice', invoice._id, `Created invoice ${invoiceNumber} for ${client.name}`);
+
+  res.status(201).json(invoice);
+};
+
+/**
+ * PATCH /api/sales-invoices/:id  — update an issued invoice
+ */
+const updateInvoice = async (req, res) => {
+  const { id } = req.params;
+  const existing = await Invoice.findById(id);
+  if (!existing) return res.status(404).json({ error: 'Invoice not found' });
+  if (existing.status === 'cancelled') {
+    return res.status(400).json({ error: 'Cancelled invoices cannot be edited' });
+  }
+
+  const before = existing.toObject();
+  const prevLotIds = new Set(existing.lines.map((l) => l.lotId).filter(Boolean).map(String));
+
+  const {
+    date,
+    placeOfSupply,
+    lines,
+    roundOff,
+    notes,
+    documentType
+  } = req.body;
+
+  if (Array.isArray(lines)) {
+    existing.lines = await buildAndValidateLines(lines, existing._id);
+  }
+  if (date) existing.date = new Date(date);
+  if (placeOfSupply) existing.placeOfSupply = placeOfSupply;
+  if (roundOff !== undefined) existing.roundOff = Number(roundOff) || 0;
+  if (notes !== undefined) existing.notes = notes;
+  if (documentType) existing.documentType = documentType;
+
+  // Refresh client snapshot if the underlying client was updated since issue?
+  // Spec: snapshots are FROZEN. Do not refresh.
+
+  existing.updatedBy = req.user.userId;
+  existing.updatedAt = new Date();
+  recomputeInvoiceTotals(existing);
+  await existing.save();
+
+  // Recalc all lots that were ever on this invoice (added, removed, or kept)
+  const nextLotIds = new Set(existing.lines.map((l) => l.lotId).filter(Boolean).map(String));
+  const allAffected = new Set([...prevLotIds, ...nextLotIds]);
+  await Promise.all([...allAffected].map((lid) => recalcLotInvoiced(lid)));
+  await updateClientBalance(existing.clientId);
+
+  await recordInvoiceHistory(existing._id, 'update', before, existing.toObject(), req.user.userId);
+  await logAction(req.user.userId, 'update_invoice', 'Invoice', existing._id, `Updated invoice ${existing.invoiceNumber}`);
+
+  res.json(existing);
+};
+
+/**
+ * POST /api/sales-invoices/:id/cancel — soft-cancel; lots return to remaining pool.
+ */
+const cancelInvoice = async (req, res) => {
+  const { id } = req.params;
+  const invoice = await Invoice.findById(id);
+  if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+  if (invoice.status === 'cancelled') {
+    return res.status(400).json({ error: 'Already cancelled' });
+  }
+
+  const before = invoice.toObject();
+  invoice.status = 'cancelled';
+  invoice.updatedBy = req.user.userId;
+  invoice.updatedAt = new Date();
+  await invoice.save();
+
+  const affectedLotIds = [...new Set(invoice.lines.map((l) => l.lotId).filter(Boolean).map(String))];
+  await Promise.all(affectedLotIds.map((lid) => recalcLotInvoiced(lid)));
+  await updateClientBalance(invoice.clientId);
+
+  await recordInvoiceHistory(invoice._id, 'cancel', before, invoice.toObject(), req.user.userId);
+  await logAction(req.user.userId, 'cancel_invoice', 'Invoice', invoice._id, `Cancelled invoice ${invoice.invoiceNumber}`);
+
+  res.json(invoice);
+};
+
+/**
+ * DELETE /api/sales-invoices/:id — hard delete (admin-only typically; same effect on balances).
+ */
+const deleteInvoice = async (req, res) => {
+  const { id } = req.params;
+  const invoice = await Invoice.findById(id);
+  if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+
+  const before = invoice.toObject();
+  const clientId = invoice.clientId;
+  const affectedLotIds = [...new Set(invoice.lines.map((l) => l.lotId).filter(Boolean).map(String))];
+
+  await Invoice.findByIdAndDelete(id);
+  await Promise.all(affectedLotIds.map((lid) => recalcLotInvoiced(lid)));
+  await updateClientBalance(clientId);
+
+  await recordInvoiceHistory(id, 'delete', before, null, req.user.userId);
+  await logAction(req.user.userId, 'delete_invoice', 'Invoice', id, `Deleted invoice ${invoice.invoiceNumber}`);
+
+  res.json({ message: 'Invoice deleted' });
+};
+
+/**
+ * GET /api/sales-invoices?clientId=&from=&to=&status=&search=
+ */
+const listInvoices = async (req, res) => {
+  const { clientId, from, to, status, search } = req.query;
+  const query = {};
+  if (clientId) query.clientId = clientId;
+  if (status) query.status = status;
+  if (from || to) {
+    query.date = {};
+    if (from) query.date.$gte = new Date(from);
+    if (to) query.date.$lte = new Date(to);
+  }
+  if (search && search.trim()) {
+    const re = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    query.$or = [
+      { invoiceNumber: re },
+      { 'clientSnapshot.name': re },
+      { 'lines.lotNumberSnapshot': re }
+    ];
+  }
+  const invoices = await Invoice.find(query)
+    .populate('clientId', 'name clientCode')
+    .sort({ date: -1, createdAt: -1 })
+    .limit(500);
+  res.json(invoices);
+};
+
+/**
+ * GET /api/sales-invoices/:id
+ */
+const getInvoiceById = async (req, res) => {
+  const inv = await Invoice.findById(req.params.id)
+    .populate('clientId', 'name clientCode gstin pan')
+    .populate('createdBy', 'username')
+    .populate('updatedBy', 'username');
+  if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+  res.json(inv);
+};
+
+/**
+ * GET /api/sales-invoices/:id/history
+ */
+const getInvoiceChangeHistory = async (req, res) => {
+  const history = await getInvoiceHistory(req.params.id);
+  res.json(history);
+};
+
+/**
+ * GET /api/sales-invoices/counter?fyShort=2627
+ * Returns the FY's counter state. `sequence` is the last issued number;
+ * the next invoice generated for this FY will be `sequence + 1`.
+ * If `fyShort` is omitted, derives it from today's date.
+ */
+const getInvoiceCounter = async (req, res) => {
+  const { Counter } = require('../mongodb_schema');
+  const { fyShortFor } = require('../services/invoiceService');
+  const fy = req.query.fyShort || fyShortFor(new Date());
+  const counter = await Counter.findById(`invoice-${fy}`);
+  res.json({
+    fyShort: fy,
+    sequence: counter?.sequence || 0,
+    nextInvoiceNumber: `INV${fy}/${(counter?.sequence || 0) + 1}`
+  });
+};
+
+/**
+ * PUT /api/sales-invoices/counter
+ * Body: { fyShort: '2627', sequence: 28 } → next generated invoice will be INV2627/29.
+ * Admin-only (enforced at the route layer).
+ *
+ * SAFETY: refuses to set the counter LOWER than the highest existing sequence number for
+ * that FY in the Invoice collection — otherwise the next generated invoice number would
+ * collide with an existing one and the unique-index save would fail.
+ */
+const setInvoiceCounter = async (req, res) => {
+  const { Counter } = require('../mongodb_schema');
+  const { fyShortFor } = require('../services/invoiceService');
+  const { fyShort, sequence } = req.body;
+  const fy = fyShort || fyShortFor(new Date());
+  const newSeq = parseInt(sequence, 10);
+  if (!Number.isInteger(newSeq) || newSeq < 0) {
+    return res.status(400).json({ error: 'sequence must be a non-negative integer' });
+  }
+
+  // Find the highest /N for this FY among existing invoices to prevent collisions
+  const re = new RegExp(`^INV${fy}/(\\d+)$`);
+  const existing = await Invoice.find({ invoiceNumber: re }).select('invoiceNumber').lean();
+  let highest = 0;
+  for (const inv of existing) {
+    const m = inv.invoiceNumber.match(re);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n > highest) highest = n;
+    }
+  }
+  if (newSeq < highest) {
+    return res.status(400).json({
+      error: `Cannot set counter to ${newSeq} — invoice INV${fy}/${highest} already exists. Minimum allowed is ${highest}.`
+    });
+  }
+
+  const counter = await Counter.findByIdAndUpdate(
+    { _id: `invoice-${fy}` },
+    { sequence: newSeq },
+    { new: true, upsert: true }
+  );
+  res.json({
+    fyShort: fy,
+    sequence: counter.sequence,
+    nextInvoiceNumber: `INV${fy}/${counter.sequence + 1}`
+  });
+};
+
+module.exports = {
+  getLotsAvailable,
+  createInvoice,
+  updateInvoice,
+  cancelInvoice,
+  deleteInvoice,
+  listInvoices,
+  getInvoiceById,
+  getInvoiceChangeHistory,
+  getInvoiceCounter,
+  setInvoiceCounter
+};

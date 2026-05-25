@@ -695,11 +695,28 @@ const VendorPaymentManagement = () => {
             </Card>
             {selectedVendor && vendorType && (
                 <>
-                    {/* Two Column Layout: Lots Table and Payment History */}
-                    <Grid container spacing={2} sx={{ mb: 4, alignItems: 'stretch' }}>
+                    {/* Two Column Layout: Lots Table and Payment History.
+                        Plain flex row with stretch — both Papers share the same height. */}
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: { xs: 'column', md: 'row' },
+                        gap: 2,
+                        mb: 4,
+                        alignItems: 'stretch',
+                        // Min height fits ~10 lot rows + table header + card header + pagination + borders.
+                        // Below this the user couldn't see a full page of lots without scrolling outside.
+                        minHeight: { md: 580 },
+                        height: { xs: 'auto', md: 'calc(100vh - 340px)' }
+                    }}>
                         {/* Left Column: Current Lots Table */}
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                        <Paper elevation={1} sx={{
+                            borderRadius: 2,
+                            overflow: 'hidden',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            flex: { xs: '0 0 60vh', md: '1 1 0' },
+                            minHeight: 0
+                        }}>
                                 <Box sx={{ p: 1, pl: 2, borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
                                         Lots
@@ -715,8 +732,8 @@ const VendorPaymentManagement = () => {
                                         Export Excel
                                     </Button>
                                 </Box>
-                                <TableContainer>
-                                    <Table size="small">
+                                <TableContainer sx={{ flexGrow: 1, minHeight: 0 }}>
+                                    <Table size="small" stickyHeader>
                                         <TableHead>
                                             <TableRow>
                                                 <TableCell sortDirection={lotSortBy === 'date' ? lotSortOrder : false}>
@@ -870,14 +887,20 @@ const VendorPaymentManagement = () => {
                                     rowsPerPage={lotRowsPerPage}
                                     onRowsPerPageChange={handleChangeLotRowsPerPage}
                                     rowsPerPageOptions={[5, 10, 25]}
+                                    sx={{ flexShrink: 0, borderTop: `1px solid ${theme.palette.divider}` }}
                                 />
-                            </Paper>
-                        </Grid>
+                        </Paper>
 
                         {/* Right Column: Payment History */}
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column'}}>
-                                <Box sx={{ p: 1, pl: 2, borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Paper elevation={1} sx={{
+                            borderRadius: 2,
+                            overflow: 'hidden',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            flex: { xs: '0 0 60vh', md: '1 1 0' },
+                            minHeight: 0
+                        }}>
+                                <Box sx={{ p: 1, pl: 2, borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                                     <Typography variant="h6" sx={{ fontWeight: 600 }}>
                                         Payment History
                                     </Typography>
@@ -892,8 +915,8 @@ const VendorPaymentManagement = () => {
                                         Export Excel
                                     </Button>
                                 </Box>
-                                <TableContainer component={Paper}>
-                                    <Table size="small">
+                                <TableContainer sx={{ flexGrow: 1, minHeight: 0 }}>
+                                    <Table size="small" stickyHeader>
                                         <TableHead>
                                             <TableRow>
                                                 <TableCell sortDirection={paymentSortBy === 'paymentDate' ? paymentSortOrder : false}>
@@ -1013,10 +1036,10 @@ const VendorPaymentManagement = () => {
                                     rowsPerPage={paymentRowsPerPage}
                                     onRowsPerPageChange={handleChangePaymentRowsPerPage}
                                     rowsPerPageOptions={[5, 10, 25]}
+                                    sx={{ flexShrink: 0, borderTop: `1px solid ${theme.palette.divider}` }}
                                 />
-                            </Paper>
-                        </Grid>
-                    </Grid>
+                        </Paper>
+                    </Box>
                 </>
             )}
 

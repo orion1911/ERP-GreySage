@@ -17,17 +17,36 @@ const UserSchema = new mongoose.Schema({
 });
 UserSchema.index({ email: 1 });
 
-// Client Schema: Includes clientCode
+// Address subdoc (used for billing/shipping on Client and snapshotted on Invoice)
+const AddressSchema = new mongoose.Schema({
+  line1: { type: String, trim: true },
+  line2: { type: String, trim: true },
+  city: { type: String, trim: true },
+  state: { type: String, trim: true },
+  stateCode: { type: String, trim: true }, // GST 2-digit code, e.g. "27" Maharashtra
+  pincode: { type: String, trim: true },
+  country: { type: String, trim: true, default: 'India' }
+}, { _id: false });
+
+// Client Schema: Includes clientCode + GST/billing details
+// `name` is the internal display label (e.g. "ADAM HILL"); `billingName` is the legal
+// firm/company name (e.g. "BRANDKO MART LLP") printed on the invoice's Bill To / Ship To.
 const ClientSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   clientCode: { type: String, required: true, unique: true },
+  billingName: { type: String, trim: true }, // firm name on invoice; falls back to `name` if blank
   contact: { type: String },
   email: { type: String },
-  address: { type: String },
+  address: { type: String }, // legacy free-text; kept for back-compat
+  gstin: { type: String, trim: true, uppercase: true },
+  pan: { type: String, trim: true, uppercase: true },
+  billingAddress: { type: AddressSchema, default: () => ({}) },
+  shippingAddress: { type: AddressSchema, default: () => ({}) },
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
 });
 ClientSchema.index({ name: 1 }, { unique: true }); // Unique index on name
+ClientSchema.index({ gstin: 1 }, { sparse: true });
 
 // FitStyle Schema: Lookup replacing Product
 const FitStyleSchema = new mongoose.Schema({
@@ -97,7 +116,7 @@ OrderSchema.index({ status: 1, date: 1 }); // Compound index for status-based da
 const LotSchema = new mongoose.Schema({
   lotId: { type: String, unique: true },                    // LT-YYYYMMDD###
   lotNumber: { type: String, required: true, unique: true }, // e.g., A/1/5
-  invoiceNumber: { type: Number, required: true, unique: true },
+  invoiceNumber: { type: Number, required: true, unique: true }, // upstream invoice (NOT the sales invoice)
   clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
   fabric: { type: String, required: true },
   fitStyleId: { type: mongoose.Schema.Types.ObjectId, ref: 'FitStyle', required: true },
@@ -106,6 +125,10 @@ const LotSchema = new mongoose.Schema({
   status: { type: Number, enum: [2, 3, 4, 5, 6], default: 2 },
   statusHistory: [{ status: Number, changedAt: { type: Date, default: Date.now } }],
   description: { type: String },
+  // Sales-side cached aggregate: sum of all issued invoice-line pcs for this lot.
+  // Recomputed by invoiceService.recalcLotInvoiced after every invoice write.
+  // remainingPcs = finalPcs(production) - invoicedPcs.
+  invoicedPcs: { type: Number, default: 0, min: 0 },
   createdAt: { type: Date, default: Date.now }
 });
 LotSchema.index({ lotNumber: 1, invoiceNumber: 1 });
@@ -235,17 +258,171 @@ const VendorBalanceSchema = new mongoose.Schema({
 });
 VendorBalanceSchema.index({ vendorId: 1, vendorType: 1 });
 
-// Invoice Schema: References Orders
+// ─── SALES / DISPATCH / BILLING ──────────────────────────────────────────────
+
+// CompanySettings: singleton holding the seller-side details printed on every invoice
+// (issuer name, GSTIN, MSME, bank, signatory). Only one document should exist; the
+// controller uses findOne + upsert. Update via the admin-only /api/company-settings route.
+const CompanySettingsSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  addressLines: [{ type: String, trim: true }], // multi-line address; rendered as-is on PDF
+  gstin: { type: String, trim: true, uppercase: true },
+  pan: { type: String, trim: true, uppercase: true },
+  msmeType: { type: String, trim: true },     // e.g. 'Micro'
+  msmeNumber: { type: String, trim: true },   // e.g. 'MH 18 0153950'
+  email: { type: String, trim: true },
+  phone: { type: String, trim: true },
+  gstStateCode: { type: String, trim: true }, // e.g. '27'
+  gstStateName: { type: String, trim: true }, // e.g. 'Maharashtra'
+  bank: {
+    bankName: { type: String, trim: true },
+    accountNumber: { type: String, trim: true },
+    ifsc: { type: String, trim: true, uppercase: true },
+    accountName: { type: String, trim: true }
+  },
+  authorisedSignatory: {
+    name: { type: String, trim: true },
+    title: { type: String, trim: true } // e.g. 'Proprietor'
+  },
+  defaultInvoicePrefix: { type: String, trim: true, default: 'INV' },
+  defaultDocumentType: { type: String, enum: ['BILL_OF_SUPPLY', 'TAX_INVOICE'], default: 'BILL_OF_SUPPLY' },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+// InvoiceLine subdoc: one row of an invoice. Each line ships pcs from one of our Lots
+// (or null for legacy/manual entries). lotNumberSnapshot + lotInvoiceNumberSnapshot
+// are frozen at issue time so renaming a Lot later doesn't mutate historical invoices.
+const InvoiceLineSchema = new mongoose.Schema({
+  lineNo: { type: Number, required: true, min: 1 },
+  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot' }, // null allowed for legacy lines
+  lotNumberSnapshot: { type: String, trim: true },     // frozen lot # for printing
+  lotInvoiceNumberSnapshot: { type: Number },          // frozen upstream invoice #
+  description: { type: String, required: true, trim: true }, // free-form; prefilled from lot
+  hsnSac: { type: String, trim: true },
+  pcs: { type: Number, required: true, min: 1, validate: { validator: Number.isInteger, message: 'pcs must be integer' } },
+  unit: { type: String, trim: true, default: '' },
+  rate: { type: Number, required: true, min: 0 },
+  amount: { type: Number, required: true, min: 0 } // pcs * rate, recomputed server-side
+}, { _id: true });
+
+// Invoice: parent doc = dispatch event = printable bill. Client + addresses are
+// SNAPSHOTTED at issue time so editing the Client master never mutates a past invoice.
+// invoiceNumber is human-facing "INV{FY}/{seq}" generated atomically via Counter.
 const InvoiceSchema = new mongoose.Schema({
-  invoiceNumber: { type: String, required: true, unique: true },
+  invoiceId: { type: String, unique: true },                  // internal: INV-YYYYMMDD###
+  invoiceNumber: { type: String, required: true, unique: true }, // human: INV2627/27
+  documentType: { type: String, enum: ['BILL_OF_SUPPLY', 'TAX_INVOICE'], default: 'BILL_OF_SUPPLY' },
+  date: { type: Date, required: true },
   clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
-  orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
-  totalAmount: { type: Number, required: true },
-  status: { type: String, enum: ['pending', 'paid', 'partial'], default: 'pending' },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  clientSnapshot: {
+    name: String,         // internal client display name (e.g. "ADAM HILL") — for searches/listings
+    billingName: String,  // firm name printed on PDF Bill To / Ship To (e.g. "BRANDKO MART LLP")
+    clientCode: String,
+    gstin: String,
+    pan: String,
+    phone: String,
+    email: String
+  },
+  billTo: { type: AddressSchema, default: () => ({}) },
+  shipTo: { type: AddressSchema, default: () => ({}) },
+  placeOfSupply: {
+    stateCode: { type: String, trim: true },
+    stateName: { type: String, trim: true }
+  },
+  lines: { type: [InvoiceLineSchema], default: [] },
+  subTotal: { type: Number, default: 0, min: 0 },
+  roundOff: { type: Number, default: 0 },
+  total: { type: Number, default: 0, min: 0 },
+  totalQty: { type: Number, default: 0, min: 0 },
+  amountInWords: { type: String, trim: true },
+  notes: { type: String, trim: true },
+  status: { type: String, enum: ['draft', 'issued', 'cancelled'], default: 'issued' },
+  pdfMeta: { filename: String, generatedAt: Date },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date }
+});
+InvoiceSchema.index({ clientId: 1, date: -1 });
+InvoiceSchema.index({ date: 1 });
+InvoiceSchema.index({ status: 1, date: -1 });
+InvoiceSchema.index({ 'lines.lotId': 1 }); // "which invoices reference this lot"
+
+// InvoiceHistory: audit log mirror of VendorPaymentEntryHistory
+const InvoiceHistorySchema = new mongoose.Schema({
+  invoiceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', required: true },
+  action: { type: String, enum: ['create', 'update', 'cancel', 'delete'], required: true },
+  beforeData: { type: mongoose.Schema.Types.Mixed },
+  afterData: { type: mongoose.Schema.Types.Mixed },
+  changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   createdAt: { type: Date, default: Date.now }
 });
-InvoiceSchema.index({ invoiceNumber: 1, orderId: 1 });
+InvoiceHistorySchema.index({ invoiceId: 1, createdAt: -1 });
+
+// ClientPaymentEntry: ledger of payments + adjustments (mirror of VendorPaymentEntry).
+// paymentScope='invoice' applies to one invoice; 'client' is a lump sum against the client balance.
+const ClientPaymentEntrySchema = new mongoose.Schema({
+  clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
+  paymentScope: { type: String, enum: ['client', 'invoice'], default: 'client' },
+  invoiceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice' }, // required iff scope='invoice'
+  paymentType: { type: String, enum: ['payment', 'adjustment'], required: true },
+  amount: { type: Number, required: true },
+  paymentDate: { type: Date, required: true },
+  paymentMode: { type: String, enum: ['cash', 'bank', 'upi', 'cheque', 'other'], default: 'cash' },
+  referenceNumber: { type: String, trim: true }, // cheque #, UTR, transaction id
+  notes: { type: String, trim: true },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  updatedAt: { type: Date }
+});
+ClientPaymentEntrySchema.index({ clientId: 1, paymentDate: -1 });
+ClientPaymentEntrySchema.index({ clientId: 1, invoiceId: 1 });
+ClientPaymentEntrySchema.index({ clientId: 1, createdAt: -1 });
+
+// ClientPaymentEntryHistory: audit log of create/update/delete
+const ClientPaymentEntryHistorySchema = new mongoose.Schema({
+  entryId: { type: mongoose.Schema.Types.ObjectId, ref: 'ClientPaymentEntry', required: true },
+  clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
+  action: { type: String, enum: ['create', 'update', 'delete'], required: true },
+  paymentType: { type: String, enum: ['payment', 'adjustment'], required: true },
+  beforeData: {
+    amount: Number,
+    paymentDate: Date,
+    paymentScope: String,
+    invoiceId: mongoose.Schema.Types.ObjectId,
+    paymentMode: String,
+    referenceNumber: String,
+    notes: String
+  },
+  afterData: {
+    amount: Number,
+    paymentDate: Date,
+    paymentScope: String,
+    invoiceId: mongoose.Schema.Types.ObjectId,
+    paymentMode: String,
+    referenceNumber: String,
+    notes: String
+  },
+  changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+ClientPaymentEntryHistorySchema.index({ clientId: 1, createdAt: -1 });
+ClientPaymentEntryHistorySchema.index({ entryId: 1 });
+
+// ClientBalance: denormalized aggregate (mirror of VendorBalance).
+// Recomputed by clientBalanceService.updateClientBalance after every invoice/payment write.
+// openingBalance lets us seed legacy balances from the spreadsheets without backfilling history.
+const ClientBalanceSchema = new mongoose.Schema({
+  clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, unique: true },
+  openingBalance: { type: Number, default: 0 },
+  totalInvoiced: { type: Number, default: 0 },
+  totalPaid: { type: Number, default: 0 },
+  totalAdjustment: { type: Number, default: 0 },
+  remainingBalance: { type: Number, default: 0 }, // opening + invoiced - paid - adjustment
+  lastUpdated: { type: Date, default: Date.now }
+});
+ClientBalanceSchema.index({ clientId: 1 }, { unique: true });
 
 // Balance Schema: Order-based financials
 const BalanceSchema = new mongoose.Schema({
@@ -277,7 +454,7 @@ const ReportSchema = new mongoose.Schema({
 const AuditLogSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   action: { type: String, required: true },
-  entity: { type: String, enum: ['User', 'Client', 'FitStyle', 'Order', 'Stitching', 'Washing', 'Finishing', 'VendorBalance', 'Invoice', 'Balance', 'Report'], required: true },
+  entity: { type: String, enum: ['User', 'Client', 'FitStyle', 'Order', 'Stitching', 'Washing', 'Finishing', 'VendorBalance', 'Invoice', 'Balance', 'Report', 'ClientBalance', 'ClientPayment', 'CompanySettings'], required: true },
   entityId: { type: mongoose.Schema.Types.ObjectId, required: true },
   details: { type: String },
   createdAt: { type: Date, default: Date.now }
@@ -300,7 +477,12 @@ module.exports = {
   VendorPaymentEntry: mongoose.model('VendorPaymentEntry', VendorPaymentEntrySchema),
   VendorPaymentEntryHistory: mongoose.model('VendorPaymentEntryHistory', VendorPaymentEntryHistorySchema),
   VendorBalance: mongoose.model('VendorBalance', VendorBalanceSchema),
+  CompanySettings: mongoose.model('CompanySettings', CompanySettingsSchema),
   Invoice: mongoose.model('Invoice', InvoiceSchema),
+  InvoiceHistory: mongoose.model('InvoiceHistory', InvoiceHistorySchema),
+  ClientPaymentEntry: mongoose.model('ClientPaymentEntry', ClientPaymentEntrySchema),
+  ClientPaymentEntryHistory: mongoose.model('ClientPaymentEntryHistory', ClientPaymentEntryHistorySchema),
+  ClientBalance: mongoose.model('ClientBalance', ClientBalanceSchema),
   Balance: mongoose.model('Balance', BalanceSchema),
   Report: mongoose.model('Report', ReportSchema),
   AuditLog: mongoose.model('AuditLog', AuditLogSchema)

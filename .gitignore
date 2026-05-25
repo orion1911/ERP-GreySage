@@ -17,3 +17,5 @@ build
 *.zip
 .env.development
 .claude/settings.local.json
+mongo_init
+

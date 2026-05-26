@@ -109,14 +109,74 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
             }),
           },
         },
+        // Global Paper styling — applied to every <Paper>, and inherited by
+        // <Card>, <Dialog>, <Menu>, <Popover>, etc., since they're all Paper
+        // underneath. Anything that should match the Sidebar's surface gets it
+        // automatically; no per-component sx override needed.
+        //
+        //  * backgroundColor: palette.background.paper — exact tone of the
+        //    sidebar Box, so cards on a page can't drift to a different shade.
+        //  * backgroundImage: 'none' — strips MUI's dark-mode elevation overlay
+        //    (a translucent white linear-gradient) which would otherwise make
+        //    Paper render LIGHTER than the Sidebar's plain Box at any non-zero
+        //    elevation.
+        //  * Shared rounded corners (10px) in both modes for consistency.
+        //  * Explicit shadows for BOTH modes — the prior light-only shadow used
+        //    `#7090b014` (alpha 0.08), too faint to perceive against the slight
+        //    blue page background. Dark-mode default Paper shadow was hard to
+        //    see on dark.default too. These values give an obvious "card lifted
+        //    off the page" feel at any elevation.
+        //  * `variant: 'outlined'` Cards opt out via `MuiPaper-outlined` class
+        //    (MUI's default), so they keep the border-only look they choose.
         MuiPaper: {
           styleOverrides: {
             root: ({ theme }) => ({
-              ...(mode === 'light' && {
-                backgroundColor: 'hsl(0deg 0% 99%)',
-                boxShadow: '14px 17px 40px 4px #7090b014',
-                borderRadius: '10px',
-              }),
+              backgroundColor: theme.palette.background.paper,
+              backgroundImage: 'none',
+              borderRadius: '10px',
+              boxShadow: mode === 'light'
+                ? '0 4px 16px rgba(17, 27, 74, 0.10)'   // soft cool-blue cast picks up the page tint
+                : '0 4px 16px rgba(0, 0, 0, 0.45)',     // stronger on dark.default to read clearly
+            }),
+          },
+        },
+        // Card extends Paper but defines its own MuiCard-root class, so we
+        // mirror the Paper override here so Card surfaces match Paper exactly.
+        MuiCard: {
+          styleOverrides: {
+            root: ({ theme }) => ({
+              backgroundColor: theme.palette.background.paper,
+              backgroundImage: 'none',
+              borderRadius: '10px',
+              boxShadow: mode === 'light'
+                ? '0 4px 16px rgba(17, 27, 74, 0.10)'
+                : '0 4px 16px rgba(0, 0, 0, 0.45)',
+            }),
+          },
+        },
+        // TableContainer is a plain <div> by default — it does NOT inherit
+        // Paper styling. Without this override, standalone tables (catalogs,
+        // dashboard, etc.) sit flat on the page background with no shadow,
+        // while Paper-wrapped tables get the elevation. Apply the same
+        // background/radius/shadow so every table-as-card reads consistently,
+        // then drop the styling when the TableContainer IS nested inside a
+        // Paper (avoid stacked shadows / nested rounded corners).
+        MuiTableContainer: {
+          styleOverrides: {
+            root: ({ theme }) => ({
+              backgroundColor: theme.palette.background.paper,
+              backgroundImage: 'none',
+              borderRadius: '10px',
+              boxShadow: mode === 'light'
+                ? '0 4px 16px rgba(17, 27, 74, 0.10)'
+                : '0 4px 16px rgba(0, 0, 0, 0.45)',
+              // `.MuiPaper-root &` = "if an ancestor is a Paper, apply these"
+              // — Emotion supports the parent-selector pattern via &.
+              '.MuiPaper-root &': {
+                boxShadow: 'none',
+                borderRadius: 0,
+                backgroundColor: 'transparent',
+              },
             }),
           },
         },

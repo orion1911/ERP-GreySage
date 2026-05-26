@@ -112,7 +112,7 @@ function ClientCatalogSx({
             <OrderCardsLoader type="client" />
           ) : processedClients.length > 0 ? (
             processedClients.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((client) => (
-              <Card key={client._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+              <Card key={client._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1 }}>
                 <CardContent>
                   <Stack>
                     <Grid container spacing={1} sx={{ textAlign: 'center' }}>

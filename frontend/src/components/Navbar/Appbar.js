@@ -4,12 +4,17 @@ import { useNavigate } from 'react-router-dom';
 import { Menu as MenuIcon, PowerSettingsNew as LogoutIcon, Close as CloseIcon } from '@mui/icons-material';
 import { motion } from 'motion/react';
 import ThemeToggle from '../Theme/ThemeToggle';
+import authService from '../../services/authService';
 
 function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }) {
   const navigate = useNavigate();
   const [isVisible, setIsVisible] = useState(true);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Tell the server first so the refresh-token row is removed from this user's
+    // DB record and the httpOnly cookie is cleared. If the call fails we still
+    // log the user out locally — authService.logout() never throws.
+    await authService.logout();
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     navigate('/login');

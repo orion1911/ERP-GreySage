@@ -6,6 +6,18 @@ const CounterSchema = new mongoose.Schema({
   sequence: { type: Number, default: 0 }
 });
 
+// Refresh token subdoc — one entry per active session/device.
+// tokenHash is bcrypt(refreshToken) so a DB leak can't be used to mint sessions.
+// familyId groups rotations from the same login; if a previously-rotated token
+// is ever re-presented (theft signal) we wipe every entry sharing that familyId.
+const RefreshTokenSchema = new mongoose.Schema({
+  familyId: { type: String, required: true, index: true },
+  tokenHash: { type: String, required: true },
+  expiresAt: { type: Date, required: true },
+  userAgent: { type: String },
+  createdAt: { type: Date, default: Date.now }
+}, { _id: false });
+
 // User Schema: Manages authentication and roles
 const UserSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
@@ -13,6 +25,7 @@ const UserSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { type: String, enum: ['admin', 'user'], default: 'user' },
   isActive: { type: Boolean, default: true },
+  refreshTokens: { type: [RefreshTokenSchema], default: [], select: false },
   createdAt: { type: Date, default: Date.now }
 });
 UserSchema.index({ email: 1 });

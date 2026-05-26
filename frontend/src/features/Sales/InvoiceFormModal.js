@@ -4,7 +4,7 @@ import { useForm, Controller, useFieldArray, useWatch } from 'react-hook-form';
 import {
   Box, Modal, Typography, TextField, Button, IconButton, Grid,
   Autocomplete, MenuItem, Table, TableHead, TableRow, TableCell, TableBody,
-  Stack, Divider, CircularProgress
+  Stack, Divider, CircularProgress, Card, CardContent, useTheme
 } from '@mui/material';
 import {
   Close as CloseIcon, Save as SaveIcon, Publish as PublishIcon,
@@ -33,7 +33,8 @@ const emptyLine = {
 };
 
 function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
-  const { isMobile, showSnackbar } = useOutletContext();
+  const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
+  const theme = useTheme();
   const [submitting, setSubmitting] = useState(false);
   const [clients, setClients] = useState([]);
   const [lotsForClient, setLotsForClient] = useState([]);
@@ -202,14 +203,16 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
   return (
     <Modal open={open} onClose={onClose} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <Box sx={{
-        width: isMobile ? '95%' : '92%',
+        // Match Add Stitching modal: offset by drawer on desktop, stay bounded on mobile
+        ml: isMobile ? 0 : drawerWidth + 'px',
+        width: isMobile ? '90%' : '85%',
         maxWidth: 1200,
-        maxHeight: '92vh',
+        maxHeight: '85vh',
         overflowY: 'auto',
         bgcolor: 'background.paper',
         borderRadius: 2,
         boxShadow: 24,
-        p: 3
+        p: isMobile ? 2 : 4
       }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6">
@@ -230,7 +233,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
         >
           <LocalizationProvider dateAdapter={AdapterDayjs}>
             <Grid container spacing={2}>
-              <Grid size={{ xs: 12, md: 3 }}>
+              <Grid size={{ xs: 6, md: 3 }}>
                 <Controller
                   name="date"
                   control={control}
@@ -246,7 +249,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
                   )}
                 />
               </Grid>
-              <Grid size={{ xs: 12, md: 5 }}>
+              <Grid size={{ xs: 6, md: 3 }}>
                 <Controller
                   name="client"
                   control={control}
@@ -266,7 +269,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
                   )}
                 />
               </Grid>
-              <Grid size={{ xs: 12, md: 4 }}>
+              <Grid size={{ xs: 6, md: 3 }}>
                 <Controller
                   name="documentType"
                   control={control}
@@ -278,165 +281,304 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
                   )}
                 />
               </Grid>
-              <Grid size={{ xs: 12, md: 5 }}>
+              <Grid size={{ xs: 6, md: 3 }}>
                 <TextField
-                  label="Place of Supply (derived from client's shipping address)"
+                  label="Place of Supply"
                   value={derivedPlaceOfSupply.stateName || derivedPlaceOfSupply.stateCode
                     ? `${derivedPlaceOfSupply.stateName}${derivedPlaceOfSupply.stateCode ? ` (${derivedPlaceOfSupply.stateCode})` : ''}`
                     : ''}
                   fullWidth variant="standard"
                   InputProps={{ readOnly: true }}
-                  helperText={!client ? 'Pick a client' : (!derivedPlaceOfSupply.stateName ? 'Client has no shipping/billing state — edit the client to fix' : '')}
+                  helperText={!client ? 'Pick a client' : (!derivedPlaceOfSupply.stateName ? 'No state on client — edit to fix' : '')}
                 />
               </Grid>
             </Grid>
           </LocalizationProvider>
 
-          <Divider sx={{ my: 2 }}><Typography variant="caption">LINE ITEMS</Typography></Divider>
+          <Divider sx={{ my: 2 }}><Typography variant="caption">INVOICE ITEMS</Typography></Divider>
 
-          <Box sx={{ overflowX: 'auto' }}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell width={36}>#</TableCell>
-                  <TableCell width={240}>Lot # / Invoice #</TableCell>
-                  <TableCell>Description</TableCell>
-                  <TableCell width={70}>HSN/SAC</TableCell>
-                  <TableCell width={90} align="right">Pcs</TableCell>
-                  <TableCell width={100} align="right">Rate</TableCell>
-                  <TableCell width={130} align="right">Amount</TableCell>
-                  <TableCell width={50} />
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {fields.map((row, idx) => {
-                  const cur = lines?.[idx] || {};
-                  const amount = (Number(cur.pcs) || 0) * (Number(cur.rate) || 0);
-                  const remaining = cur.remainingPcs;
-                  const overshoot = remaining !== null && remaining !== undefined && Number(cur.pcs) > remaining;
-                  return (
-                    <TableRow key={row.id}>
-                      <TableCell>{idx + 1}</TableCell>
-                      <TableCell>
-                        <Controller
-                          name={`lines.${idx}.lotId`}
-                          control={control}
-                          render={() => (
-                            <Autocomplete
-                              size="small"
-                              options={lotsForClient}
-                              getOptionLabel={(o) => o ? `${o.lotNumber} (Inv ${o.invoiceNumber})` : ''}
-                              isOptionEqualToValue={(o, v) => o?._id === v?._id}
-                              loading={lotsLoading}
-                              value={lotsForClient.find((l) => String(l._id) === String(cur.lotId)) || null}
-                              onChange={(_, v) => handleLotChange(idx, v)}
-                              disabled={!client}
-                              renderOption={(props, option) => (
-                                <Box component="li" {...props}>
-                                  <Box>
-                                    <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
-                                    <Typography variant="caption" color="text.secondary">
-                                      {option.fitStyleName} · {option.fabric} · Remaining {option.remainingPcs} of {option.finalPcs} pcs
-                                    </Typography>
-                                  </Box>
-                                </Box>
-                              )}
-                              renderInput={(params) => (
-                                <TextField {...params} variant="standard" placeholder={client ? 'Pick a lot' : 'Pick a client first'} />
-                              )}
-                            />
-                          )}
-                        />
-                        {cur.lotNumber && (
-                          <Typography variant="caption" color="text.secondary">
-                            Lot {cur.lotNumber} · Inv {cur.lotInvoiceNumber}
-                            {remaining !== null && remaining !== undefined ? ` · Remaining ${remaining}` : ''}
-                          </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Controller
-                          name={`lines.${idx}.description`}
-                          control={control}
-                          rules={{ required: true }}
-                          render={({ field }) => (
-                            <TextField {...field} variant="standard" fullWidth multiline maxRows={3} placeholder="Description (bold)" />
-                          )}
-                        />
-                        <Controller
-                          name={`lines.${idx}.remark`}
-                          control={control}
-                          render={({ field }) => (
-                            <TextField
-                              {...field}
-                              variant="standard"
-                              fullWidth multiline maxRows={2}
-                              placeholder="Remark (optional)"
-                              sx={{ mt: 0.5 }}
-                              InputProps={{ sx: { fontSize: '0.85rem', color: 'text.secondary' } }}
-                            />
-                          )}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Controller
-                          name={`lines.${idx}.hsnSac`}
-                          control={control}
-                          render={({ field }) => (
-                            <TextField {...field} variant="standard" size="small" />
-                          )}
-                        />
-                      </TableCell>
-                      <TableCell align="right">
-                        <Controller
-                          name={`lines.${idx}.pcs`}
-                          control={control}
-                          rules={{ required: true, min: 1 }}
-                          render={({ field }) => (
-                            <TextField
-                              {...field}
-                              type="number"
-                              variant="standard"
-                              size="small"
-                              inputProps={{ min: 1, style: { textAlign: 'right' } }}
-                              error={overshoot}
-                              helperText={overshoot ? `Max ${remaining}` : ''}
-                            />
-                          )}
-                        />
-                      </TableCell>
-                      <TableCell align="right">
-                        <Controller
-                          name={`lines.${idx}.rate`}
-                          control={control}
-                          rules={{ required: true, min: 0 }}
-                          render={({ field }) => (
-                            <TextField
-                              {...field}
-                              type="number"
-                              variant="standard"
-                              size="small"
-                              inputProps={{ min: 0, step: 0.01, style: { textAlign: 'right' } }}
-                            />
-                          )}
-                        />
-                      </TableCell>
-                      <TableCell align="right">{fmtINR(amount)}</TableCell>
-                      <TableCell>
+          {isMobile ? (
+            // ── Mobile: stacked Cards per line ───────────────────────────
+            <Stack spacing={1.5}>
+              {fields.map((row, idx) => {
+                const cur = lines?.[idx] || {};
+                const amount = (Number(cur.pcs) || 0) * (Number(cur.rate) || 0);
+                const remaining = cur.remainingPcs;
+                const overshoot = remaining !== null && remaining !== undefined && Number(cur.pcs) > remaining;
+                return (
+                  <Card key={row.id} variant="outlined">
+                    <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography variant="subtitle2" fontWeight="bold">Item #{idx + 1}</Typography>
                         <IconButton size="small" onClick={() => remove(idx)} disabled={fields.length === 1}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </Box>
+                      </Box>
+
+                      <Controller
+                        name={`lines.${idx}.lotId`}
+                        control={control}
+                        render={() => (
+                          <Autocomplete
+                            size="small"
+                            options={lotsForClient}
+                            getOptionLabel={(o) => o ? `${o.lotNumber} (Inv ${o.invoiceNumber})` : ''}
+                            isOptionEqualToValue={(o, v) => o?._id === v?._id}
+                            loading={lotsLoading}
+                            value={lotsForClient.find((l) => String(l._id) === String(cur.lotId)) || null}
+                            onChange={(_, v) => handleLotChange(idx, v)}
+                            disabled={!client}
+                            renderOption={(props, option) => (
+                              <Box component="li" {...props}>
+                                <Box>
+                                  <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {option.fitStyleName} · {option.fabric} · Remaining {option.remainingPcs} of {option.finalPcs} pcs
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            )}
+                            renderInput={(params) => (
+                              <TextField {...params} label="Lot # / Invoice #" variant="standard" placeholder={client ? 'Pick a lot' : 'Pick a client first'} />
+                            )}
+                          />
+                        )}
+                      />
+                      {cur.lotNumber && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                          Lot {cur.lotNumber} · Inv {cur.lotInvoiceNumber}
+                          {remaining !== null && remaining !== undefined ? ` · Remaining ${remaining}` : ''}
+                        </Typography>
+                      )}
+
+                      <Controller
+                        name={`lines.${idx}.description`}
+                        control={control}
+                        rules={{ required: true }}
+                        render={({ field }) => (
+                          <TextField {...field} label="Description" variant="standard" fullWidth multiline maxRows={3} sx={{ mt: 1.5 }} />
+                        )}
+                      />
+                      <Controller
+                        name={`lines.${idx}.remark`}
+                        control={control}
+                        render={({ field }) => (
+                          <TextField
+                            {...field}
+                            label="Remark (optional)"
+                            variant="standard"
+                            fullWidth multiline maxRows={2}
+                            sx={{ mt: 1 }}
+                            InputProps={{ sx: { fontSize: '0.85rem', color: 'text.secondary' } }}
+                          />
+                        )}
+                      />
+
+                      <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+                        <Grid size={{ xs: 4 }}>
+                          <Controller
+                            name={`lines.${idx}.hsnSac`}
+                            control={control}
+                            render={({ field }) => (
+                              <TextField {...field} label="HSN/SAC" variant="standard" size="small" fullWidth />
+                            )}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 4 }}>
+                          <Controller
+                            name={`lines.${idx}.pcs`}
+                            control={control}
+                            rules={{ required: true, min: 1 }}
+                            render={({ field }) => (
+                              <TextField
+                                {...field}
+                                label="Pcs"
+                                type="number"
+                                variant="standard"
+                                size="small"
+                                fullWidth
+                                inputProps={{ min: 1, style: { textAlign: 'right' } }}
+                                error={overshoot}
+                                helperText={overshoot ? `Max ${remaining}` : ''}
+                              />
+                            )}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 4 }}>
+                          <Controller
+                            name={`lines.${idx}.rate`}
+                            control={control}
+                            rules={{ required: true, min: 0 }}
+                            render={({ field }) => (
+                              <TextField
+                                {...field}
+                                label="Rate"
+                                type="number"
+                                variant="standard"
+                                size="small"
+                                fullWidth
+                                inputProps={{ min: 0, step: 0.01, style: { textAlign: 'right' } }}
+                              />
+                            )}
+                          />
+                        </Grid>
+                      </Grid>
+
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1.5, pt: 1, borderTop: `1px dashed ${theme.palette.divider}` }}>
+                        <Typography variant="body2">Amount</Typography>
+                        <Typography variant="body2" fontWeight="bold">₹ {fmtINR(amount)}</Typography>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </Stack>
+          ) : (
+            // ── Desktop: table ───────────────────────────────────────────
+            <Box sx={{ overflowX: 'auto' }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell width={36}>#</TableCell>
+                    <TableCell width={240}>Lot # / Invoice #</TableCell>
+                    <TableCell>Description</TableCell>
+                    <TableCell width={70}>HSN/SAC</TableCell>
+                    <TableCell width={90} align="right">Pcs</TableCell>
+                    <TableCell width={100} align="right">Rate</TableCell>
+                    <TableCell width={130} align="right">Amount</TableCell>
+                    <TableCell width={50} />
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {fields.map((row, idx) => {
+                    const cur = lines?.[idx] || {};
+                    const amount = (Number(cur.pcs) || 0) * (Number(cur.rate) || 0);
+                    const remaining = cur.remainingPcs;
+                    const overshoot = remaining !== null && remaining !== undefined && Number(cur.pcs) > remaining;
+                    return (
+                      <TableRow key={row.id}>
+                        <TableCell>{idx + 1}</TableCell>
+                        <TableCell>
+                          <Controller
+                            name={`lines.${idx}.lotId`}
+                            control={control}
+                            render={() => (
+                              <Autocomplete
+                                size="small"
+                                options={lotsForClient}
+                                getOptionLabel={(o) => o ? `${o.lotNumber} (Inv ${o.invoiceNumber})` : ''}
+                                isOptionEqualToValue={(o, v) => o?._id === v?._id}
+                                loading={lotsLoading}
+                                value={lotsForClient.find((l) => String(l._id) === String(cur.lotId)) || null}
+                                onChange={(_, v) => handleLotChange(idx, v)}
+                                disabled={!client}
+                                renderOption={(props, option) => (
+                                  <Box component="li" {...props}>
+                                    <Box>
+                                      <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        {option.fitStyleName} · {option.fabric} · Remaining {option.remainingPcs} of {option.finalPcs} pcs
+                                      </Typography>
+                                    </Box>
+                                  </Box>
+                                )}
+                                renderInput={(params) => (
+                                  <TextField {...params} variant="standard" placeholder={client ? 'Pick a lot' : 'Pick a client first'} />
+                                )}
+                              />
+                            )}
+                          />
+                          {cur.lotNumber && (
+                            <Typography variant="caption" color="text.secondary">
+                              Lot {cur.lotNumber} · Inv {cur.lotInvoiceNumber}
+                              {remaining !== null && remaining !== undefined ? ` · Remaining ${remaining}` : ''}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Controller
+                            name={`lines.${idx}.description`}
+                            control={control}
+                            rules={{ required: true }}
+                            render={({ field }) => (
+                              <TextField {...field} variant="standard" fullWidth multiline maxRows={3} placeholder="Description (bold)" />
+                            )}
+                          />
+                          <Controller
+                            name={`lines.${idx}.remark`}
+                            control={control}
+                            render={({ field }) => (
+                              <TextField
+                                {...field}
+                                variant="standard"
+                                fullWidth multiline maxRows={2}
+                                placeholder="Remark (optional)"
+                                sx={{ mt: 0.5 }}
+                                InputProps={{ sx: { fontSize: '0.85rem', color: 'text.secondary' } }}
+                              />
+                            )}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Controller
+                            name={`lines.${idx}.hsnSac`}
+                            control={control}
+                            render={({ field }) => (
+                              <TextField {...field} variant="standard" size="small" />
+                            )}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Controller
+                            name={`lines.${idx}.pcs`}
+                            control={control}
+                            rules={{ required: true, min: 1 }}
+                            render={({ field }) => (
+                              <TextField
+                                {...field}
+                                type="number"
+                                variant="standard"
+                                size="small"
+                                inputProps={{ min: 1, style: { textAlign: 'right' } }}
+                                error={overshoot}
+                                helperText={overshoot ? `Max ${remaining}` : ''}
+                              />
+                            )}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Controller
+                            name={`lines.${idx}.rate`}
+                            control={control}
+                            rules={{ required: true, min: 0 }}
+                            render={({ field }) => (
+                              <TextField
+                                {...field}
+                                type="number"
+                                variant="standard"
+                                size="small"
+                                inputProps={{ min: 0, step: 0.01, style: { textAlign: 'right' } }}
+                              />
+                            )}
+                          />
+                        </TableCell>
+                        <TableCell align="right">{fmtINR(amount)}</TableCell>
+                        <TableCell>
+                          <IconButton size="small" onClick={() => remove(idx)} disabled={fields.length === 1}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
 
           <Box sx={{ mt: 1 }}>
             <Button startIcon={<AddIcon />} onClick={() => append({ ...emptyLine })}>
-              Add Line
+              Add Item
             </Button>
           </Box>
 
@@ -446,7 +588,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
               <Stack spacing={1} sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="body2">Sub Total</Typography>
-                  <Typography variant="body2">Rs. {fmtINR(totals.subTotal)}</Typography>
+                  <Typography variant="body2">₹ {fmtINR(totals.subTotal)}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="body2">Round Off</Typography>
@@ -461,7 +603,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
                 <Divider />
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="subtitle1"><b>Total</b></Typography>
-                  <Typography variant="subtitle1"><b>{totals.totalQty} pcs · Rs. {fmtINR(totals.total)}</b></Typography>
+                  <Typography variant="subtitle1"><b>{totals.totalQty} pcs · ₹ {fmtINR(totals.total)}</b></Typography>
                 </Box>
               </Stack>
             </Grid>

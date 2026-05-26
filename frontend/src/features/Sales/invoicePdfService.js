@@ -165,27 +165,6 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
     doc.text(String(value), x + labelW, y);
   };
 
-  // ── Background watermark (company name) ───────────────────────────────────
-  // Drawn FIRST so every subsequent element overlays it. Diagonal, faint grey,
-  // big enough to span the page diagonally without ever being the focal point.
-  if (settings?.name) {
-    const PAGE_H = 297;
-    doc.saveGraphicsState();
-    // Use a near-white grey for the fill (no opacity API in jsPDF v2's standard build,
-    // so a very light text color is the reliable cross-renderer trick).
-    doc.setTextColor(225, 225, 225);
-    doc.setFont(F, 'bold');
-    doc.setFontSize(70);
-    doc.text(settings.name, PAGE_W / 2, PAGE_H / 2, {
-      align: 'center',
-      baseline: 'middle',
-      angle: 30 // diagonal from bottom-left to top-right
-    });
-    // Reset for the rest of the document
-    doc.setTextColor(0, 0, 0);
-    doc.restoreGraphicsState();
-  }
-
   // ── Top title strip ────────────────────────────────────────────────────────
   doc.setFont(F, 'bold');
   doc.setFontSize(11);
@@ -519,6 +498,36 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   doc.setFont(F, 'normal');
   doc.setFontSize(8);
   doc.text(settings?.authorisedSignatory?.title || '', sigCenterX, footerTop + 26, { align: 'center' });
+
+  // ── Watermark (drawn LAST, on every page) ─────────────────────────────────
+  // Done after all content + after all pages exist so it cannot influence
+  // autotable's page-break math. (Drawing a large rotated text as the very
+  // first op on page 1 was producing a phantom blank first page in Safari /
+  // macOS PDFKit, even though Chrome rendered it as a single page.)
+  // setGState opacity makes it overlay the table/bank section subtly.
+  if (settings?.name) {
+    const PAGE_H = 297;
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let p = 1; p <= totalPages; p++) {
+      doc.setPage(p);
+      doc.saveGraphicsState();
+      if (typeof doc.GState === 'function') {
+        doc.setGState(new doc.GState({ opacity: 0.08 }));
+        doc.setTextColor(0, 0, 0);
+      } else {
+        doc.setTextColor(225, 225, 225);
+      }
+      doc.setFont(F, 'bold');
+      doc.setFontSize(70);
+      doc.text(settings.name, PAGE_W / 2, PAGE_H / 2, {
+        align: 'center',
+        baseline: 'middle',
+        angle: 30
+      });
+      doc.restoreGraphicsState();
+      doc.setTextColor(0, 0, 0);
+    }
+  }
 
   // ── Dispatch ───────────────────────────────────────────────────────────────
   const invNumPart = String(invoice.invoiceNumber || 'invoice').replace(/[/\\]/g, ' ');

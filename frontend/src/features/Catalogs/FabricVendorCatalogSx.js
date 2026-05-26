@@ -95,7 +95,7 @@ function FabricVendorCatalogSx({
             <OrderCardsLoader type="vendor" />
           ) : processedVendors.length > 0 ? (
             processedVendors.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((vendor) => (
-              <Card key={vendor._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+              <Card key={vendor._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1 }}>
                 <CardContent>
                   <Grid container spacing={1}>
                     <Grid size={{ xs: 8, sm: 8 }} sx={{ textAlign: 'left' }}>

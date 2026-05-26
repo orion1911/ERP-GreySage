@@ -512,7 +512,7 @@ function StitchingGrid({
         </TableHead>
         <TableBody>
           {!processedRecords ? (
-            <TableRowsLoader colsNum={17} rowsNum={10} />
+            <TableRowsLoader colsNum={16} rowsNum={10} />
           ) : processedRecords.length > 0 ? (
             table.getRowModel().rows.map(row => (
               <React.Fragment key={row.id}>

@@ -14,3 +14,48 @@
     border: 1px solid rgba(255, 255, 255, 0.3);
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
+
+/* ── Global scrollbar styling (matches Sidebar nav scrollbar) ─────────────
+   Applied to every scrollable element across the app. Light/dark variants
+   key off the `data-mui-color-scheme` attribute that AppTheme sets on <html>.
+   With the universal `*` selector, WebKit defaults can leak the arrow
+   buttons (top/bottom) in some contexts (e.g. the collapsed Sidebar where
+   no thumb is rendered). Explicitly zero them out below. */
+*::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+    background-color: rgba(17, 27, 74, 0.35);
+    border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(17, 27, 74, 0.6);
+}
+*::-webkit-scrollbar-button,
+*::-webkit-scrollbar-button:start,
+*::-webkit-scrollbar-button:end {
+    display: none;
+    width: 0;
+    height: 0;
+}
+*::-webkit-scrollbar-corner {
+    background: transparent;
+}
+[data-mui-color-scheme='dark'] *::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.35);
+}
+[data-mui-color-scheme='dark'] *::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.55);
+}
+/* Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(17, 27, 74, 0.35) transparent;
+}
+[data-mui-color-scheme='dark'] * {
+    scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
+}

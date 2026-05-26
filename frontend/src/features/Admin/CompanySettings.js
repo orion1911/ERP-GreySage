@@ -8,6 +8,8 @@ import {
 import { Save as SaveIcon, Add as AddIcon, Delete as DeleteIcon, Numbers as NumbersIcon } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 
+const sectionPaperSx = { p: { xs: 2, md: 3 }, mb: 2 };
+
 // Compute fyShort ("2627") for a given date (Indian FY starts April 1)
 const fyShortFor = (date) => {
   const d = new Date(date);
@@ -17,7 +19,7 @@ const fyShortFor = (date) => {
 };
 
 function CompanySettings() {
-  const { showSnackbar } = useOutletContext();
+  const { showSnackbar, isMobile } = useOutletContext();
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -97,14 +99,14 @@ function CompanySettings() {
   };
 
   return (
-    <Box>
+    <Box sx={{ pb: { xs: 12, md: 0 } }}>
       <Typography variant="h4" sx={{ mb: 2 }}>Company Settings</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         These details print on every invoice. Update them once when the company info changes.
       </Typography>
 
       <form onSubmit={handleSubmit(onSubmit)}>
-        <Paper sx={{ p: 3, mb: 2 }}>
+        <Paper sx={sectionPaperSx}>
           <Typography variant="h6" sx={{ mb: 2 }}>Issuer</Typography>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 6 }}>
@@ -114,11 +116,11 @@ function CompanySettings() {
                     error={!!fieldState.error} helperText={fieldState.error?.message} />
                 )} />
             </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Controller name="email" control={control}
                 render={({ field }) => <TextField {...field} label="Email" fullWidth variant="standard" />} />
             </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Controller name="phone" control={control}
                 render={({ field }) => <TextField {...field} label="Phone" fullWidth variant="standard" />} />
             </Grid>
@@ -137,63 +139,63 @@ function CompanySettings() {
                 Add Line
               </Button>
             </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Controller name="gstin" control={control}
                 render={({ field }) => <TextField {...field} onChange={(e) => field.onChange(e.target.value.toUpperCase())} label="GSTIN" fullWidth variant="standard" />} />
             </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Controller name="pan" control={control}
                 render={({ field }) => <TextField {...field} onChange={(e) => field.onChange(e.target.value.toUpperCase())} label="PAN" fullWidth variant="standard" />} />
             </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Controller name="msmeType" control={control}
                 render={({ field }) => <TextField {...field} label="MSME/Udyam Type" fullWidth variant="standard" helperText="e.g. Micro" />} />
             </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Controller name="msmeNumber" control={control}
                 render={({ field }) => <TextField {...field} label="MSME/Udyam No" fullWidth variant="standard" />} />
             </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Controller name="gstStateCode" control={control}
                 render={({ field }) => <TextField {...field} label="GST State Code" fullWidth variant="standard" helperText="e.g. 27" />} />
             </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Controller name="gstStateName" control={control}
                 render={({ field }) => <TextField {...field} label="GST State Name" fullWidth variant="standard" helperText="e.g. Maharashtra" />} />
             </Grid>
           </Grid>
         </Paper>
 
-        <Paper sx={{ p: 3, mb: 2 }}>
+        <Paper sx={sectionPaperSx}>
           <Typography variant="h6" sx={{ mb: 2 }}>Bank Details</Typography>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Controller name="bank.bankName" control={control}
                 render={({ field }) => <TextField {...field} label="Bank Name" fullWidth variant="standard" />} />
             </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Controller name="bank.accountNumber" control={control}
                 render={({ field }) => <TextField {...field} label="Account Number" fullWidth variant="standard" />} />
             </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Controller name="bank.ifsc" control={control}
                 render={({ field }) => <TextField {...field} onChange={(e) => field.onChange(e.target.value.toUpperCase())} label="IFSC Code" fullWidth variant="standard" />} />
             </Grid>
-            <Grid size={{ xs: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Controller name="bank.accountName" control={control}
                 render={({ field }) => <TextField {...field} label="Account Name" fullWidth variant="standard" />} />
             </Grid>
           </Grid>
         </Paper>
 
-        <Paper sx={{ p: 3, mb: 2 }}>
+        <Paper sx={sectionPaperSx}>
           <Typography variant="h6" sx={{ mb: 2 }}>Signatory & Invoice Defaults</Typography>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 6, md: 4 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
               <Controller name="authorisedSignatory.name" control={control}
                 render={({ field }) => <TextField {...field} label="Signatory Name" fullWidth variant="standard" />} />
             </Grid>
-            <Grid size={{ xs: 6, md: 4 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
               <Controller name="authorisedSignatory.title" control={control}
                 render={({ field }) => <TextField {...field} label="Signatory Title" fullWidth variant="standard" helperText="e.g. Proprietor" />} />
             </Grid>
@@ -213,14 +215,18 @@ function CompanySettings() {
           </Grid>
         </Paper>
 
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <Button type="submit" variant="contained" startIcon={<SaveIcon />} disabled={submitting || loading}>
+        <Box sx={{ display: 'flex', justifyContent: { xs: 'stretch', md: 'flex-end' } }}>
+          <Button
+            type="submit" variant="contained" startIcon={<SaveIcon />}
+            disabled={submitting || loading}
+            fullWidth={isMobile}
+          >
             {submitting ? 'Saving…' : 'Save Settings'}
           </Button>
         </Box>
       </form>
 
-      <Paper sx={{ p: 3, mt: 3 }}>
+      <Paper sx={{ ...sectionPaperSx, mt: 3 }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
           <NumbersIcon fontSize="small" />
           <Typography variant="h6">Invoice Number Counter</Typography>
@@ -250,10 +256,11 @@ function CompanySettings() {
             />
           </Grid>
           <Grid size={{ xs: 12, md: 4 }}>
-            {/* Helper-row spacer (pb≈helperText height) so Stack bottom aligns with TextField input bottom */}
-            <Box sx={{ pb: '20px', minHeight: 32, display: 'flex', alignItems: 'center' }}>
+            {/* Desktop: pb spacer aligns Stack bottom with TextField input bottom (helperText height).
+                Mobile: no need to align since the chip wraps to its own row — drop the extra padding. */}
+            <Box sx={{ pb: { xs: 0, md: '20px' }, minHeight: { xs: 'auto', md: 32 }, display: 'flex', alignItems: 'center' }}>
               {counterInfo && (
-                <Stack direction="row" spacing={1} alignItems="center">
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                   <Typography variant="body2" color="text.secondary">Next invoice will be:</Typography>
                   <Chip
                     label={`INV${counterFy}/${(parseInt(counterDraft, 10) || 0) + 1}`}
@@ -269,7 +276,7 @@ function CompanySettings() {
               variant="contained" fullWidth
               onClick={handleSetCounter}
               disabled={counterSaving || counterDraft === String(counterInfo?.sequence ?? '')}
-              sx={{ mb: '20px' }}
+              sx={{ mb: { xs: 0, md: '20px' } }}
             >
               {counterSaving ? 'Saving…' : 'Update Counter'}
             </Button>

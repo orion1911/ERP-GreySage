@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 require('express-async-errors');
 
 // Routes
@@ -51,6 +52,9 @@ app.use(cors({
 // Handle preflight for all routes
 app.options('*', cors());
 app.use(express.json());
+// Parse cookies — needed by /api/refresh and /api/logout to read the httpOnly
+// refresh-token cookie that authController issues on login.
+app.use(cookieParser());
 
 // ─── MONGODB CONNECTION (Optimized for Vercel Serverless + Atlas M0) ─────────
 // global._mongoConnection persists across warm serverless invocations

@@ -167,7 +167,7 @@ function StitchingGridSx({
             <OrderCardsLoader type="stitching" />
           ) : processedRecords.length > 0 ? (
             processedRecords.map((record) => (
-              <Card key={record._id} variant="outlined" sx={{ p: 1.3, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+              <Card key={record._id} variant="outlined" sx={{ p: 1.3, mb: 2, boxShadow: 1 }}>
                 <CardContent>
                   <Grid container spacing={1} sx={{ textAlign: 'center' }}>
                     <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>

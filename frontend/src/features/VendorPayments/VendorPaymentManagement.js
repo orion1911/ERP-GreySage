@@ -578,19 +578,22 @@ const VendorPaymentManagement = () => {
     };
 
     return (
-        <Container maxWidth="xl" sx={{ pt: '0 !important', pb: 2, px: '0 !important' }}>
-            <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold' }}>
-                Payment Management
+        <Container maxWidth="xl" sx={{ pt: '0 !important', pb: { xs: 12, md: 2 }, px: '0 !important' }}>
+            <Typography variant="h4" sx={{ mb: 1, fontWeight: 'bold' }}>
+                Vendor Payments
             </Typography>
 
             {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-            {/* Filters */}
-            <Card sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
-                <CardContent>
-                    <Grid container spacing={2} sx={{ mt: 1 }}>
+            {/* Filters — padding/margin matches the Sales Invoices filter Paper */}
+            <Paper sx={{ p: { xs: 1.5, md: 2 }, mb: 2 }}>
+                    <Grid container spacing={2}>
                         <Grid size={{ xs: 6, sm: 6, md: 2 }}>
-                            <FormControl fullWidth>
+                            {/* variant on FormControl (not just Select) so InputLabel inherits
+                                standard positioning; otherwise the label sits over the line
+                                using outlined-variant math and looks misaligned when a value
+                                is selected. Matches Add Stitching modal's Client/Vendor look. */}
+                            <FormControl fullWidth margin="normal" variant="standard">
                                 <InputLabel>Vendor Type</InputLabel>
                                 <Select
                                     value={vendorType}
@@ -604,7 +607,7 @@ const VendorPaymentManagement = () => {
                             </FormControl>
                         </Grid>
                         <Grid size={{ xs: 6, sm: 6, md: 2 }}>
-                            <FormControl fullWidth disabled={!vendorType}>
+                            <FormControl fullWidth margin="normal" variant="standard" disabled={!vendorType}>
                                 <InputLabel>Vendor</InputLabel>
                                 <Select
                                     value={selectedVendor}
@@ -691,8 +694,7 @@ const VendorPaymentManagement = () => {
                                 </Grid>
                             </Grid>
                         )}
-                </CardContent>
-            </Card>
+            </Paper>
             {selectedVendor && vendorType && (
                 <>
                     {/* Two Column Layout: Lots Table and Payment History.
@@ -701,7 +703,7 @@ const VendorPaymentManagement = () => {
                         display: 'flex',
                         flexDirection: { xs: 'column', md: 'row' },
                         gap: 2,
-                        mb: 4,
+                        mb: 2,
                         alignItems: 'stretch',
                         // Min height fits ~10 lot rows + table header + card header + pagination + borders.
                         // Below this the user couldn't see a full page of lots without scrolling outside.
@@ -715,7 +717,7 @@ const VendorPaymentManagement = () => {
                             display: 'flex',
                             flexDirection: 'column',
                             flex: { xs: '0 0 60vh', md: '1 1 0' },
-                            minHeight: 0
+                            minHeight: 0,
                         }}>
                                 <Box sx={{ p: 1, pl: 2, borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
@@ -898,7 +900,7 @@ const VendorPaymentManagement = () => {
                             display: 'flex',
                             flexDirection: 'column',
                             flex: { xs: '0 0 60vh', md: '1 1 0' },
-                            minHeight: 0
+                            minHeight: 0,
                         }}>
                                 <Box sx={{ p: 1, pl: 2, borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                                     <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -1220,12 +1222,11 @@ const VendorPaymentManagement = () => {
                                     control={shortControl}
                                     rules={{ required: 'Lot is required' }}
                                     render={({ field }) => (
-                                        <FormControl fullWidth margin="normal" error={!!shortErrors.lotId}>
+                                        <FormControl fullWidth margin="normal" variant="standard" error={!!shortErrors.lotId}>
                                             <InputLabel>Lot (Short)</InputLabel>
                                             <Select
                                                 {...field}
                                                 label="Lot (Short)"
-                                                variant="standard"
                                             >
                                                 {lotsData.filter(lot => lot.quantityShort > 0).length === 0 ? (
                                                     <MenuItem value="">No lots with short pending</MenuItem>

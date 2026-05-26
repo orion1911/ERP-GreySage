@@ -106,11 +106,14 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
           </Typography>
         )}
         <IconButton
-          size="small"
           onClick={collapsed ? handleDrawerToggle : () => setCollapsed(!collapsed)}
-          sx={{ color: 'inherit', flexShrink: 0 }}
+          // Icon size 24px (medium) to visually match the ListItemIcon glyphs below.
+          // AppTheme sets IconButton defaultProps.size='small', which renders SvgIcons
+          // at ~18px — that made the hamburger look smaller than the menu icons.
+          sx={{ color: 'inherit', flexShrink: 0, '& .MuiSvgIcon-root': { fontSize: '1.5rem' } }}
         >
-          {collapsed ? <MenuIcon /> : <ChevronLeftIcon />}
+          {/* {collapsed ? <MenuIcon /> : <ChevronLeftIcon />} */}
+          {collapsed && <MenuIcon /> }
         </IconButton>
       </Box>
       <Divider sx={{ backgroundColor: 'inherit', opacity: 1 }} />
@@ -122,10 +125,10 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
           // CRITICAL: min-height defaults to 'auto' for flex items, which makes the List
           // grow to fit its content. min-height: 0 lets it shrink and scroll properly.
           minHeight: 0,
-          // 'scroll' forces the scrollbar to always render (even if content fits), so it
-          // remains a consistent visual element. Change to 'auto' if you'd rather have it
-          // only when needed — but then it's invisible on tall viewports.
-          overflowY: 'scroll',
+          // 'auto' so the scrollbar only renders when content actually overflows. When
+          // collapsed the narrow icon column fits without scrolling, so we don't want an
+          // empty 6px track sitting in the sidebar. ('scroll' previously forced it visible.)
+          overflowY: 'auto',
           overflowX: 'hidden',
           // KEY INSIGHT: WebKit/Chromium renders scrollbar arrow buttons ONLY when CSS
           // references ::-webkit-scrollbar-button. Even `display: none` on that selector

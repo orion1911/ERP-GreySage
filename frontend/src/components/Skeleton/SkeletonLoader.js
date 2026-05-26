@@ -110,7 +110,7 @@ export const OrderCardSkeleton = () => {
     const theme = useTheme();
 
     return (
-        <Card variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+        <Card variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1 }}>
             <CardContent>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography variant="subtitle1" fontWeight="bold">
@@ -157,7 +157,7 @@ export const OrderCardSkeleton = () => {
 export const StitchingCardSkeleton = () => {
   const theme = useTheme();
   return (
-    <Card variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+    <Card variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1 }}>
       <CardContent>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="subtitle1" fontWeight="bold">
@@ -197,7 +197,7 @@ export const StitchingCardSkeleton = () => {
 export const WashingCardSkeleton = () => {
   const theme = useTheme();
   return (
-    <Card variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1, backgroundColor: `${theme.palette.background.paper} !important` }}>
+    <Card variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1 }}>
       <CardContent>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="subtitle1" fontWeight="bold">

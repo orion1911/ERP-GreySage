@@ -202,7 +202,7 @@ function ClientCatalog() {
             </TableHead>
             <TableBody>
               {loading || !clients ? (
-                <TableRowsLoader colsNum={6} rowsNum={10} />
+                <TableRowsLoader colsNum={7} rowsNum={10} />
               ) : clients.length > 0 ? (
                 table.getRowModel().rows.map(row => (
                   <TableRow key={row.id}>

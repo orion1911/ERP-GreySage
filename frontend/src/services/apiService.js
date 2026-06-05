@@ -507,6 +507,15 @@ const apiService = {
         throw error;
       }
     },
+
+    updateFinishingVendor: async (id, vendorData) => {
+      try {
+        const response = await axiosInstance.patch(`api/finishing-vendors/${id}`, vendorData);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
   },
 
   // Lot-related API calls
@@ -670,6 +679,15 @@ const apiService = {
         const response = await axiosInstance.get('api/vendor-balances/vendor-payment-changes', {
           params: { vendorId, vendorType },
         });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    markLotPaid: async (payload) => {
+      try {
+        const response = await axiosInstance.patch('api/vendor-balances/lot-paid', payload);
         return response.data;
       } catch (error) {
         throw error;
@@ -888,6 +906,156 @@ const apiService = {
       } catch (error) {
         throw error;
       }
+    },
+  },
+
+  // Stock Management / Accessories
+  accessories: {
+    getTypes: async () => {
+      try {
+        const response = await axiosInstance.get('api/accessories/types');
+        return response.data;
+      } catch (error) { throw error; }
+    },
+
+    // Masters / items
+    getItems: async ({ typeId, search = '', clientId = '', showInactive = false } = {}) => {
+      try {
+        const response = await axiosInstance.get('api/accessories/items', {
+          params: { typeId, search, clientId, showInactive },
+        });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getApplicableItems: async (typeId, clientId = '') => {
+      try {
+        const response = await axiosInstance.get('api/accessories/items/applicable', {
+          params: { typeId, clientId },
+        });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getFinishingItems: async (invoiceNumber) => {
+      try {
+        const response = await axiosInstance.get('api/accessories/finishing-items', {
+          params: { invoiceNumber },
+        });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    createItem: async (itemData) => {
+      try {
+        const response = await axiosInstance.post('api/accessories/items', itemData);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    updateItem: async (id, itemData) => {
+      try {
+        const response = await axiosInstance.patch(`api/accessories/items/${id}`, itemData);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    toggleItemActive: async (id) => {
+      try {
+        const response = await axiosInstance.put(`api/accessories/items/${id}/toggle-active`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+
+    // Purchases
+    getPurchases: async (typeId, page = 1, limit = 10) => {
+      try {
+        const response = await axiosInstance.get('api/accessories/purchases', { params: { typeId, page, limit } });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    createPurchase: async (purchaseData) => {
+      try {
+        const response = await axiosInstance.post('api/accessories/purchases', purchaseData);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    updatePurchase: async (id, purchaseData) => {
+      try {
+        const response = await axiosInstance.patch(`api/accessories/purchases/${id}`, purchaseData);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    markPurchasePaid: async (id, isPaid) => {
+      try {
+        const response = await axiosInstance.patch(`api/accessories/purchases/${id}/paid`, { isPaid });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    deletePurchase: async (id) => {
+      try {
+        const response = await axiosInstance.delete(`api/accessories/purchases/${id}`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+
+    // Payments
+    getPayments: async (typeId, page = 1, limit = 10) => {
+      try {
+        const response = await axiosInstance.get('api/accessories/payments', { params: { typeId, page, limit } });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    addPayment: async (paymentData) => {
+      try {
+        const response = await axiosInstance.post('api/accessories/payments', paymentData);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    updatePayment: async (id, paymentData) => {
+      try {
+        const response = await axiosInstance.put(`api/accessories/payments/${id}`, paymentData);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    deletePayment: async (id) => {
+      try {
+        const response = await axiosInstance.delete(`api/accessories/payments/${id}`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getPaymentHistory: async (id) => {
+      try {
+        const response = await axiosInstance.get(`api/accessories/payments/${id}/history`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+
+    // Balance / stock / consumption
+    getBalance: async (typeId) => {
+      try {
+        const response = await axiosInstance.get('api/accessories/balance', { params: { typeId } });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    setOpeningBalance: async (accessoryTypeId, openingBalance) => {
+      try {
+        const response = await axiosInstance.patch('api/accessories/opening-balance', { accessoryTypeId, openingBalance });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getStock: async (typeId) => {
+      try {
+        const response = await axiosInstance.get('api/accessories/stock', { params: { typeId } });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getStockSummary: async () => {
+      try {
+        const response = await axiosInstance.get('api/accessories/stock/summary');
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getConsumption: async (lotId, stage = '') => {
+      try {
+        const response = await axiosInstance.get('api/accessories/consumption', { params: { lotId, stage } });
+        return response.data;
+      } catch (error) { throw error; }
     },
   },
 };

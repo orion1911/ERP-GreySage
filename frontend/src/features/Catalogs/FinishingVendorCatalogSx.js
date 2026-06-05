@@ -137,6 +137,12 @@ function FinishingVendorCatalogSx({
                         {vendor.contact || 'N/A'}
                       </Typography>
                     </Grid>
+                    <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
+                      <Typography variant="body2">
+                        <strong>Rate</strong><br />
+                        {vendor.defaultRate ?? 0}
+                      </Typography>
+                    </Grid>
                     <Grid size={{ xs: 8, sm: 8 }} sx={{ textAlign: 'left' }}>
                       <Typography variant="body2">
                         <strong>Address</strong><br />

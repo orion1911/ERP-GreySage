@@ -28,6 +28,7 @@ import StitchingManagement from './features/Stitching/StitchingManagement';
 import { VendorPaymentManagement } from './features/VendorPayments';
 import { InvoiceManagement } from './features/Sales';
 import { ClientPaymentManagement } from './features/ClientPayments';
+import { StockManagement } from './features/Stock';
 import NotFound from './components/NotFound';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -201,6 +202,7 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/dashboardxl" element={<DashboardExcel />} />
               <Route path="/stitching" element={<StitchingManagement />} />
+              <Route path="/stock" element={<StockManagement />} />
               <Route path="/vendor-payments" element={<VendorPaymentManagement />} />
               <Route path="/sales/invoices" element={<InvoiceManagement />} />
               <Route path="/sales/client-payments" element={<ClientPaymentManagement />} />

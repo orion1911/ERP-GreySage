@@ -56,7 +56,9 @@ const getVendorLotsDetails = async (vendorId, vendorType) => {
           quantityShort: 0,
           shortRate: 0,
           vendorType: vendorType,
-          vendorId: vendorId
+          vendorId: vendorId,
+          recordId: record._id,        // the Stitching/Washing/Finishing record id
+          isPaid: !!record.isPaid      // per-lot settled marker
         });
       }
 

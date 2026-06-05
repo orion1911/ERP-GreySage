@@ -1,7 +1,49 @@
 const mongoose = require('mongoose');
-const { Stitching, Lot, Finishing, Washing, Counter, Client, FitStyle } = require('../mongodb_schema');
+const { Stitching, Lot, Finishing, Washing, Counter, Client, FitStyle, AccessoryType, AccessoryItem } = require('../mongodb_schema');
 const { updateVendorBalance } = require('../services/vendorBalanceService');
+const accessoryService = require('../services/accessoryService');
 const { logAction } = require('../utils/logger');
+
+// Prepare + validate zipper consumption for a lot's stitching entry.
+// Returns one of:
+//   • null                  — nothing to record (skip; stock untouched)
+//   • { error }             — validation failure (caller returns 400 with this message)
+//   • { typeId, rows }      — ready for accessoryService.replaceConsumption
+// Zipper stock tracking is OPTIONAL: if the user leaves every quantity at 0 (or no
+// zipper masters exist yet) we skip so the critical stitching flow is never blocked.
+// But once ANY zipper qty is entered, the sum must equal the lot quantity (spec rule).
+const prepareZipperConsumption = async (zipperConsumption, quantity) => {
+  if (!Array.isArray(zipperConsumption) || zipperConsumption.length === 0) return null;
+
+  const entered = zipperConsumption
+    .map(z => ({ accessoryItemId: z.accessoryItemId, qty: Number(z.qty) || 0 }))
+    .filter(z => z.accessoryItemId && z.qty > 0);
+  if (entered.length === 0) return null;
+
+  const zipperType = await AccessoryType.findOne({ key: 'zipper' });
+  if (!zipperType) return { error: 'Zipper accessory type is not configured' };
+
+  const totalZipper = entered.reduce((sum, z) => sum + z.qty, 0);
+  if (totalZipper !== Number(quantity)) {
+    return { error: `Sum of zipper quantities (${totalZipper}) must equal total Lot quantity (${quantity})` };
+  }
+
+  // Snapshot item name + client-linked flag from the masters.
+  const items = await AccessoryItem.find({
+    _id: { $in: entered.map(z => z.accessoryItemId) },
+    accessoryTypeId: zipperType._id
+  }).lean();
+  const itemMap = new Map(items.map(i => [String(i._id), i]));
+
+  const rows = [];
+  for (const z of entered) {
+    const item = itemMap.get(String(z.accessoryItemId));
+    if (!item) return { error: 'Invalid zipper item selected' };
+    rows.push({ accessoryItemId: item._id, nameSnapshot: item.name, qty: z.qty, clientLinked: !!item.clientId });
+  }
+
+  return { typeId: zipperType._id, rows };
+};
 
 // Helper function to parse lotNumber and extract series, sub-series, and lot number
 const parseLotNumber = (lotNumber) => {
@@ -63,7 +105,7 @@ const validateLotNumber = async (lotNumber, excludeLotId = null) => {
 };
 
 const createStitching = async (req, res) => {
-  let { lotNumber, clientId, fabric, fitStyleId, waistSize, invoiceNumber, vendorId, quantity, quantityShort, rate, threadColors, date, stitchOutDate, description } = req.body;
+  let { lotNumber, clientId, fabric, fitStyleId, waistSize, invoiceNumber, vendorId, quantity, quantityShort, rate, threadColors, zipperConsumption, date, stitchOutDate, description } = req.body;
   let session = null;
 
   // Validate required fields
@@ -96,6 +138,10 @@ const createStitching = async (req, res) => {
   if (totalThreadQuantity !== quantity) {
     return res.status(400).json({ error: `Sum of thread color quantities (${totalThreadQuantity}) must equal total Lot quantity (${quantity})` });
   }
+
+  // Validate + prepare zipper consumption before opening the transaction
+  const preparedZipper = await prepareZipperConsumption(zipperConsumption, quantity);
+  if (preparedZipper?.error) return res.status(400).json({ error: preparedZipper.error });
 
   // Validate lotNumber format and range constraints
   await validateLotNumber(lotNumber);
@@ -163,6 +209,17 @@ const createStitching = async (req, res) => {
     });
     await stitching.save({ session });
 
+    // Record zipper stock-out within the same transaction (if provided)
+    if (preparedZipper && preparedZipper.rows) {
+      await accessoryService.replaceConsumption({
+        accessoryTypeId: preparedZipper.typeId,
+        lotId: lot._id,
+        stage: 'stitching',
+        items: preparedZipper.rows,
+        userId: req.user?.userId
+      }, session);
+    }
+
     // Commit the transaction
     await session.commitTransaction();
     transactionCommitted = true;
@@ -185,7 +242,7 @@ const createStitching = async (req, res) => {
 
 const updateStitching = async (req, res) => {
   const { id } = req.params;
-  const { lotNumber, clientId, fabric, fitStyleId, waistSize, invoiceNumber, vendorId, quantity, quantityShort, quantityShortDesc, rate, threadColors, date, stitchOutDate, description } = req.body;
+  const { lotNumber, clientId, fabric, fitStyleId, waistSize, invoiceNumber, vendorId, quantity, quantityShort, quantityShortDesc, rate, threadColors, zipperConsumption, date, stitchOutDate, description } = req.body;
 
   // Validate threadColors quantities
   if (threadColors && quantity) {
@@ -198,6 +255,13 @@ const updateStitching = async (req, res) => {
   // Find the stitching record
   const stitching = await Stitching.findById(id).populate('lotId vendorId');
   if (!stitching) return res.status(404).json({ error: 'Stitching record not found' });
+
+  // Validate zipper consumption against the effective quantity (provided or existing)
+  let preparedZipper = null;
+  if (Array.isArray(zipperConsumption)) {
+    preparedZipper = await prepareZipperConsumption(zipperConsumption, quantity ?? stitching.quantity);
+    if (preparedZipper?.error) return res.status(400).json({ error: preparedZipper.error });
+  }
 
   // Validate lotNumber if provided
   if (lotNumber) {
@@ -247,6 +311,18 @@ const updateStitching = async (req, res) => {
   }
 
   const updatedStitching = await stitching.save();
+
+  // Replace zipper stock-out for this lot when the form supplied a zipper section.
+  // Sending an (all-zero) array clears any prior rows; non-empty replaces them.
+  if (Array.isArray(zipperConsumption)) {
+    await accessoryService.replaceConsumption({
+      accessoryTypeId: preparedZipper?.typeId || null,
+      lotId: stitching.lotId._id,
+      stage: 'stitching',
+      items: preparedZipper?.rows || [],
+      userId: req.user?.userId
+    });
+  }
 
   const populatedStitching = await Stitching.findById(id)
     .populate({ path: 'lotId', populate: [{ path: 'clientId' }, { path: 'fitStyleId' }] })

@@ -8,7 +8,13 @@ const { logAction } = require('../utils/logger');
 // Access token is short-lived so a stolen token has a small blast radius. Refresh
 // token is opaque (not JWT) so it can be revoked by removing it from the DB.
 const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || '15m';
-const REFRESH_TOKEN_TTL_MS = (parseInt(process.env.REFRESH_TOKEN_TTL_DAYS, 10) || 7) * 24 * 60 * 60 * 1000;
+// Refresh token = overall session lifetime (access token is silently refreshed within
+// this window). Defaults to 12 hours. Override with REFRESH_TOKEN_TTL_HOURS, or
+// REFRESH_TOKEN_TTL_DAYS (takes precedence if set). Rotation extends it on activity,
+// so this acts as an idle timeout — a user must re-login after 12h of inactivity.
+const REFRESH_TOKEN_TTL_MS = process.env.REFRESH_TOKEN_TTL_DAYS
+  ? parseInt(process.env.REFRESH_TOKEN_TTL_DAYS, 10) * 24 * 60 * 60 * 1000
+  : (parseInt(process.env.REFRESH_TOKEN_TTL_HOURS, 10) || 12) * 60 * 60 * 1000;
 const REFRESH_COOKIE_NAME = 'rt';
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
 

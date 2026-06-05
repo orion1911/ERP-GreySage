@@ -23,15 +23,15 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
     date: dayjs(new Date()),
     washOutDate: null,
     description: '',
-    washDetails: [{ washColor: '', washCreation: '', quantity: '', rate: '', quantityShort: '' }],
+    washDetails: [{ washColor: '', washCreation: '', quantity: lotQuantity || '', rate: '', quantityShort: '' }],
   };
 
-  const { control, handleSubmit, reset, setValue, formState: { errors } } = useForm({
+  const { control, handleSubmit, reset, setValue, getValues, formState: { errors } } = useForm({
     defaultValues,
     mode: 'onChange',
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, replace } = useFieldArray({
     control,
     name: 'washDetails',
   });
@@ -52,9 +52,10 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
       setValue('date', dayjs(new Date()));
       setValue('washOutDate', null);
       setValue('description', '');
-      setValue('washDetails', [{ washColor: '', washCreation: '', quantity: '', rate: '', quantityShort: '' }]);
+      // Pre-fill the first wash detail's quantity to the available qty (stitching net of shortage).
+      setValue('washDetails', [{ washColor: '', washCreation: '', quantity: lotQuantity || '', rate: '', quantityShort: '' }]);
     }
-  }, [editRecord, isEditMode, lotNumber, invoiceNumber, setValue]);
+  }, [editRecord, isEditMode, lotNumber, invoiceNumber, lotQuantity, setValue]);
 
   const onSubmit = (data) => {
     const formattedData = {
@@ -159,6 +160,14 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
                       {...field}
                       label="Vendor"
                       variant='standard'
+                      onChange={(e) => {
+                        field.onChange(e);
+                        const v = (vendors || []).find(x => x._id === e.target.value);
+                        if (v && Number(v.defaultRate) > 0) {
+                          const current = getValues('washDetails') || [];
+                          replace(current.map(d => ({ ...d, rate: String(v.defaultRate) })));
+                        }
+                      }}
                     >
                       {vendors.map(vendor => (
                         <MenuItem key={vendor._id} value={vendor._id}>{vendor.name}</MenuItem>
@@ -196,7 +205,7 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
               </LocalizationProvider>
             </Grid>
             {fields.map((wd, index) => (
-              <React.Fragment key={index}>
+              <React.Fragment key={wd.id}>
                 <Grid size={{ xs: 6, md: 6 }}>
                   <Controller
                     name={`washDetails[${index}].washColor`}

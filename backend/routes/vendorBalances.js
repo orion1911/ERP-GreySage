@@ -11,6 +11,7 @@ const {
   deletePaymentEntry,
   getPaymentEntryChangeHistory,
   getVendorPaymentChangeHistory,
+  markLotPaid,
   exportLotsToExcel,
   exportPaymentsToExcel
 } = require('../controllers/vendorBalanceController');
@@ -49,5 +50,8 @@ router.put('/vendor-payment/:entryId', authenticateToken, updatePaymentEntry);
 
 // Delete a payment entry
 router.delete('/vendor-payment/:entryId', authenticateToken, deletePaymentEntry);
+
+// Mark a lot (production record) paid/unpaid for a vendor
+router.patch('/lot-paid', authenticateToken, markLotPaid);
 
 module.exports = router;

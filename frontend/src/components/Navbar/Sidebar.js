@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Typography, Divider } from '@mui/material';
+import { Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Typography, Divider, Collapse } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import {
   Menu as MenuIcon, ChevronLeft as ChevronLeftIcon, Receipt as ReceiptIcon,
@@ -10,7 +10,9 @@ import {
   AutoAwesome as AutoAwesomeIcon, PieChart as PieChartIcon,
   Leaderboard as LeaderboardIcon, ContentCut as ContentCutIcon,
   CreditCard as CreditCardIcon, RequestQuote as InvoiceIcon,
-  AccountBalance as ClientPayIcon, Business as CompanyIcon
+  AccountBalance as ClientPayIcon, Business as CompanyIcon,
+  Warehouse as WarehouseIcon, Category as CategoryIcon,
+  ExpandLess as ExpandLessIcon, ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import { motion } from 'motion/react';
 
@@ -48,19 +50,45 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
     { label: 'Sales / Invoices', path: '/sales/invoices', icon: <InvoiceIcon /> },
     { label: 'Client Payments', path: '/sales/client-payments', icon: <ClientPayIcon /> },
     { label: 'Vendor Payments', path: '/vendor-payments', icon: <CreditCardIcon /> },
-    { label: 'Clients', path: '/clients', icon: <PeopleIcon /> },
-    { label: 'Fit Style', path: '/products', icon: <InventoryIcon /> },
-    { label: 'Fabric Vendors', path: '/fabric-vendors', icon: <DryCleaningIcon /> },
-    { label: 'Stitching Vendors', path: '/stitching-vendors', icon: <ContentCutIcon /> },
-    { label: 'Washing Vendors', path: '/washing-vendors', icon: <LaundryIcon /> },
-    { label: 'Finishing Vendors', path: '/finishing-vendors', icon: <AutoAwesomeIcon /> },
+    { label: 'Stock Management', path: '/stock', icon: <WarehouseIcon /> },
+    {
+      label: 'Masters', icon: <CategoryIcon />, children: [
+        { label: 'Clients', path: '/clients', icon: <PeopleIcon /> },
+        { label: 'Fit Style', path: '/products', icon: <InventoryIcon /> },
+        { label: 'Fabric Vendors', path: '/fabric-vendors', icon: <DryCleaningIcon /> },
+        { label: 'Stitching Vendors', path: '/stitching-vendors', icon: <ContentCutIcon /> },
+        { label: 'Washing Vendors', path: '/washing-vendors', icon: <LaundryIcon /> },
+        { label: 'Finishing Vendors', path: '/finishing-vendors', icon: <AutoAwesomeIcon /> },
+      ]
+    },
     { label: 'Reports', path: '/reports', icon: <AssessmentIcon /> },
     ...(user?.role === 'admin' ? [
       { label: 'Company Settings', path: '/admin/company-settings', icon: <CompanyIcon /> },
-      { label: 'Users', path: '/users', icon: <GroupIcon /> },
-      { label: 'Audit Logs', path: '/audit-logs', icon: <AuditIcon /> },
+      // { label: 'Users', path: '/users', icon: <GroupIcon /> },
+      // { label: 'Audit Logs', path: '/audit-logs', icon: <AuditIcon /> },
     ] : []),
   ];
+
+  // Expanded/collapsed state per parent group. Auto-open a group whose child route
+  // is currently active so the user sees where they are.
+  const [openMenus, setOpenMenus] = React.useState(() => {
+    const init = {};
+    for (const item of navItems) {
+      if (item.children) init[item.label] = item.children.some(c => c.path === location.pathname);
+    }
+    return init;
+  });
+
+  const handleParentClick = (item) => {
+    // When the sidebar is collapsed (icon-only), expand it first AND open the group so
+    // the sub-items become visible; otherwise just toggle the group.
+    if (collapsed) {
+      setCollapsed(false);
+      setOpenMenus(prev => ({ ...prev, [item.label]: true }));
+    } else {
+      setOpenMenus(prev => ({ ...prev, [item.label]: !prev[item.label] }));
+    }
+  };
 
   return (
     <Box
@@ -140,47 +168,105 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
           '&::-webkit-scrollbar-thumb:hover': { backgroundColor: thumbHover },
         };
       }}>
-        {navItems.map((item, index) => (
-          <ListItem key={index} disablePadding sx={{ overflowX: 'hidden' }}>
-            <motion.div
-              whileHover={{
-                y: [0, -2, 0],
-                x: [0, 2, 0],
-                transition: { duration: 0.3, easing: "ease-in-out" },
-              }}
-              style={{ width: '100%', overflowX: 'hidden' }}
-            >
-              <ListItemButton
-                selected={location.pathname === item.path}
-                onClick={() => handleMenuClick(item)}
-                sx={{
-                  backgroundColor: location.pathname === item.path ? theme.palette.action.selected : 'transparent',
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  px: collapsed ? 1 : 2,
-                  overflowX: 'hidden',
-                  whiteSpace: 'nowrap'
+        {navItems.map((item, index) => {
+          // ── Parent group with expandable sub-items (e.g. Masters) ──
+          if (item.children) {
+            const childActive = item.children.some(c => c.path === location.pathname);
+            const expanded = !collapsed && !!openMenus[item.label];
+            return (
+              <React.Fragment key={index}>
+                <ListItem disablePadding sx={{ overflowX: 'hidden' }}>
+                  <motion.div
+                    whileHover={{ y: [0, -2, 0], x: [0, 2, 0], transition: { duration: 0.3, easing: 'ease-in-out' } }}
+                    style={{ width: '100%', overflowX: 'hidden' }}
+                  >
+                    <ListItemButton
+                      selected={childActive}
+                      onClick={() => handleParentClick(item)}
+                      sx={{
+                        backgroundColor: childActive ? theme.palette.action.selected : 'transparent',
+                        justifyContent: collapsed ? 'center' : 'flex-start',
+                        px: collapsed ? 1 : 2,
+                        overflowX: 'hidden',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      <ListItemIcon sx={{ minWidth: collapsed ? 'auto' : 30, color: 'inherit' }}>
+                        {item.icon}
+                      </ListItemIcon>
+                      <ListItemText primary={item.label} sx={{ display: collapsed ? 'none' : 'block', overflowX: 'hidden' }} />
+                      {!collapsed && (openMenus[item.label] ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />)}
+                    </ListItemButton>
+                  </motion.div>
+                </ListItem>
+                <Collapse in={expanded} timeout="auto" unmountOnExit>
+                  <List component="div" disablePadding>
+                    {item.children.map((child, ci) => (
+                      <ListItem key={ci} disablePadding sx={{ overflowX: 'hidden' }}>
+                        <ListItemButton
+                          selected={location.pathname === child.path}
+                          onClick={() => handleMenuClick(child)}
+                          sx={{
+                            pl: 3,
+                            backgroundColor: location.pathname === child.path ? theme.palette.action.selected : 'transparent',
+                            overflowX: 'hidden',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 30, color: 'inherit' }}>{child.icon}</ListItemIcon>
+                          <ListItemText primary={child.label} sx={{ overflowX: 'hidden' }} />
+                        </ListItemButton>
+                      </ListItem>
+                    ))}
+                  </List>
+                </Collapse>
+              </React.Fragment>
+            );
+          }
+
+          // ── Leaf item ──
+          return (
+            <ListItem key={index} disablePadding sx={{ overflowX: 'hidden' }}>
+              <motion.div
+                whileHover={{
+                  y: [0, -2, 0],
+                  x: [0, 2, 0],
+                  transition: { duration: 0.3, easing: "ease-in-out" },
                 }}
-                disabled={item.path === '/reports' || item.path === '/audit-logs' || item.path === '/users'}
+                style={{ width: '100%', overflowX: 'hidden' }}
               >
-                <ListItemIcon
+                <ListItemButton
+                  selected={location.pathname === item.path}
+                  onClick={() => handleMenuClick(item)}
                   sx={{
-                    minWidth: collapsed ? 'auto' : 30,
-                    color: 'inherit',
-                  }}
-                >
-                  {item.icon}
-                </ListItemIcon>
-                <ListItemText
-                  primary={item.label}
-                  sx={{
-                    display: collapsed ? 'none' : 'block',
+                    backgroundColor: location.pathname === item.path ? theme.palette.action.selected : 'transparent',
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    px: collapsed ? 1 : 2,
                     overflowX: 'hidden',
+                    whiteSpace: 'nowrap'
                   }}
-                />
-              </ListItemButton>
-            </motion.div>
-          </ListItem>
-        ))}
+                  disabled={item.path === '/reports' || item.path === '/audit-logs' || item.path === '/users'}
+                >
+                  <ListItemIcon
+                    sx={{
+                      minWidth: collapsed ? 'auto' : 30,
+                      color: 'inherit',
+                    }}
+                  >
+                    {item.icon}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={item.label}
+                    sx={{
+                      display: collapsed ? 'none' : 'block',
+                      overflowX: 'hidden',
+                    }}
+                  />
+                </ListItemButton>
+              </motion.div>
+            </ListItem>
+          );
+        })}
       </List>
       <Box sx={{ p: 1, display: 'flex', justifyContent: collapsed ? 'center' : 'flex-end', gap: 1, overflowX: 'hidden' }}>
         {/* <FormControl size="small" sx={{ minWidth: collapsed ? 40 : 85 }}>

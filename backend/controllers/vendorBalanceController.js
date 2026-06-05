@@ -1,4 +1,4 @@
-const { VendorBalance, VendorPaymentEntry, StitchingVendor, WashingVendor, FinishingVendor } = require('../mongodb_schema');
+const { VendorBalance, VendorPaymentEntry, StitchingVendor, WashingVendor, FinishingVendor, Stitching, Washing, Finishing } = require('../mongodb_schema');
 const { 
   getVendorLotsDetails, 
   recordVendorPayment, 
@@ -580,7 +580,35 @@ const exportPaymentsToExcel = async (req, res) => {
   }
 };
 
-module.exports = { 
+/**
+ * Toggle (or set) a lot's "paid" marker for a vendor — flips isPaid on the underlying
+ * Stitching/Washing/Finishing record. Just a settled flag (row disabled in the UI).
+ */
+const markLotPaid = async (req, res) => {
+  try {
+    const { vendorType, lotId, vendorId, isPaid } = req.body;
+    if (!vendorType || !lotId) return res.status(400).json({ error: 'vendorType and lotId required' });
+    const Model = { stitching: Stitching, washing: Washing, finishing: Finishing }[vendorType];
+    if (!Model) return res.status(400).json({ error: 'Invalid vendor type' });
+
+    const query = { lotId };
+    if (vendorId) query.vendorId = vendorId;
+    const record = await Model.findOne(query);
+    if (!record) return res.status(404).json({ error: 'Production record not found' });
+
+    record.isPaid = isPaid === undefined ? !record.isPaid : !!isPaid;
+    record.paidAt = record.isPaid ? new Date() : null;
+    await record.save();
+
+    const entity = vendorType.charAt(0).toUpperCase() + vendorType.slice(1); // Stitching/Washing/Finishing
+    await logAction(req.user.userId, 'mark_lot_paid', entity, record._id, `Marked ${vendorType} lot ${record.isPaid ? 'paid' : 'unpaid'}`);
+    res.json({ recordId: record._id, lotId, isPaid: record.isPaid });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+module.exports = {
   getVendorsByType,
   getVendorLotsWithPayments,
   addVendorPayment,
@@ -591,6 +619,7 @@ module.exports = {
   deletePaymentEntry,
   getPaymentEntryChangeHistory,
   getVendorPaymentChangeHistory,
+  markLotPaid,
   exportLotsToExcel,
   exportPaymentsToExcel
 };

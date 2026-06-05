@@ -40,10 +40,11 @@ const updateVendor = async (req, res, Model, vendorType) => {
   const vendor = await Model.findById(req.params.id);
   if (!vendor) return res.status(404).json({ error: `${vendorType} not found` });
 
-  const { name, contact, address, isActive } = req.body;
+  const { name, contact, address, isActive, defaultRate } = req.body;
   if (name !== undefined) vendor.name = name;
   if (contact !== undefined) vendor.contact = contact;
   if (address !== undefined) vendor.address = address;
+  if (defaultRate !== undefined) vendor.defaultRate = defaultRate;
   if (isActive !== undefined) vendor.isActive = isActive;
 
   await vendor.save();

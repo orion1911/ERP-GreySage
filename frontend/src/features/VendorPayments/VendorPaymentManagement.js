@@ -5,7 +5,7 @@ import {
     useTheme, Container, Box, Button, Card, CardContent, Modal, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, FormControl, Grid, InputLabel, MenuItem, Select,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, TablePagination, TextField, Typography, Paper, Alert, CircularProgress, Chip, IconButton, Tooltip
 } from '@mui/material';
-import { Close as CloseIcon, CreditCard as CreditCardIcon, Shortcut as ShortcutIcon, Save as SaveIcon, Edit as EditIcon, Delete as DeleteIcon, FileDownload as FileDownloadIcon } from '@mui/icons-material';
+import { Close as CloseIcon, CreditCard as CreditCardIcon, Shortcut as ShortcutIcon, Save as SaveIcon, Edit as EditIcon, Delete as DeleteIcon, FileDownload as FileDownloadIcon, Paid as PaidIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -127,6 +127,12 @@ const VendorPaymentManagement = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleMarkLotPaid = (lot) => {
+        apiService.vendorPayments.markLotPaid({ vendorType: lot.vendorType, lotId: lot._id, vendorId: lot.vendorId, isPaid: !lot.isPaid })
+            .then(() => fetchVendorData())
+            .catch(err => showSnackbar('Failed to update paid status: ' + (err.response?.data?.error || err.message), 'error'));
     };
 
     const handleAddPayment = () => {
@@ -710,13 +716,13 @@ const VendorPaymentManagement = () => {
                         minHeight: { md: 580 },
                         height: { xs: 'auto', md: 'calc(100vh - 340px)' }
                     }}>
-                        {/* Left Column: Current Lots Table */}
+                        {/* Left Column: Current Lots Table (a bit wider for the extra PAID column) */}
                         <Paper elevation={1} sx={{
                             borderRadius: 2,
                             overflow: 'hidden',
                             display: 'flex',
                             flexDirection: 'column',
-                            flex: { xs: '0 0 60vh', md: '1 1 0' },
+                            flex: { xs: '0 0 60vh', md: '1.35 1 0' },
                             minHeight: 0,
                         }}>
                                 <Box sx={{ p: 1, pl: 2, borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -762,7 +768,7 @@ const VendorPaymentManagement = () => {
                                                         direction={lotSortOrder}
                                                         onClick={() => handleLotSort('invoiceNumber')}
                                                     >
-                                                        INVOICE
+                                                        INV
                                                     </TableSortLabel>
                                                 </TableCell>
                                                 <TableCell sortDirection={lotSortBy === 'clientName' ? lotSortOrder : false}>
@@ -779,7 +785,7 @@ const VendorPaymentManagement = () => {
                                                         WASH COLOR
                                                     </TableCell>
                                                 )}
-                                                <TableCell sortDirection={lotSortBy === 'displayQuantity' ? lotSortOrder : false} align="center">
+                                                <TableCell sortDirection={lotSortBy === 'displayQuantity' ? lotSortOrder : false} align="right">
                                                     <TableSortLabel
                                                         active={lotSortBy === 'displayQuantity'}
                                                         direction={lotSortOrder}
@@ -788,7 +794,7 @@ const VendorPaymentManagement = () => {
                                                         PCS
                                                     </TableSortLabel>
                                                 </TableCell>
-                                                <TableCell sortDirection={lotSortBy === 'displayRate' ? lotSortOrder : false} align="center">
+                                                <TableCell sortDirection={lotSortBy === 'displayRate' ? lotSortOrder : false} align="right">
                                                     <TableSortLabel
                                                         active={lotSortBy === 'displayRate'}
                                                         direction={lotSortOrder}
@@ -797,7 +803,7 @@ const VendorPaymentManagement = () => {
                                                         RATE
                                                     </TableSortLabel>
                                                 </TableCell>
-                                                <TableCell sortDirection={lotSortBy === 'displayAmount' ? lotSortOrder : false} align="center">
+                                                <TableCell sortDirection={lotSortBy === 'displayAmount' ? lotSortOrder : false} align="right">
                                                     <TableSortLabel
                                                         active={lotSortBy === 'displayAmount'}
                                                         direction={lotSortOrder}
@@ -815,25 +821,26 @@ const VendorPaymentManagement = () => {
                                                         SHORT
                                                     </TableSortLabel>
                                                 </TableCell>
+                                                <TableCell align="center">PAID</TableCell>
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
                                             {loading && (
                                                 <TableRow>
-                                                    <TableCell colSpan={vendorType === 'washing' ? 8 : 7} align="center">
+                                                    <TableCell colSpan={vendorType === 'washing' ? 10 : 9} align="center">
                                                         <CircularProgress size={20} />
                                                     </TableCell>
                                                 </TableRow>
                                             )}
                                             {!loading && lotsData.length === 0 && (
                                                 <TableRow>
-                                                    <TableCell colSpan={vendorType === 'washing' ? 9 : 8} align="center">
+                                                    <TableCell colSpan={vendorType === 'washing' ? 10 : 9} align="center">
                                                         No lots found for this vendor
                                                     </TableCell>
                                                 </TableRow>
                                             )}
                                             {!loading && pagedLotsData.map((lot) => (
-                                                <TableRow key={lot.isWashDetail ? `${lot._id}-${lot.washIndex}` : lot._id} hover>
+                                                <TableRow key={lot.isWashDetail ? `${lot._id}-${lot.washIndex}` : lot._id} hover sx={{ opacity: lot.isPaid ? 0.5 : 1 }}>
                                                     <TableCell sx={{ fontSize: '0.85rem' }}>
                                                         {new Date(lot.date).toLocaleDateString('en-IN')}
                                                     </TableCell>
@@ -858,10 +865,10 @@ const VendorPaymentManagement = () => {
                                                             )}
                                                         </TableCell>
                                                     )}
-                                                    <TableCell align="center" sx={{ fontSize: '0.85rem' }}>
+                                                    <TableCell align="right" sx={{ fontSize: '0.85rem' }}>
                                                         {lot.displayQuantity}
                                                     </TableCell>
-                                                    <TableCell align="center" sx={{ fontSize: '0.85rem' }}>
+                                                    <TableCell align="right" sx={{ fontSize: '0.85rem' }}>
                                                         {lot.displayRate}
                                                     </TableCell>
                                                     <TableCell align="right" sx={{ fontSize: '0.85rem', fontWeight: 'bold' }}>
@@ -875,6 +882,15 @@ const VendorPaymentManagement = () => {
                                                         }}
                                                     >
                                                         {lot.displayQuantityShort}
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        {(!lot.isWashDetail || lot.washIndex === 0) && (
+                                                            <Tooltip title={lot.isPaid ? 'Paid — mark unpaid' : 'Mark as paid'} placement='bottom' arrow>
+                                                                <IconButton size="small" color={lot.isPaid ? 'success' : 'default'} onClick={() => handleMarkLotPaid(lot)}>
+                                                                    <PaidIcon fontSize="small" sx={{ fontSize: '16px' }} />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        )}
                                                     </TableCell>
                                                 </TableRow>
                                             ))}

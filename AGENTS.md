@@ -3,7 +3,7 @@
 Single-file context for any AI coding assistant (Claude, GPT, Gemini, Cursor, Codex, etc.) working on this repo. Read this first before exploring source.
 
 **Repo root:** `D:\Work\SalesAndAccounting`
-**Last context refresh:** 2026-05-23 (Sales/Dispatch/Billing module added — see section 7) (verify with `git log` and `git status` before trusting time-sensitive details)
+**Last context refresh:** 2026-06-05 (Stock Management / Accessories module added — masters, purchase+payment ledger, stock stats, zipper@stitching + finishing consumption; plus vendor default rates, per-lot/per-purchase Paid markers, 12h token-refresh session, net-of-shortage stage pre-fill. Previous: Sales/Dispatch/Billing 2026-05-23 — see section 7.) (verify with `git log` and `git status` before trusting time-sensitive details)
 
 ---
 
@@ -121,7 +121,7 @@ All Mongoose models live in **one file**: `backend/mongodb_schema.js`. Summary:
 **Lookups** (each has `isActive` flag for soft-disable):
 - `Client` — has unique `clientCode`, unique-index on `name`. **Extended for Sales:** `gstin`, `pan`, `billingAddress` + `shippingAddress` (`AddressSchema` subdoc: line1/line2/city/state/stateCode/pincode/country). The legacy `address` free-text field is kept for back-compat.
 - `FitStyle` — replaces an older `Product` collection; unique on `name`
-- `FabricVendor`, `StitchingVendor`, `WashingVendor`, `FinishingVendor` — separate collections per vendor type
+- `FabricVendor`, `StitchingVendor`, `WashingVendor`, `FinishingVendor` — separate collections per vendor type. The three **production** vendors also carry a `defaultRate` (Number) — selecting the vendor in the stage modal pre-fills the rate field (still editable; washing fills every wash-detail row). `updateVendor` whitelists fields, so new vendor fields must be added there too.
 
 **Lot** (root aggregate, replaces Order):
 - `lotId` — generated `LT-YYYYMMDD###` via `Counter` collection (`_id: 'lotId'`)
@@ -131,10 +131,14 @@ All Mongoose models live in **one file**: `backend/mongodb_schema.js`. Summary:
 - `status` enum `[2,3,4,5,6]` (status `1` was the removed Order stage), plus `statusHistory[]`
 - `invoicedPcs` (sales-side cache) — sum of pcs across all non-cancelled `Invoice.lines` referencing this lot. Recomputed by `invoiceService.recalcLotInvoiced(lotId)` after every invoice write. `remainingPcs = finalPcs(production) - invoicedPcs`.
 
-**Production stages** (each references `lotId`, has its own `vendorId` + `rate` + `quantityShort`):
+**Production stages** (each references `lotId`, has its own `vendorId` + `rate` + `quantityShort`; each also has an `isPaid`/`paidAt` "settled" marker — see below):
 - **`Stitching`** — top-level `quantity`/`rate`. Also has `threadColors: [{color, quantity}]` — **sum of thread color quantities MUST equal lot `quantity`** (controller-enforced).
 - **`Washing`** — schema-asymmetric: no top-level quantity/rate. Instead has `washDetails: [{washColor, washCreation, quantity, rate, quantityShort, quantityShortDesc}]`. Each entry is a separate wash sub-record. Several places (Excel export, vendor balance aggregation) special-case this — when iterating Washing data, **check for `washDetails` array** rather than scalar fields.
 - **`Finishing`** — mirrors Stitching without `threadColors`.
+
+**Stage quantity pre-fill (UI):** each stage's available qty is **net of upstream shortage** — Washing pre-fills to `stitching.quantity − quantityShort`; Finishing pre-fills (and the modal *fetches the washing record* to compute) `Σ(washDetails.quantity − quantityShort)`. Backend validates Finishing qty == available washing qty, so keep these in sync.
+
+**Per-lot "Paid" marker:** `Stitching/Washing/Finishing` each have `isPaid` + `paidAt`. The Vendor Payments **Lots** table has a PAID toggle per lot (`PATCH /api/vendor-balances/lot-paid` → `markLotPaid` flips the production record by `{lotId, vendorId}`); a paid row is dimmed. `getVendorLotsDetails` returns `isPaid` (+ `recordId`) per lot. **Purely a status flag — it does NOT touch the money ledger/balance.** (Accessory purchases have the same marker — see Stock Management.)
 
 Latest commit (`90c94c6`) relaxed validation to allow `quantity: 0` and `rate: 0` on Stitching entries (previously enforced `min: 1` / `min: 0`).
 
@@ -156,6 +160,24 @@ Latest commit (`90c94c6`) relaxed validation to allow `quantity: 0` and `rate: 0
 - **`ClientPaymentEntry`** — mirror of `VendorPaymentEntry`. Fields: `clientId`, `paymentScope ∈ ['client','invoice']`, optional `invoiceId`, `paymentType ∈ ['payment','adjustment']`, `amount`, `paymentDate`, `paymentMode ∈ ['cash','bank','upi','cheque','other']`, `referenceNumber` (cheque #/UTR), `notes`, audit fields.
 - **`ClientPaymentEntryHistory`** — mirror of `VendorPaymentEntryHistory`.
 - **`ClientBalance`** — denormalized aggregate (unique on `clientId`): `openingBalance` (for legacy seed from the spreadsheets), `totalInvoiced`, `totalPaid`, `totalAdjustment`, `remainingBalance = opening + invoiced - paid - adjustment`. Recomputed by `services/clientBalanceService.updateClientBalance`. **Always call `updateClientBalance(clientId)` after any write that affects client money** (invoice create/update/cancel, payment create/update/delete).
+
+**Stock Management / Accessories** (added 2026-06-02 — Phase 1):
+Tracks consumable accessories (zippers, buttons, label-tags, pocketing, polybags). Two independent denormalized aggregates, both fed by `AccessoryPurchase`:
+- **STOCK** (per item, computed on read — no denormalization) = Σ purchase-line qty − Σ consumption qty.
+- **MONEY** (per type, denormalized into `AccessoryBalance`) = opening + Σ purchases − Σ payments − Σ adjustments.
+
+Collections:
+- **`AccessoryType`** — seeded lookup (`key` slug drives behaviour). `key`, `name`, `unit` (pcs/mtr), `consumptionStage` ∈ `['stitching','finishing']`, `sortOrder`, `isActive`. Auto-seeded by `accessoryService.seedAccessoryTypes` (zipper/button/label-tag/pocketing/polybag) on first `/types` or `/stock/summary` hit.
+- **`AccessoryItem`** — the master/lookup per type (e.g. "AD BLUE 5.5 INCH"). `accessoryTypeId`, `name`, `rate`, `clientId` (**null = general/common-for-all**; set = custom for that client), `subType` ∈ `['label','tag',null]` (for the Phase-2 label-tag paired stream), `isActive`. Unique on `(accessoryTypeId, name)`.
+- **`AccessoryPurchase`** — one supplier invoice = header + N `lines[{accessoryItemId, nameSnapshot, qty, rate, amount}]` (a single INV can carry both a label and a tag line). `accessoryTypeId`, `date`, `vendorInvoiceNumber`, `supplier`, `totalQty`, `totalAmount`, plus an `isPaid`/`paidAt`/`paidBy` settled marker (`PATCH /accessories/purchases/:id/paid`; paid rows are dimmed + Edit/Delete disabled — a status flag only, doesn't touch the balance). **Call `accessoryService.updateAccessoryBalance(typeId)` after any purchase write.** Purchases + payments are **server-paginated** (`page`/`limit`, default 10) → `{ rows, total }`.
+- **`AccessoryBalance.openingBalance`** is settable from the UI per type (Stock ledger → "Opening Balance" button → `PATCH /api/accessories/opening-balance`), mirroring client-balance opening. Used to carry the pre-go-live outstanding.
+- **`AccessoryPayment`** (+ **`AccessoryPaymentHistory`**) — payments/adjustments against an **article-type account** (the "account" is the AccessoryType, matching the Excel's per-type ledger tabs — there is intentionally no per-supplier ledger in Phase 1). Mirror of VendorPaymentEntry. **Call `updateAccessoryBalance` + write history after any payment write.**
+- **`AccessoryBalance`** — denormalized per type (unique on `accessoryTypeId`): `openingBalance`, `totalPurchased`, `totalPaid`, `totalAdjustment`, `remainingBalance`.
+- **`AccessoryConsumption`** — per-item stock-out ledger, source of truth for consumed qty. Keyed by `(lotId, stage)` so editing a Stitching/Finishing record **replaces** its rows. **Zipper consumption** is written inside `stitchingController.createStitching`'s transaction (via `replaceConsumption`); **Finishing consumption** (button/label/tag/polybag) is written inside `finishingController.createFinishing`'s transaction via `replaceFinishingConsumption`. Both updateStitching/updateFinishing replace non-transactionally.
+
+**Zipper consumption hook (Stitching):** `createStitching`/`updateStitching` accept an optional `zipperConsumption: [{accessoryItemId, qty}]`. It's **optional/non-blocking** — if every qty is 0 (or no zipper masters exist) it's skipped so the critical stitching flow never breaks; but once **any** zipper qty is entered, the sum **must equal the lot quantity** (validated client- and server-side, returns 400 with a clear message). The stitching modal shows ALL applicable zipper items for the selected client (client-mapped items if any exist, else general), each defaulting to 0.
+
+**Finishing consumption hook (Phase 2):** `createFinishing`/`updateFinishing` accept `accessoryConsumption: [{accessoryItemId, qty}]` (a flat list across types; each item's type/name/clientLinked is resolved server-side). The modal calls `GET /api/accessories/finishing-items?invoiceNumber=` which resolves the lot's client and returns consumption **slots** — Button, **Label**, **Tag** (Label-Tag expands into two slots, consumed as a pair), Polybag — each listing client-mapped **AND** general items so a lot can be split partial-client + partial-general (each slot supports multiple split rows). **Rivets are NOT a slot**: they're auto-derived at **4× the total buttons** against the default rivet item (`subType:'rivet'`), carried on the Button group's `rivet` field and appended to the consumption set on save (1 button + 4 rivets per piece). **Pocketing is excluded** (metres, purchases/payments only — `accessoryService.FINISHING_CONSUMABLE_KEYS`). Each shown slot is **pre-filled to the finishing quantity** (which already nets stitching/washing shortage) and **required (≥1)**; users adjust upward per item for extras sent. Only slots that have items are shown/required.
 
 **Dormant schemas** (still defined, not actively used):
 - `Order` — removed as entry point
@@ -183,6 +205,7 @@ app.use('/api/vendor-balances', vendorBalanceRoutes);    // ← SUB-PREFIX
 app.use('/api/sales-invoices', salesInvoiceRoutes);      // ← SUB-PREFIX (2026-05-23)
 app.use('/api/client-balances', clientBalanceRoutes);    // ← SUB-PREFIX (2026-05-23)
 app.use('/api/company-settings', companySettingsRoutes); // ← SUB-PREFIX (2026-05-23)
+app.use('/api/accessories', accessoryRoutes);            // ← SUB-PREFIX (2026-06-02 Stock Mgmt)
 app.use('/api', balancesRoutes);
 app.use('/api', reportRoutes);
 app.use('/api', auditLogRoutes);
@@ -194,6 +217,7 @@ app.use('/api', emailRoutes);
 - `/api/sales-invoices/*` — invoice CRUD + `lots-available` autocomplete + cancel + history
 - `/api/client-balances/*` — client payment ops + ledger + opening balance + history
 - `/api/company-settings` — admin-only singleton get/update
+- `/api/accessories/*` — Stock Mgmt: `types`, `items`(+`/applicable`, +`/finishing-items`), `purchases`, `payments`(+`/:id/history`), `balance` (+ PATCH `/opening-balance` to seed per-type opening balance, mirror of `/api/client-balances/opening-balance`), `stock`(+`/summary`), `consumption`. Purchases/payments are server-paginated (`page`/`limit`, default 10) returning `{ rows, total }`.
 
 **Auth:** every route except `/api/auth/*` should call `authenticateToken` middleware (see pattern in `routes/vendorBalances.js`).
 
@@ -251,6 +275,8 @@ Copy this triplet when adding a new lookup.
 ---
 
 ## 8. Gotchas — things that will trip you up
+
+**Token refresh hinges on the 401 vs 403 distinction.** Short-lived JWT access token (default 15m) + opaque rotating refresh token (httpOnly `rt` cookie, bcrypt-hashed in `User.refreshTokens`, **default 12h** session — `authController` `REFRESH_TOKEN_TTL`). The axios interceptor (`axiosInstance.js`) only performs the silent refresh on a **401**, so `middleware/auth.js` returns **401 for an expired access token** (`TokenExpiredError`) and 403 only for genuinely-invalid tokens. If you ever make auth return 403 on expiry, the session dies after one access-token lifetime instead of refreshing. Edit the auth-config constants (`ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL_HOURS`/`_DAYS`) in `authController.js`, not elsewhere.
 
 **Duplicate `vendorPayments` key in `apiService.js`.** The object literal in `frontend/src/services/apiService.js` declares a `vendorPayments` block twice (around line 284 and around line 578). JavaScript keeps the **second** declaration — the first block is dead code calling URLs that no longer exist on the backend (`/api/vendor-payment*` vs the real `/api/vendor-balances/vendor-payment*`). When editing vendor-payment calls, edit the **second** block. The first should probably be deleted, but confirm before doing so.
 
@@ -314,6 +340,10 @@ Read-only is fine; don't propose edits to these unless the user explicitly asks.
 | Client balance denormalization (mirror of vendor service) | `backend/services/clientBalanceService.js` |
 | Client payment ledger ops | `backend/controllers/clientBalanceController.js` |
 | Company settings (issuer) singleton | `backend/controllers/companySettingsController.js` |
+| Accessory/Stock business logic (items, purchases, payments, stock, consumption) | `backend/controllers/accessoryController.js` |
+| Accessory denormalization (balance, stock aggregation, replaceConsumption, seed) | `backend/services/accessoryService.js` |
+| Stock Management UI (type selector + stats + masters + ledger) | `frontend/src/features/Stock/` |
+| Zipper consumption hook | `backend/controllers/stitchingController.js` (`prepareZipperConsumption`) + `frontend/src/features/Stitching/AddStitchingModal.js` |
 | JWT auth middleware | `backend/middleware/auth.js` |
 | Global error handler | `backend/middleware/error.js` |
 | Audit log writer | `backend/utils/logger.js` |

@@ -12,7 +12,8 @@ function StitchingVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSu
     defaultValues: {
       name: editVendor?.name || '',
       contact: editVendor?.contact || '',
-      address: editVendor?.address || ''
+      address: editVendor?.address || '',
+      defaultRate: editVendor?.defaultRate ?? ''
     },
     mode: 'onChange'
   });
@@ -22,16 +23,18 @@ function StitchingVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSu
       setValue('name', editVendor.name || '');
       setValue('contact', editVendor.contact || '');
       setValue('address', editVendor.address || '');
+      setValue('defaultRate', editVendor.defaultRate ?? '');
     } else {
-      reset({ name: '', contact: '', address: '' });
+      reset({ name: '', contact: '', address: '', defaultRate: '' });
     }
   }, [editVendor, setValue, reset]);
 
   const onSubmit = (data) => {
     setLoading(true);
+    const payload = { ...data, defaultRate: Number(data.defaultRate) || 0 };
     const request = editVendor
-      ? apiService.stitchingVendors.updateStitchingVendor(editVendor._id, data)
-      : apiService.stitchingVendors.createStitchingVendor(data);
+      ? apiService.stitchingVendors.updateStitchingVendor(editVendor._id, payload)
+      : apiService.stitchingVendors.createStitchingVendor(payload);
 
     request
       .then(() => {
@@ -134,6 +137,24 @@ function StitchingVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSu
                     variant="standard"
                     error={!!error}
                     helperText={error ? error.message : ''}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 12 }}>
+              <Controller
+                name="defaultRate"
+                control={control}
+                rules={{ pattern: { value: /^\d*\.?\d*$/, message: 'Only numbers allowed' } }}
+                render={({ field, fieldState: { error } }) => (
+                  <TextField
+                    {...field}
+                    label="Default Rate"
+                    fullWidth
+                    margin="normal"
+                    variant="standard"
+                    error={!!error}
+                    helperText={error ? error.message : 'Pre-fills the rate when this vendor is selected at the stage'}
                   />
                 )}
               />

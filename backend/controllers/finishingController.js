@@ -1,10 +1,11 @@
 // controllers/finishingController.js
 const mongoose = require('mongoose');
 const { Finishing, Lot, Washing } = require('../mongodb_schema');
+const accessoryService = require('../services/accessoryService');
 // const { updateVendorBalance } = require('../services/vendorBalanceService');
 
 const createFinishing = async (req, res) => {
-  const { invoiceNumber, vendorId, quantity, quantityShort, rate, date, finishOutDate, description } = req.body;
+  const { invoiceNumber, vendorId, quantity, quantityShort, rate, date, finishOutDate, description, accessoryConsumption } = req.body;
 
   if (!invoiceNumber || !vendorId || !quantity || !rate) {
     return res.status(400).json({ error: 'Required fields missing' });
@@ -48,6 +49,9 @@ const createFinishing = async (req, res) => {
 
     await finishing.save({ session });
 
+    // Record accessory stock-out (button / label / tag / polybag) for this lot
+    await accessoryService.replaceFinishingConsumption(lot._id, accessoryConsumption, req.user?.userId, session);
+
     lot.status = 4;
     lot.statusHistory.push({ status: 4, changedAt: new Date() });
     await lot.save({ session });
@@ -73,7 +77,7 @@ const createFinishing = async (req, res) => {
 
 const updateFinishing = async (req, res) => {
   const { id } = req.params;
-  const { vendorId, quantityShort, quantityShortDesc, rate, date, finishOutDate, description, quantity } = req.body;
+  const { vendorId, quantityShort, quantityShortDesc, rate, date, finishOutDate, description, quantity, accessoryConsumption } = req.body;
 
   const finishing = await Finishing.findById(id);
   if (!finishing) return res.status(404).json({ error: 'Finishing record not found' });
@@ -101,6 +105,12 @@ const updateFinishing = async (req, res) => {
 
   try {
     await finishing.save();
+
+    // Replace accessory stock-out when the form supplied a consumption set.
+    if (Array.isArray(accessoryConsumption)) {
+      const lotRef = finishing.lotId._id || finishing.lotId;
+      await accessoryService.replaceFinishingConsumption(lotRef, accessoryConsumption, req.user?.userId);
+    }
 
     const populated = await Finishing.findById(id).populate('lotId vendorId');
     res.json(populated);

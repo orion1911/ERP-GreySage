@@ -84,6 +84,7 @@ const StitchingVendorSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true, trim: true },
   contact: { type: String },
   address: { type: String },
+  defaultRate: { type: Number, default: 0 }, // pre-fills the per-piece rate when selected at the stage
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
 });
@@ -93,6 +94,7 @@ const WashingVendorSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true, trim: true },
   contact: { type: String },
   address: { type: String },
+  defaultRate: { type: Number, default: 0 }, // pre-fills the per-piece rate when selected at the stage
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
 });
@@ -102,6 +104,7 @@ const FinishingVendorSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true, trim: true },
   contact: { type: String },
   address: { type: String },
+  defaultRate: { type: Number, default: 0 }, // pre-fills the per-piece rate when selected at the stage
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
 });
@@ -160,6 +163,8 @@ const StitchingSchema = new mongoose.Schema({
     color: { type: String, required: true },
     quantity: { type: Number, required: true, min: 0 }
   }],
+  isPaid: { type: Boolean, default: false }, // vendor settled this lot's work (row disabled in vendor payments)
+  paidAt: { type: Date },
   description: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
@@ -180,6 +185,8 @@ const WashingSchema = new mongoose.Schema({
     quantityShort: { type: Number, default: 0, min: 0 },
     quantityShortDesc: { type: String }
   }],
+  isPaid: { type: Boolean, default: false }, // vendor settled this lot's work (row disabled in vendor payments)
+  paidAt: { type: Date },
   description: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
@@ -196,6 +203,8 @@ const FinishingSchema = new mongoose.Schema({
   quantityShort: { type: Number, default: 0, min: 0 },
   quantityShortDesc: { type: String },
   rate: { type: Number, required: true, min: 0 },
+  isPaid: { type: Boolean, default: false }, // vendor settled this lot's work (row disabled in vendor payments)
+  paidAt: { type: Date },
   description: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
@@ -437,6 +446,139 @@ const ClientBalanceSchema = new mongoose.Schema({
 });
 ClientBalanceSchema.index({ clientId: 1 }, { unique: true });
 
+// ─── STOCK MANAGEMENT / ACCESSORIES ──────────────────────────────────────────
+// Accessories are consumable inputs (zippers, buttons, label-tags, pocketing,
+// polybags). Two independent denormalized aggregates are both fed by purchases:
+//   • STOCK (per item)  = Σ purchase-line qty − Σ consumption qty
+//   • MONEY (per type)  = Σ purchase amounts  − Σ payments
+// Zipper consumption is recorded at the Stitching stage; the rest at Finishing.
+
+// AccessoryType: the article-type lookup (Zipper/Button/Label-Tag/Pocketing/Polybag).
+// Seeded by accessoryService.seedAccessoryTypes; `key` is the stable behaviour slug.
+const AccessoryTypeSchema = new mongoose.Schema({
+  key: { type: String, required: true, unique: true, lowercase: true, trim: true }, // 'zipper', 'label-tag'
+  name: { type: String, required: true, trim: true },
+  unit: { type: String, trim: true, default: 'pcs' },           // pcs | mtr
+  consumptionStage: { type: String, enum: ['stitching', 'finishing'], default: 'finishing' },
+  sortOrder: { type: Number, default: 0 },
+  isActive: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+// AccessoryItem: the master/lookup per type (e.g. "AD BLUE 5.5 INCH").
+// clientId null = general/common-for-all; set = custom-made for that client.
+// subType ('label'|'tag') supports the Label-Tag paired stream at finishing (Phase 2).
+const AccessoryItemSchema = new mongoose.Schema({
+  accessoryTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccessoryType', required: true },
+  name: { type: String, required: true, trim: true },
+  rate: { type: Number, default: 0, min: 0 },
+  clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', default: null },
+  subType: { type: String, enum: ['label', 'tag', 'button', 'rivet', null], default: null }, // paired streams (label/tag, button/rivet)
+  description: { type: String, trim: true },
+  isActive: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now }
+});
+AccessoryItemSchema.index({ accessoryTypeId: 1, isActive: 1 });
+AccessoryItemSchema.index({ accessoryTypeId: 1, clientId: 1 });
+AccessoryItemSchema.index({ accessoryTypeId: 1, name: 1 }, { unique: true });
+
+// AccessoryPurchase: one supplier invoice = N line items (a single INV can carry
+// both a label and a tag line). Header has the type-account + optional supplier.
+const AccessoryPurchaseSchema = new mongoose.Schema({
+  accessoryTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccessoryType', required: true },
+  date: { type: Date, required: true },
+  vendorInvoiceNumber: { type: String, trim: true }, // supplier's invoice no (free text — can be alphanumeric)
+  supplier: { type: String, trim: true },            // optional supplier name
+  lines: [{
+    accessoryItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccessoryItem', required: true },
+    nameSnapshot: { type: String, trim: true },      // frozen item name for history
+    qty: { type: Number, required: true, min: 0 },
+    rate: { type: Number, required: true, min: 0 },
+    amount: { type: Number, required: true, min: 0 } // qty * rate, recomputed server-side
+  }],
+  totalQty: { type: Number, default: 0, min: 0 },
+  totalAmount: { type: Number, default: 0, min: 0 },
+  notes: { type: String, trim: true },
+  isPaid: { type: Boolean, default: false }, // per-purchase settled marker (row disabled in UI)
+  paidAt: { type: Date },
+  paidBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  updatedAt: { type: Date }
+});
+AccessoryPurchaseSchema.index({ accessoryTypeId: 1, date: -1 });
+AccessoryPurchaseSchema.index({ 'lines.accessoryItemId': 1 });
+
+// AccessoryPayment: payments/adjustments against an article-type account
+// (mirror of VendorPaymentEntry — the "account" here is the AccessoryType).
+const AccessoryPaymentSchema = new mongoose.Schema({
+  accessoryTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccessoryType', required: true },
+  paymentType: { type: String, enum: ['payment', 'adjustment'], required: true },
+  amount: { type: Number, required: true },
+  paymentDate: { type: Date, required: true },
+  paymentMode: { type: String, enum: ['cash', 'bank', 'upi', 'cheque', 'other'], default: 'cash' },
+  referenceNumber: { type: String, trim: true },
+  notes: { type: String, trim: true },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  updatedAt: { type: Date }
+});
+AccessoryPaymentSchema.index({ accessoryTypeId: 1, paymentDate: -1 });
+AccessoryPaymentSchema.index({ accessoryTypeId: 1, createdAt: -1 });
+
+// AccessoryPaymentHistory: audit log of payment create/update/delete (mirror pattern)
+const AccessoryPaymentHistorySchema = new mongoose.Schema({
+  entryId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccessoryPayment', required: true },
+  accessoryTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccessoryType', required: true },
+  action: { type: String, enum: ['create', 'update', 'delete'], required: true },
+  paymentType: { type: String, enum: ['payment', 'adjustment'], required: true },
+  beforeData: {
+    amount: Number, paymentDate: Date, paymentMode: String, referenceNumber: String, notes: String
+  },
+  afterData: {
+    amount: Number, paymentDate: Date, paymentMode: String, referenceNumber: String, notes: String
+  },
+  changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+AccessoryPaymentHistorySchema.index({ accessoryTypeId: 1, createdAt: -1 });
+AccessoryPaymentHistorySchema.index({ entryId: 1 });
+
+// AccessoryBalance: denormalized per-type money aggregate (mirror of VendorBalance).
+// remainingBalance = openingBalance + totalPurchased − totalPaid − totalAdjustment.
+// Recomputed by accessoryService.updateAccessoryBalance after any purchase/payment write.
+const AccessoryBalanceSchema = new mongoose.Schema({
+  accessoryTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccessoryType', required: true, unique: true },
+  openingBalance: { type: Number, default: 0 },
+  totalPurchased: { type: Number, default: 0 },
+  totalPaid: { type: Number, default: 0 },
+  totalAdjustment: { type: Number, default: 0 },
+  remainingBalance: { type: Number, default: 0 },
+  lastUpdated: { type: Date, default: Date.now }
+});
+AccessoryBalanceSchema.index({ accessoryTypeId: 1 }, { unique: true });
+
+// AccessoryConsumption: per-item stock-out ledger written transactionally at the
+// production stage. Source of truth for consumed qty; keyed by (lotId, stage) so it
+// can be reversed/replaced when its Stitching/Finishing record is edited.
+const AccessoryConsumptionSchema = new mongoose.Schema({
+  accessoryTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccessoryType', required: true },
+  accessoryItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccessoryItem', required: true },
+  nameSnapshot: { type: String, trim: true },
+  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot', required: true },
+  stage: { type: String, enum: ['stitching', 'finishing'], required: true },
+  qty: { type: Number, required: true, min: 0 },
+  clientLinked: { type: Boolean, default: false }, // true if drawn from a client-mapped item
+  date: { type: Date, default: Date.now },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdAt: { type: Date, default: Date.now }
+});
+AccessoryConsumptionSchema.index({ accessoryItemId: 1 });
+AccessoryConsumptionSchema.index({ lotId: 1, stage: 1 });
+AccessoryConsumptionSchema.index({ accessoryTypeId: 1 });
+
 // Balance Schema: Order-based financials
 const BalanceSchema = new mongoose.Schema({
   period: { type: String, required: true },
@@ -467,7 +609,7 @@ const ReportSchema = new mongoose.Schema({
 const AuditLogSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   action: { type: String, required: true },
-  entity: { type: String, enum: ['User', 'Client', 'FitStyle', 'Order', 'Stitching', 'Washing', 'Finishing', 'VendorBalance', 'Invoice', 'Balance', 'Report', 'ClientBalance', 'ClientPayment', 'CompanySettings'], required: true },
+  entity: { type: String, enum: ['User', 'Client', 'FitStyle', 'Order', 'Stitching', 'Washing', 'Finishing', 'VendorBalance', 'Invoice', 'Balance', 'Report', 'ClientBalance', 'ClientPayment', 'CompanySettings', 'AccessoryType', 'AccessoryItem', 'AccessoryPurchase', 'AccessoryPayment'], required: true },
   entityId: { type: mongoose.Schema.Types.ObjectId, required: true },
   details: { type: String },
   createdAt: { type: Date, default: Date.now }
@@ -496,6 +638,13 @@ module.exports = {
   ClientPaymentEntry: mongoose.model('ClientPaymentEntry', ClientPaymentEntrySchema),
   ClientPaymentEntryHistory: mongoose.model('ClientPaymentEntryHistory', ClientPaymentEntryHistorySchema),
   ClientBalance: mongoose.model('ClientBalance', ClientBalanceSchema),
+  AccessoryType: mongoose.model('AccessoryType', AccessoryTypeSchema),
+  AccessoryItem: mongoose.model('AccessoryItem', AccessoryItemSchema),
+  AccessoryPurchase: mongoose.model('AccessoryPurchase', AccessoryPurchaseSchema),
+  AccessoryPayment: mongoose.model('AccessoryPayment', AccessoryPaymentSchema),
+  AccessoryPaymentHistory: mongoose.model('AccessoryPaymentHistory', AccessoryPaymentHistorySchema),
+  AccessoryBalance: mongoose.model('AccessoryBalance', AccessoryBalanceSchema),
+  AccessoryConsumption: mongoose.model('AccessoryConsumption', AccessoryConsumptionSchema),
   Balance: mongoose.model('Balance', BalanceSchema),
   Report: mongoose.model('Report', ReportSchema),
   AuditLog: mongoose.model('AuditLog', AuditLogSchema)

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { useForm, useFieldArray, Controller } from 'react-hook-form';
-import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form';
+import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Divider, Chip } from '@mui/material';
 import { Close as CloseIcon, Delete as DeleteIcon, Save as SaveIcon, Add as AddIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -28,6 +28,7 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
     quantityShortDesc: '',
     rate: '',
     threadColors: [{ color: '', quantity: '' }],
+    zipperConsumption: [],
     date: dayjs(new Date()),
     stitchOutDate: null,
     description: ''
@@ -42,6 +43,65 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
     control,
     name: 'threadColors',
   });
+
+  // ── Zipper consumption (stock-out recorded at the stitching stage) ──
+  // Show ALL zipper types applicable to the selected client (client mapping if any,
+  // else general), each defaulting to 0; the sum must equal the lot quantity.
+  const [zipperTypeId, setZipperTypeId] = React.useState(null);
+  const [zipperItems, setZipperItems] = React.useState([]);
+  const [zipperPrefill, setZipperPrefill] = React.useState({}); // accessoryItemId -> qty (edit mode)
+  const watchedClientId = useWatch({ control, name: 'clientId' });
+  const watchedZipper = useWatch({ control, name: 'zipperConsumption' });
+  const watchedQuantity = useWatch({ control, name: 'quantity' });
+
+  const zipperTotal = (watchedZipper || []).reduce((s, z) => s + (Number(z?.qty) || 0), 0);
+  // Once zipper items are shown for the client, the entered quantities must total the
+  // lot quantity (spec rule). Drives the inline validation message + red fields.
+  const zipperShown = zipperItems.length > 0;
+  const zipperMismatch = zipperShown && zipperTotal !== Number(watchedQuantity || 0);
+
+  // Resolve the zipper article-type once.
+  useEffect(() => {
+    let active = true;
+    apiService.accessories.getTypes()
+      .then(types => { if (active) setZipperTypeId((types.find(t => t.key === 'zipper') || {})._id || null); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  // In edit mode, load any previously recorded zipper consumption for this lot.
+  useEffect(() => {
+    if (isEditMode && editRecord?.lotId?._id) {
+      apiService.accessories.getConsumption(editRecord.lotId._id, 'stitching')
+        .then(rows => {
+          const map = {};
+          (rows || []).forEach(r => { map[String(r.accessoryItemId)] = r.qty; });
+          setZipperPrefill(map);
+        })
+        .catch(() => setZipperPrefill({}));
+    } else {
+      setZipperPrefill({});
+    }
+  }, [isEditMode, editRecord]);
+
+  // Load applicable zipper items whenever the client (or resolved type) changes,
+  // and seed the form's zipperConsumption rows (preserving edit prefill by item id).
+  useEffect(() => {
+    if (!zipperTypeId || !watchedClientId) { setZipperItems([]); setValue('zipperConsumption', []); return; }
+    let active = true;
+    apiService.accessories.getApplicableItems(zipperTypeId, watchedClientId)
+      .then(items => {
+        if (!active) return;
+        setZipperItems(items);
+        setValue('zipperConsumption', items.map(i => ({
+          accessoryItemId: i._id,
+          name: i.name,
+          qty: zipperPrefill[String(i._id)] != null ? zipperPrefill[String(i._id)] : 0,
+        })));
+      })
+      .catch(() => { if (active) { setZipperItems([]); setValue('zipperConsumption', []); } });
+    return () => { active = false; };
+  }, [zipperTypeId, watchedClientId, zipperPrefill, setValue]);
 
   useEffect(() => {
     if (isEditMode && editRecord) {
@@ -90,6 +150,15 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
       return;
     }
 
+    // Zipper consumption is required once applicable zipper items are shown: the entered
+    // quantities must total the lot quantity.
+    const zipperRows = (data.zipperConsumption || []).map(z => ({ accessoryItemId: z.accessoryItemId, qty: Number(z.qty) || 0 }));
+    const zipperSum = zipperRows.reduce((sum, z) => sum + z.qty, 0);
+    if (zipperItems.length > 0 && zipperSum !== Number(data.quantity)) {
+      showSnackbar(`Sum of zipper quantities (${zipperSum}) must equal total quantity (${data.quantity})`, 'error');
+      return;
+    }
+
     const formattedData = {
       ...data,
       lotNumber: data.lotNumber.toUpperCase().replaceAll(' ', ''),
@@ -100,6 +169,8 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
       quantityShort: parseInt(data.quantityShort) || '',
       rate: parseInt(data.rate) ?? '',
       threadColors: data.threadColors.map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity) })),
+      // Send zipper rows whenever the section is shown (an all-zero array clears prior consumption on edit).
+      zipperConsumption: zipperItems.length > 0 ? zipperRows : undefined,
       date: data.date.toISOString(),
       stitchOutDate: data.stitchOutDate ? data.stitchOutDate.toISOString() : null,
     };
@@ -313,6 +384,11 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
                       {...field}
                       label="Vendor"
                       variant="standard"
+                      onChange={(e) => {
+                        field.onChange(e);
+                        const v = (vendors || []).find(x => x._id === e.target.value);
+                        if (v && Number(v.defaultRate) > 0) setValue('rate', v.defaultRate);
+                      }}
                     >
                       {vendors.map(vendor => (
                         <MenuItem key={vendor._id} value={vendor._id}>{vendor.name}</MenuItem>
@@ -432,6 +508,50 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
                 </Grid>
               </React.Fragment>
             ))}
+
+            {/* ── Zipper consumption (stock) ── */}
+            {zipperShown && (
+              <>
+                <Grid size={{ xs: 12 }}>
+                  <Divider sx={{ mt: 1 }}>
+                    <Chip
+                      size="small"
+                      color={zipperMismatch ? 'error' : 'default'}
+                      label={`ZIPPER  ${zipperTotal} / ${Number(watchedQuantity || 0)}`}
+                    />
+                  </Divider>
+                  {zipperMismatch && (
+                    <Typography color="error" variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 0.5 }}>
+                      Zipper quantities are required and must total {Number(watchedQuantity || 0)} (currently {zipperTotal})
+                    </Typography>
+                  )}
+                </Grid>
+                {zipperItems.map((zi, index) => (
+                  <Grid size={{ xs: 6, md: 4 }} key={zi._id}>
+                    <Controller
+                      name={`zipperConsumption.${index}.qty`}
+                      control={control}
+                      rules={{ pattern: { value: /^\d*$/, message: 'Only numbers allowed' } }}
+                      render={({ field }) => (
+                        <TextField
+                          {...field}
+                          value={field.value ?? 0}
+                          onFocus={(e) => { if (String(field.value) === '0') field.onChange(''); }}
+                          onBlur={(e) => { if (e.target.value === '') field.onChange(0); }}
+                          label={zi.name}
+                          fullWidth
+                          margin="normal"
+                          variant="standard"
+                          error={zipperMismatch || !!errors.zipperConsumption?.[index]?.qty}
+                          helperText={errors.zipperConsumption?.[index]?.qty?.message}
+                        />
+                      )}
+                    />
+                  </Grid>
+                ))}
+              </>
+            )}
+
             {isEditMode && <><Grid size={{ xs: 6, md: 4 }}>
               <Controller
                 name="quantityShort"

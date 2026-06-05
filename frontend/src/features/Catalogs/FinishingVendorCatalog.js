@@ -89,6 +89,12 @@ function FinishingVendorCatalog() {
       enableSorting: true
     },
     {
+      accessorKey: 'defaultRate',
+      header: 'Rate',
+      enableSorting: true,
+      cell: ({ row }) => row.original.defaultRate ?? 0
+    },
+    {
       accessorKey: '_id',
       header: 'Actions',
       enableSorting: false,
@@ -193,7 +199,7 @@ function FinishingVendorCatalog() {
             </TableHead>
             <TableBody>
               {loading || !vendors ? (
-                <TableRowsLoader colsNum={5} rowsNum={10} />
+                <TableRowsLoader colsNum={6} rowsNum={10} />
               ) : vendors.length > 0 ? (
                 table.getRowModel().rows.map(row => (
                   <TableRow key={row.id}>

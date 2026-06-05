@@ -1,27 +1,22 @@
 /**
- * Seed Accessory masters + CURRENT opening stock + opening balance.
+ * Seed Accessory masters + opening stock + Jan–May purchase/payment history + opening balance.
  *
- * Go-live decision (2026-06): the accessory system starts fresh from 1 Jun 2026.
- * Existing/past lots are NOT backfilled with consumption, so seeding the old Jan–May
- * purchases (stock-in) would overstate available stock. Instead, for every type we seed:
- *   • masters (the lookup items),
- *   • a single OPENING STOCK entry (rate 0, dated 1-Jun-2026) = current on-hand per item,
- *   • an OPENING BALANCE (money currently outstanding to the supplier).
- * No historical purchase/payment rows. Purchases/consumption accrue from June onward.
+ * This restores the FULL ledger history (to match the dev DB):
+ *   • Zipper        → opening-stock snapshot (rate 0, 1-Jun-2026), no history, opening balance 0.
+ *   • Label-Tag /
+ *     Pocketing /   → masters + the Jan–May purchases + payments + a 1-Jan opening balance,
+ *     Polybag         so balance-due reconciles to the spreadsheet closing figures.
+ *
+ * NOTE: with the history back, label-tag/polybag AVAILABLE STOCK = total purchased (past
+ * consumption isn't recorded) — same as dev. Opening balance is the 1-Jan outstanding so
+ * that opening + purchases − payments == the reconciled closing balance.
  *
  * Run from backend/:
- *   node migrations/seed-accessory-data.js
- *   node migrations/seed-accessory-data.js "mongodb://.../sales_accounting?replicaSet=rs0&authSource=admin"
+ *   node migrations/seed-accessory-data.js "mongodb://.../db?..."
  *
  * Idempotent + self-cleaning: deletes ANY prior seeded purchases/payments (notes containing
- * "SEED") per type before inserting, so re-running removes the earlier Jan–May seed and
- * won't touch records entered through the UI. Masters are upserted by name.
- *
- * ── TODO before running ──────────────────────────────────────────────────────
- * Fill in the real current on-hand quantities under each type's `openingStock` (the
- * qty values marked /* TODO *\/). Zipper is already filled from the 1-Jun snapshot.
- * Confirm the `openingBalance` (outstanding owed) per type — defaults below are the
- * reconciled closing balances from the spreadsheet.
+ * "SEED") per type before inserting, so re-running replaces the seed and won't touch
+ * UI-entered records. Masters are upserted by name.
  */
 
 const mongoose = require('mongoose');
@@ -31,14 +26,19 @@ const {
 const accessoryService = require('../services/accessoryService');
 
 const MONGO_URI = process.argv[2] || process.env.MONGO_URI;
-const OPENING_DATE = new Date('2026-06-01T00:00:00.000Z');
 const SEED_TAG = 'SEED-OPENING-JUN2026';
+const OPENING_DATE = new Date('2026-06-01T00:00:00.000Z');
+const round2 = (n) => Math.round(n * 100) / 100;
+const d = (iso) => new Date(iso + 'T00:00:00.000Z');
 
-// masters:      { name, rate, subType?, client? }   client = Client name to resolve (or omit)
-// openingStock: { item, qty }                        item = a master name; seeded rate 0
-// openingBalance: number                             money currently outstanding to supplier
+// masters:      { name, rate, subType?, client? }
+// openingStock: { item, qty }                         rate 0, dated 1-Jun (zipper only)
+// purchases:    { date, inv, lines:[{ item, qty, rate }] }
+// payments:     { date, amount, ref? }
+// openingBalance: number                              1-Jan outstanding carried in
 const DATA = {
   zipper: {
+    supplier: '',
     openingBalance: 0,
     masters: [
       { name: 'AD BLUE 5.5 INCH', rate: 0, client: 'ADAM HILL' },
@@ -60,28 +60,59 @@ const DATA = {
       { item: 'AD WHITE 5.5 INCH', qty: 643 },
       { item: 'AD WHITE 6 INCH', qty: 76 },
     ],
+    purchases: [],
+    payments: [],
   },
 
   'label-tag': {
-    openingBalance: 74515.60, // reconciled closing balance — confirm
+    supplier: 'AKSHAY LABEL TAG MALAD',
+    openingBalance: 92945.35, // 1-Jan outstanding (pre-Jan purchases 240262.35 − payments 147317)
     masters: [
-      { name: 'ADAM LABEL NON TEARABLE KHAKI', rate: 3.75, subType: 'label' },
-      { name: 'ATTOM LABEL NON TEARABLE KHAKI', rate: 3.25, subType: 'label' },
-      { name: 'BLU WAVE LABEL NON TEARABLE KHAKI', rate: 3.25, subType: 'label' },
-      { name: 'ADAM HANG TAGS PLASTIC BLACK', rate: 3, subType: 'tag' },
-      { name: 'BLU WAVE HANG TAG', rate: 4.5, subType: 'tag' },
+      { name: 'AD LABEL NON TEARABLE KHAKI', rate: 3.75, subType: 'label' },
+      { name: 'AT LABEL NON TEARABLE KHAKI', rate: 3.25, subType: 'label' },
+      { name: 'BW LABEL NON TEARABLE KHAKI', rate: 3.25, subType: 'label' },
+      { name: 'AD HANG TAGS PLASTIC BLACK', rate: 3, subType: 'tag' },
+      { name: 'BW HANG TAG', rate: 4.5, subType: 'tag' },
     ],
-    openingStock: [
-      { item: 'ADAM LABEL NON TEARABLE KHAKI', qty: 0 },     /* TODO current on-hand */
-      { item: 'ATTOM LABEL NON TEARABLE KHAKI', qty: 0 },    /* TODO */
-      { item: 'BLU WAVE LABEL NON TEARABLE KHAKI', qty: 0 }, /* TODO */
-      { item: 'ADAM HANG TAGS PLASTIC BLACK', qty: 0 },      /* TODO */
-      { item: 'BLU WAVE HANG TAG', qty: 0 },                 /* TODO */
+    openingStock: [],
+    purchases: [
+      { date: '2026-01-03', inv: '314', lines: [
+        { item: 'AD LABEL NON TEARABLE KHAKI', qty: 9900, rate: 3.7 },
+        { item: 'AD HANG TAGS PLASTIC BLACK', qty: 13000, rate: 3 },
+      ] },
+      { date: '2026-02-04', inv: '349', lines: [{ item: 'AT LABEL NON TEARABLE KHAKI', qty: 4600, rate: 3.25 }] },
+      { date: '2026-02-04', inv: '350', lines: [{ item: 'AD LABEL NON TEARABLE KHAKI', qty: 9908, rate: 3.75 }] },
+      { date: '2026-02-04', inv: '351', lines: [
+        { item: 'BW LABEL NON TEARABLE KHAKI', qty: 10275, rate: 3.25 },
+        { item: 'BW HANG TAG', qty: 10300, rate: 4.5 },
+      ] },
+      { date: '2026-02-07', inv: '358', lines: [{ item: 'AD HANG TAGS PLASTIC BLACK', qty: 3000, rate: 3 }] },
+      { date: '2026-02-12', inv: '366', lines: [{ item: 'AD HANG TAGS PLASTIC BLACK', qty: 8680, rate: 3 }] },
+      { date: '2026-03-27', inv: '434', lines: [
+        { item: 'AD LABEL NON TEARABLE KHAKI', qty: 15303, rate: 3.75 },
+        { item: 'AD HANG TAGS PLASTIC BLACK', qty: 13080, rate: 3 },
+      ] },
+      { date: '2026-03-27', inv: '435', lines: [
+        { item: 'BW LABEL NON TEARABLE KHAKI', qty: 9947, rate: 3.25 },
+        { item: 'BW HANG TAG', qty: 10125, rate: 4.5 },
+      ] },
+    ],
+    payments: [
+      { date: '2026-01-14', amount: 38910, ref: '246' },
+      { date: '2026-01-20', amount: 16869, ref: '257' },
+      { date: '2026-02-06', amount: 37165, ref: '295' },
+      { date: '2026-02-06', amount: 37815, ref: '314' },
+      { date: '2026-02-19', amount: 37815, ref: '314' },
+      { date: '2026-03-03', amount: 52105, ref: '349/350' },
+      { date: '2026-03-27', amount: 100000, ref: '351/366' },
+      { date: '2026-04-27', amount: 14786, ref: '366 FEB' },
+      { date: '2026-05-16', amount: 100000, ref: '434' },
     ],
   },
 
   pocketing: {
-    openingBalance: 205759.29, // reconciled closing balance — confirm
+    supplier: 'HAMID BHAI POCKETING',
+    openingBalance: 55506.6, // 1-Jan outstanding (pre-Jan purchases 192339.6 − payments 136833)
     masters: [
       { name: 'BLACK', rate: 32 },
       { name: '72/52', rate: 33.9 },
@@ -90,21 +121,75 @@ const DATA = {
       { name: '68/68', rate: 34 },
       { name: 'GENERAL', rate: 0 },
     ],
-    // Pocketing is not consumed at finishing (metres) — opening stock optional.
-    openingStock: [
-      // { item: 'BLACK', qty: 0 }, /* add metres on-hand if you want to track them */
+    openingStock: [],
+    purchases: [
+      { date: '2026-01-14', inv: '4', lines: [{ item: '68/68', qty: 996, rate: 34 }] },
+      { date: '2026-01-22', inv: '5', lines: [{ item: 'BLACK', qty: 851.3, rate: 31 }] },
+      { date: '2026-01-31', inv: '6', lines: [{ item: '72/52', qty: 594.6, rate: 32 }] },
+      { date: '2026-02-05', inv: '7', lines: [{ item: 'TWILL', qty: 869.2, rate: 36 }] },
+      { date: '2026-02-12', inv: '8', lines: [
+        { item: 'TWILL', qty: 416, rate: 36 },
+        { item: 'GENERAL', qty: 888.6, rate: 31 },
+      ] },
+      { date: '2026-02-23', inv: '9', lines: [{ item: '72/52', qty: 952.2, rate: 31 }] },
+      { date: '2026-03-27', inv: '10', lines: [
+        { item: '72/52', qty: 419.4, rate: 31 },
+        { item: 'GENERAL', qty: 93, rate: 36 },
+      ] },
+      { date: '2026-03-27', inv: '11', lines: [
+        { item: 'DRILL', qty: 411.6, rate: 37 },
+        { item: 'GENERAL', qty: 470.7, rate: 31 },
+      ] },
+      { date: '2026-04-01', inv: '12', lines: [{ item: 'DRILL', qty: 633.2, rate: 37 }] },
+      { date: '2026-04-08', inv: '13', lines: [{ item: 'BLACK', qty: 886.9, rate: 32 }] },
+      { date: '2026-04-15', inv: '14', lines: [
+        { item: '72/52', qty: 487.5, rate: 33 },
+        { item: 'GENERAL', qty: 1249.9, rate: 39 },
+      ] },
+      { date: '2026-04-22', inv: '15', lines: [
+        { item: 'BLACK', qty: 414.7, rate: 32 },
+        { item: 'BLACK', qty: 459.8, rate: 32 },
+      ] },
+      { date: '2026-05-04', inv: '16', lines: [
+        { item: 'BLACK', qty: 407.6, rate: 32 },
+        { item: 'BLACK', qty: 458.4, rate: 32 },
+      ] },
+      { date: '2026-05-15', inv: '17', lines: [{ item: '72/52', qty: 837.5, rate: 33.9 }] },
+      { date: '2026-05-21', inv: '18', lines: [{ item: 'DRILL', qty: 751, rate: 38 }] },
+      { date: '2026-05-28', inv: '19', lines: [{ item: '72/52', qty: 875.6, rate: 33.9 }] },
+    ],
+    payments: [
+      { date: '2026-01-18', amount: 29158 },
+      { date: '2026-02-06', amount: 27652 },
+      { date: '2026-02-20', amount: 33864 },
+      { date: '2026-02-23', amount: 26390 },
+      { date: '2026-03-03', amount: 50318, ref: 'bill 6/7' },
+      { date: '2026-03-27', amount: 42500, ref: 'BILL 8' },
+      { date: '2026-04-20', amount: 45800, ref: 'BILL 9/10' },
+      { date: '2026-05-08', amount: 30000, ref: 'BILL 11' },
+      { date: '2026-05-16', amount: 51800, ref: 'BILL 13' },
     ],
   },
 
   polybag: {
-    openingBalance: 48117.50, // reconciled closing balance — confirm
+    supplier: '',
+    openingBalance: 0, // all polybag activity is Jan 2026 onward
     masters: [
       { name: 'ADAM POLY PRINTED', rate: 3 },
       { name: 'BLU WAVE POLY PRINTED', rate: 1.9 },
     ],
-    openingStock: [
-      { item: 'ADAM POLY PRINTED', qty: 0 },    /* TODO current on-hand */
-      { item: 'BLU WAVE POLY PRINTED', qty: 0 }, /* TODO */
+    openingStock: [],
+    purchases: [
+      { date: '2026-01-19', inv: '43', lines: [{ item: 'ADAM POLY PRINTED', qty: 6300, rate: 2.4 }] },
+      { date: '2026-02-02', inv: '43', lines: [{ item: 'ADAM POLY PRINTED', qty: 10850, rate: 2.4 }] },
+      { date: '2026-02-02', inv: '44', lines: [{ item: 'BLU WAVE POLY PRINTED', qty: 11180, rate: 1.9 }] },
+      { date: '2026-03-02', inv: '43', lines: [{ item: 'ADAM POLY PRINTED', qty: 15050, rate: 3.15 }] },
+      { date: '2026-05-28', inv: '43', lines: [{ item: 'ADAM POLY PRINTED', qty: 14900, rate: 3 }] },
+    ],
+    payments: [
+      { date: '2026-02-11', amount: 41150 },
+      { date: '2026-03-09', amount: 21242 },
+      { date: '2026-04-13', amount: 44000 },
     ],
   },
 };
@@ -146,48 +231,61 @@ const DATA = {
       );
       itemMap.set(m.name, item);
     }
+    const lineFor = (item, qty, rate) => {
+      const m = itemMap.get(item);
+      if (!m) throw new Error(`Item "${item}" not defined for ${key}`);
+      return { accessoryItemId: m._id, nameSnapshot: m.name, qty: Number(qty), rate: Number(rate), amount: round2(qty * rate) };
+    };
 
-    // 2. Remove ANY previously-seeded purchase/payment rows for this type (cleans the old
-    //    Jan–May seed), then seed a single rate-0 opening-stock entry (no payments).
+    // 2. Clear prior seeded purchases/payments for this type, then re-insert.
     await AccessoryPurchase.deleteMany({ accessoryTypeId: type._id, notes: { $regex: 'SEED' } });
     await AccessoryPayment.deleteMany({ accessoryTypeId: type._id, notes: { $regex: 'SEED' } });
 
-    const lines = (cfg.openingStock || [])
-      .filter(s => Number(s.qty) > 0)
-      .map(s => {
-        const item = itemMap.get(s.item);
-        if (!item) throw new Error(`Opening-stock item "${s.item}" not defined for ${key}`);
-        return { accessoryItemId: item._id, nameSnapshot: item.name, qty: Number(s.qty), rate: 0, amount: 0 };
-      });
+    let stockQty = 0, totPurch = 0, totPay = 0;
 
-    let stockQty = 0;
-    if (lines.length) {
-      stockQty = lines.reduce((sum, l) => sum + l.qty, 0);
+    // 2a. Opening-stock snapshot (rate 0) — zipper only.
+    const stockLines = (cfg.openingStock || []).filter(s => Number(s.qty) > 0).map(s => lineFor(s.item, s.qty, 0));
+    if (stockLines.length) {
+      stockQty = stockLines.reduce((sum, l) => sum + l.qty, 0);
       await AccessoryPurchase.create({
-        accessoryTypeId: type._id,
-        date: OPENING_DATE,
-        vendorInvoiceNumber: '',
-        supplier: '',
-        lines,
-        totalQty: stockQty,
-        totalAmount: 0,
-        notes: `${SEED_TAG} opening stock`,
-        createdBy: user._id,
+        accessoryTypeId: type._id, date: OPENING_DATE, vendorInvoiceNumber: '', supplier: '',
+        lines: stockLines, totalQty: stockQty, totalAmount: 0, notes: `${SEED_TAG} opening stock`, createdBy: user._id,
       });
     }
 
-    // 3. Carry the opening money balance, then recompute (purchases/payments are now empty,
-    //    so balance due == openingBalance).
+    // 2b. Historical purchases.
+    for (const p of (cfg.purchases || [])) {
+      const lines = p.lines.map(l => lineFor(l.item, l.qty, l.rate));
+      const totalQty = round2(lines.reduce((s, l) => s + l.qty, 0));
+      const totalAmount = round2(lines.reduce((s, l) => s + l.amount, 0));
+      totPurch += totalAmount;
+      await AccessoryPurchase.create({
+        accessoryTypeId: type._id, date: d(p.date), vendorInvoiceNumber: p.inv || '', supplier: cfg.supplier || '',
+        lines, totalQty, totalAmount, notes: SEED_TAG, createdBy: user._id,
+      });
+    }
+
+    // 2c. Historical payments.
+    for (const pay of (cfg.payments || [])) {
+      totPay += pay.amount;
+      await AccessoryPayment.create({
+        accessoryTypeId: type._id, paymentType: 'payment', amount: pay.amount, paymentDate: d(pay.date),
+        paymentMode: pay.mode || 'cash', referenceNumber: pay.ref || '', notes: SEED_TAG, createdBy: user._id,
+      });
+    }
+
+    // 3. Opening balance, then recompute (balance due = opening + purchased − paid).
     await AccessoryBalance.findOneAndUpdate(
-      { accessoryTypeId: type._id },
-      { $set: { openingBalance: cfg.openingBalance || 0 } },
-      { upsert: true, new: true }
+      { accessoryTypeId: type._id }, { $set: { openingBalance: cfg.openingBalance || 0 } }, { upsert: true, new: true }
     );
     const bal = await accessoryService.updateAccessoryBalance(type._id);
 
     console.log(`  masters: ${cfg.masters.length}`);
-    console.log(`  opening stock: ${stockQty} ${type.unit} across ${lines.length} item(s)`);
-    console.log(`  opening balance / balance due: Rs. ${Math.round((bal.remainingBalance) * 100) / 100}\n`);
+    if (stockQty) console.log(`  opening stock: ${stockQty} ${type.unit}`);
+    console.log(`  purchases: ${(cfg.purchases || []).length} (Rs. ${round2(totPurch)})`);
+    console.log(`  payments:  ${(cfg.payments || []).length} (Rs. ${round2(totPay)})`);
+    console.log(`  opening balance: Rs. ${round2(cfg.openingBalance || 0)}`);
+    console.log(`  balance due: Rs. ${round2(bal.remainingBalance)}\n`);
   }
 
   console.log('Done.');

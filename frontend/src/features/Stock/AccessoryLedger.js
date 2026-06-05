@@ -19,7 +19,7 @@ const TABLE_HEIGHT = 430; // fixed so the layout doesn't jump between pages / ty
 
 const fmtMoney = (n) => 'Rs. ' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtQty = (n) => Number(n || 0).toLocaleString('en-IN');
-const fmtDate = (d) => d ? dayjs(d).format('DD-MMM-YY') : '';
+const fmtDate = (d) => d ? dayjs(d).format('DD MMM YY') : '';
 
 function StatBox({ label, value, color, size }) {
   return (
@@ -158,12 +158,12 @@ function AccessoryLedger({ type, onStockChange }) {
                 <Table size="small" stickyHeader>
                   <TableHead>
                     <TableRow>
-                      <TableCell>Date</TableCell>
-                      <TableCell>Inv #</TableCell>
-                      <TableCell>Details</TableCell>
-                      <TableCell align="right">Qty</TableCell>
-                      <TableCell align="right">Amount</TableCell>
-                      <TableCell align="center">Actions</TableCell>
+                      <TableCell width="80">DATE</TableCell>
+                      <TableCell>INV</TableCell>
+                      <TableCell>DETAILS</TableCell>
+                      <TableCell align="right">QTY</TableCell>
+                      <TableCell align="right">AMOUNT</TableCell>
+                      <TableCell align="center" width="90">ACTIONS</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -208,12 +208,12 @@ function AccessoryLedger({ type, onStockChange }) {
                 <Table size="small" stickyHeader>
                   <TableHead>
                     <TableRow>
-                      <TableCell>Date</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Mode</TableCell>
-                      <TableCell>Reference</TableCell>
-                      <TableCell align="right">Amount</TableCell>
-                      <TableCell align="center">Actions</TableCell>
+                      <TableCell>DATE</TableCell>
+                      <TableCell>TYPE</TableCell>
+                      <TableCell>MODE</TableCell>
+                      <TableCell>REFERENCE</TableCell>
+                      <TableCell align="right">AMOUNT</TableCell>
+                      <TableCell align="center">ACTIONS</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>

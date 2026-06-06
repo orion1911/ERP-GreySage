@@ -58,7 +58,9 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
   // Once zipper items are shown for the client, the entered quantities must total the
   // lot quantity (spec rule). Drives the inline validation message + red fields.
   const zipperShown = zipperItems.length > 0;
-  const zipperMismatch = zipperShown && zipperTotal !== Number(watchedQuantity || 0);
+  // Zero is allowed (old records have no zipper data); only flag a partial entry that
+  // doesn't add up to the lot quantity.
+  const zipperMismatch = zipperShown && zipperTotal > 0 && zipperTotal !== Number(watchedQuantity || 0);
 
   // Resolve the zipper article-type once.
   useEffect(() => {
@@ -154,7 +156,7 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
     // quantities must total the lot quantity.
     const zipperRows = (data.zipperConsumption || []).map(z => ({ accessoryItemId: z.accessoryItemId, qty: Number(z.qty) || 0 }));
     const zipperSum = zipperRows.reduce((sum, z) => sum + z.qty, 0);
-    if (zipperItems.length > 0 && zipperSum !== Number(data.quantity)) {
+    if (zipperItems.length > 0 && zipperSum > 0 && zipperSum !== Number(data.quantity)) {
       showSnackbar(`Sum of zipper quantities (${zipperSum}) must equal total quantity (${data.quantity})`, 'error');
       return;
     }
@@ -522,7 +524,7 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
                   </Divider>
                   {zipperMismatch && (
                     <Typography color="error" variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 0.5 }}>
-                      Zipper quantities are required and must total {Number(watchedQuantity || 0)} (currently {zipperTotal})
+                      Zipper quantities must total {Number(watchedQuantity || 0)} (currently {zipperTotal}) — or leave all 0 to skip
                     </Typography>
                   )}
                 </Grid>

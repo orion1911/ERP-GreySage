@@ -30,6 +30,7 @@ function StitchingGrid({
   setOpenFinishingModal,
   setSelectedLot,
   searchTerm,
+  vendorFilter = '',
   onEditStitching,
   onEditWashing,
   onEditFinishing,
@@ -62,8 +63,10 @@ function StitchingGrid({
 
   const toggleRowExpansion = (rowId) => {
     setExpandedRows(prev => {
-      const newExpanded = { ...prev, [rowId]: !prev[rowId] };
-      if (newExpanded[rowId]) {
+      const isOpen = !!prev[rowId];
+      // Accordion behaviour: only one row open at a time (clicking the open one collapses it).
+      const newExpanded = isOpen ? {} : { [rowId]: true };
+      if (!isOpen) {
         const row = stitchingRecords.find(r => r._id === rowId);
         if (row && row.lotId?._id) {
           if (!(washingRecords && washingRecords[row.lotId._id])) {
@@ -169,6 +172,9 @@ function StitchingGrid({
   const processedRecords = useMemo(() => {
     let filtered = stitchingRecords;
     filtered = filterData(filtered, searchTerm);
+    if (vendorFilter && filtered) {
+      filtered = filtered.filter(record => record.vendorId?._id === vendorFilter);
+    }
     if (filterStatus && filtered) {
       filtered = filtered.filter(record => {
         if (filterStatus === 'completed') return !!record.stitchOutDate;
@@ -177,11 +183,13 @@ function StitchingGrid({
       });
     }
     return sortData(filtered, sortBy, sortDirection);
-  }, [stitchingRecords, searchTerm, sortBy, sortDirection, filterStatus]);
+  }, [stitchingRecords, searchTerm, vendorFilter, sortBy, sortDirection, filterStatus]);
 
+  // Reset to the first page when the filters change (but NOT on a plain data update —
+  // autoResetPageIndex is disabled below so editing a record keeps you on your page).
   useEffect(() => {
     setPage(0);
-  }, [filterStatus]);
+  }, [searchTerm, vendorFilter, filterStatus]);
 
   const columns = [
     {
@@ -317,7 +325,7 @@ function StitchingGrid({
         <Box>
           {row.original.threadColors.map((tc, index) => (
             <Typography key={index} variant="subtitle2" style={{ fontSize: '.8rem' }}>
-              {tc.color}, {tc.quantity} pcs
+              {tc.color}, {tc.quantity}
             </Typography>
           ))}
         </Box>
@@ -417,6 +425,7 @@ function StitchingGrid({
   const table = useReactTable({
     columns,
     data: processedRecords,
+    autoResetPageIndex: false, // don't jump back to page 1 when a row is edited/updated
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -514,9 +523,12 @@ function StitchingGrid({
           {!processedRecords ? (
             <TableRowsLoader colsNum={16} rowsNum={10} />
           ) : processedRecords.length > 0 ? (
-            table.getRowModel().rows.map(row => (
+            table.getRowModel().rows.map((row, index) => (
               <React.Fragment key={row.id}>
-                <TableRow>
+                <TableRow
+                  hover
+                  sx={{ backgroundColor: index % 2 ? theme.palette.action.hover : 'transparent' }}
+                >
                   {row.getVisibleCells().map(cell => (
                     <TableCell
                       key={cell.id}

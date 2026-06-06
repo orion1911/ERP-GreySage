@@ -134,7 +134,15 @@ function AccessoryPurchaseModal({ open, onClose, type, editPurchase, onSaved }) 
                     render={({ field }) => (
                       <FormControl fullWidth margin="normal" variant="standard" error={!!errors.lines?.[index]?.accessoryItemId}>
                         <InputLabel>Item</InputLabel>
-                        <Select {...field} label="Item">
+                        <Select
+                          {...field}
+                          label="Item"
+                          onChange={(e) => {
+                            field.onChange(e);
+                            const it = items.find(x => x._id === e.target.value);
+                            if (it) setValue(`lines.${index}.rate`, String(it.rate ?? 0));
+                          }}
+                        >
                           {items.map(it => (
                             <MenuItem key={it._id} value={it._id}>
                               {it.name}{it.clientId ? ` · ${it.clientId.name || ''}` : ''}{it.isActive ? '' : ' (inactive)'}

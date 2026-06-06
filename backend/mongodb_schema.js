@@ -474,6 +474,7 @@ const AccessoryItemSchema = new mongoose.Schema({
   rate: { type: Number, default: 0, min: 0 },
   clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', default: null },
   subType: { type: String, enum: ['label', 'tag', 'button', 'rivet', null], default: null }, // paired streams (label/tag, button/rivet)
+  openingStock: { type: Number, default: 0, min: 0 }, // go-live on-hand qty; counts toward available
   description: { type: String, trim: true },
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }

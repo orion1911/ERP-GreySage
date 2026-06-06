@@ -56,11 +56,9 @@ const createFinishing = async (req, res) => {
     lot.statusHistory.push({ status: 4, changedAt: new Date() });
     await lot.save({ session });
 
-    // Update washingOutDate in Washing record if null or empty
-    if (!washing.washOutDate) {
-      washing.washOutDate = new Date();
-      await washing.save({ session });
-    }
+    // Auto-set the wash-out date to this finishing entry's selected date.
+    washing.washOutDate = date || new Date();
+    await washing.save({ session });
 
     await session.commitTransaction();
     session.endSession();

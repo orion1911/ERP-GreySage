@@ -1,7 +1,19 @@
 const mongoose = require('mongoose');
-const { Washing, Lot, Stitching } = require('../mongodb_schema');
+const { Washing, Lot, Stitching, Finishing } = require('../mongodb_schema');
 const { updateVendorBalance } = require('../services/vendorBalanceService');
 // const { logAction } = require('../utils/logger');
+
+// Keep an existing Finishing record's quantity in sync with the washing available qty
+// (Σ washDetails.quantity − quantityShort) so adding washing short cascades downstream.
+const recomputeFinishingFromWashing = async (lotId) => {
+  const fin = await Finishing.findOne({ lotId });
+  if (!fin) return;
+  const wash = await Washing.findOne({ lotId });
+  const finAvail = wash
+    ? wash.washDetails.reduce((s, d) => s + (parseInt(d.quantity) || 0) - (parseInt(d.quantityShort) || 0), 0)
+    : 0;
+  if (fin.quantity !== finAvail) { fin.quantity = finAvail; await fin.save(); }
+};
 
 const createWashing = async (req, res) => {
   const { invoiceNumber, vendorId, quantityShort, rate, date, washOutDate, description, washDetails } = req.body;
@@ -69,11 +81,9 @@ const createWashing = async (req, res) => {
     lot.statusHistory.push({ status: 3, changedAt: new Date() });
     await lot.save({ session });
 
-    // Update stitchOutDate in Stitching record if null or empty
-    if (!stitching.stitchOutDate) {
-      stitching.stitchOutDate = new Date();
-      await stitching.save({ session });
-    }
+    // Auto-set the stitch-out date to this washing entry's selected date.
+    stitching.stitchOutDate = date || new Date();
+    await stitching.save({ session });
 
     // Commit the transaction
     await session.commitTransaction();
@@ -133,6 +143,9 @@ const updateWashing = async (req, res) => {
 
   try {
     await washing.save();
+
+    // Cascade any (new) washing shortage to an existing Finishing record's quantity.
+    await recomputeFinishingFromWashing(washing.lotId._id || washing.lotId);
 
     const populatedWashing = await Washing.findById(id).populate('lotId vendorId');
     res.json(populatedWashing);

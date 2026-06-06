@@ -324,10 +324,44 @@ const updateStitching = async (req, res) => {
     });
   }
 
+  // Cascade any (new) stitching shortage to downstream washing + finishing quantities.
+  await cascadeShortageFromStitching(stitching.lotId._id);
+
   const populatedStitching = await Stitching.findById(id)
     .populate({ path: 'lotId', populate: [{ path: 'clientId' }, { path: 'fitStyleId' }] })
     .populate({ path: 'vendorId' });
   res.json(populatedStitching);
+};
+
+// When stitching quantity/short changes, keep downstream stages consistent:
+//   • washing washDetails are re-summed to the stitching available qty (delta applied to
+//     the largest detail so a reduction is least likely to underflow),
+//   • finishing.quantity is re-derived from the washing available (Σ qty − short).
+const cascadeShortageFromStitching = async (lotId) => {
+  const st = await Stitching.findOne({ lotId });
+  if (!st) return;
+  const washAvail = (st.quantity || 0) - (st.quantityShort || 0);
+
+  const wash = await Washing.findOne({ lotId });
+  if (wash && Array.isArray(wash.washDetails) && wash.washDetails.length) {
+    const total = wash.washDetails.reduce((s, d) => s + (d.quantity || 0), 0);
+    const delta = washAvail - total;
+    if (delta !== 0) {
+      let idx = 0;
+      for (let i = 1; i < wash.washDetails.length; i++) {
+        if ((wash.washDetails[i].quantity || 0) > (wash.washDetails[idx].quantity || 0)) idx = i;
+      }
+      wash.washDetails[idx].quantity = Math.max(0, (wash.washDetails[idx].quantity || 0) + delta);
+      await wash.save();
+    }
+  }
+
+  const fin = await Finishing.findOne({ lotId });
+  if (fin) {
+    const w = await Washing.findOne({ lotId });
+    const finAvail = w ? w.washDetails.reduce((s, d) => s + (d.quantity || 0) - (d.quantityShort || 0), 0) : 0;
+    if (fin.quantity !== finAvail) { fin.quantity = finAvail; await fin.save(); }
+  }
 };
 
 const updateStitchingStatus = async (req, res) => {

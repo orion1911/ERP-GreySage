@@ -61,7 +61,7 @@ const getFinishingItems = async (req, res) => {
 };
 
 const createItem = async (req, res) => {
-  const { accessoryTypeId, name, rate, clientId, subType, description } = req.body;
+  const { accessoryTypeId, name, rate, clientId, subType, description, openingStock } = req.body;
   if (!accessoryTypeId || !name) {
     return res.status(400).json({ error: 'accessoryTypeId and name are required' });
   }
@@ -78,6 +78,7 @@ const createItem = async (req, res) => {
     rate: rate || 0,
     clientId: clientId || null,
     subType: subType || null,
+    openingStock: Number(openingStock) || 0,
     description
   });
   await item.save();
@@ -88,7 +89,7 @@ const createItem = async (req, res) => {
 
 const updateItem = async (req, res) => {
   const { id } = req.params;
-  const { name, rate, clientId, subType, description, isActive } = req.body;
+  const { name, rate, clientId, subType, description, isActive, openingStock } = req.body;
   const item = await AccessoryItem.findById(id);
   if (!item) return res.status(404).json({ error: 'Accessory item not found' });
 
@@ -96,6 +97,7 @@ const updateItem = async (req, res) => {
   if (rate !== undefined) item.rate = rate;
   if (clientId !== undefined) item.clientId = clientId || null;
   if (subType !== undefined) item.subType = subType || null;
+  if (openingStock !== undefined) item.openingStock = Number(openingStock) || 0;
   if (description !== undefined) item.description = description;
   if (isActive !== undefined) item.isActive = isActive;
   await item.save();

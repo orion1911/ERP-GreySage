@@ -104,6 +104,7 @@ function AccessoryMasters({ type, clients, onStockChange }) {
                   </Stack>
                 </Stack>
                 <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+                  <Typography variant="caption">Open: <b>{fmtQty(item.openingStock)}</b></Typography>
                   <Typography variant="caption">In: <b>{fmtQty(item.purchasedQty)}</b></Typography>
                   <Typography variant="caption">Out: <b>{fmtQty(item.consumedQty)}</b></Typography>
                   <Typography variant="caption" color={item.availableQty < 0 ? 'error.main' : 'text.primary'}>
@@ -122,6 +123,7 @@ function AccessoryMasters({ type, clients, onStockChange }) {
                 <TableCell>Item</TableCell>
                 <TableCell>Client Link</TableCell>
                 <TableCell align="right">Rate</TableCell>
+                <TableCell align="right">Opening</TableCell>
                 <TableCell align="right">Purchased</TableCell>
                 <TableCell align="right">Consumed</TableCell>
                 <TableCell align="right">Available</TableCell>
@@ -131,7 +133,7 @@ function AccessoryMasters({ type, clients, onStockChange }) {
             </TableHead>
             <TableBody>
               {filtered.length === 0 && (
-                <TableRow><TableCell colSpan={8} align="center">No items</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} align="center">No items</TableCell></TableRow>
               )}
               {filtered.map(item => (
                 <TableRow key={item._id} hover>
@@ -142,6 +144,7 @@ function AccessoryMasters({ type, clients, onStockChange }) {
                       : <Typography variant="caption" color="text.secondary">General</Typography>}
                   </TableCell>
                   <TableCell align="right">{item.rate || 0}</TableCell>
+                  <TableCell align="right">{fmtQty(item.openingStock)}</TableCell>
                   <TableCell align="right">{fmtQty(item.purchasedQty)}</TableCell>
                   <TableCell align="right">{fmtQty(item.consumedQty)}</TableCell>
                   <TableCell align="right" sx={{ color: item.availableQty < 0 ? 'error.main' : 'inherit', fontWeight: 'bold' }}>

@@ -21,7 +21,7 @@ function AccessoryItemModal({ open, onClose, type, clients, editItem, onSaved })
   const hasSubType = !!subTypeOptions;
 
   const defaultValues = {
-    name: '', rate: '', clientId: '', subType: '', description: '', isActive: true,
+    name: '', rate: '', clientId: '', subType: '', openingStock: '', description: '', isActive: true,
   };
 
   const { control, handleSubmit, reset, setValue, formState: { errors } } = useForm({ defaultValues, mode: 'onChange' });
@@ -32,6 +32,7 @@ function AccessoryItemModal({ open, onClose, type, clients, editItem, onSaved })
       setValue('rate', editItem.rate ?? '');
       setValue('clientId', editItem.client?._id || editItem.clientId?._id || editItem.clientId || '');
       setValue('subType', editItem.subType || '');
+      setValue('openingStock', editItem.openingStock ?? '');
       setValue('description', editItem.description || '');
       setValue('isActive', editItem.isActive !== false);
     } else {
@@ -47,6 +48,7 @@ function AccessoryItemModal({ open, onClose, type, clients, editItem, onSaved })
       rate: Number(data.rate) || 0,
       clientId: data.clientId || null,
       subType: hasSubType ? (data.subType || null) : null,
+      openingStock: Number(data.openingStock) || 0,
       description: data.description,
     };
     if (isEdit) payload.isActive = data.isActive;
@@ -114,6 +116,16 @@ function AccessoryItemModal({ open, onClose, type, clients, editItem, onSaved })
                       {(clients || []).map(c => <MenuItem key={c._id} value={c._id}>{c.name}</MenuItem>)}
                     </Select>
                   </FormControl>
+                )} />
+            </Grid>
+            <Grid size={{ xs: 6, md: 6 }}>
+              <Controller name="openingStock" control={control}
+                rules={{ pattern: { value: /^\d*\.?\d*$/, message: 'Numbers only' } }}
+                render={({ field }) => (
+                  <TextField {...field} label={`Opening Stock${type?.unit ? ` (${type.unit})` : ''}`}
+                    fullWidth margin="normal" variant="standard"
+                    error={!!errors.openingStock}
+                    helperText={errors.openingStock ? errors.openingStock.message : 'Current on-hand at go-live'} />
                 )} />
             </Grid>
             <Grid size={{ xs: 12 }}>

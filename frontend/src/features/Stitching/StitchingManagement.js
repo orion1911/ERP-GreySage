@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Typography, Box, Button, TextField } from '@mui/material';
+import { Typography, Box, Button, TextField, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import { ContentCut } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 import StitchingGrid from './StitchingGrid';
@@ -29,6 +29,7 @@ function StitchingManagement() {
   const [selectedWashingRecord, setSelectedWashingRecord] = useState(null);
   const [selectedFinishingRecord, setSelectedFinishingRecord] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [vendorFilter, setVendorFilter] = useState('');
 
   const fetchData = async () => {
     try {
@@ -87,6 +88,9 @@ function StitchingManagement() {
         record._id === newStitching._id ? newStitching : record
       );
       setStitchingRecords(updatedRecords);
+      // A stitching edit may have cascaded washing/finishing quantities — refresh them.
+      const lid = newStitching.lotId?._id;
+      if (lid) { fetchWashingRecords(lid); fetchFinishingRecords(lid); }
     } else {
       const updatedRecords = [...stitchingRecords, newStitching];
       setStitchingRecords(updatedRecords);
@@ -115,11 +119,17 @@ function StitchingManagement() {
           record._id === newWashing._id ? newWashing : record
         )
       }));
+      // A washing edit may have cascaded the finishing quantity — refresh it.
+      fetchFinishingRecords(lotId);
     } else {
       setWashingRecords(prev => ({
         ...prev,
         [lotId]: [...(prev[lotId] || []), newWashing]
       }));
+      // New washing auto-set the stitch-out date — reflect it on the stitching row.
+      setStitchingRecords(prev => prev && prev.map(r =>
+        r.lotId?._id === lotId && !r.stitchOutDate ? { ...r, stitchOutDate: newWashing.date } : r
+      ));
     }
     setSelectedWashingRecord(null);
     setOpenWashingModal(false);
@@ -153,6 +163,11 @@ function StitchingManagement() {
         ...prev,
         [lotId]: [...(prev[lotId] || []), newFinishing]
       }));
+      // New finishing auto-set the wash-out date — reflect it on the washing row(s).
+      setWashingRecords(prev => (prev && prev[lotId]) ? {
+        ...prev,
+        [lotId]: prev[lotId].map(w => !w.washOutDate ? { ...w, washOutDate: newFinishing.date } : w)
+      } : prev);
     }
     setSelectedFinishingRecord(null);
     setOpenFinishingModal(false);
@@ -176,15 +191,25 @@ function StitchingManagement() {
   return (
     <>
       <Typography variant="h4" sx={{ mb: 1 }}>Stitching Management</Typography>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-        <TextField
-          label="Search Stitching"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          fullWidth
-          variant="standard"
-          sx={{ maxWidth: '190px' }}
-        />
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <TextField
+            label="Search Stitching"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            variant="standard"
+            sx={{ width: '190px' }}
+          />
+          <FormControl variant="standard" sx={{ minWidth: 150 }}>
+            <InputLabel>Vendor</InputLabel>
+            <Select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)} label="Vendor">
+              <MenuItem value=""><em>All Vendors</em></MenuItem>
+              {stitchingVendors.map(v => (
+                <MenuItem key={v._id} value={v._id}>{v.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
         <Button variant="contained" endIcon={<ContentCut />} onClick={() => { setSelectedRecord(null); setOpenStitchingModal(true); }} sx={{ mt: 2 }}>
           Add
         </Button>
@@ -204,6 +229,7 @@ function StitchingManagement() {
         setOpenFinishingModal={setOpenFinishingModal}
         setSelectedLot={setSelectedLot}
         searchTerm={searchTerm}
+        vendorFilter={vendorFilter}
         onEditStitching={handleEditStitching}
         onEditWashing={handleEditWashing}
         onEditFinishing={handleEditFinishing}

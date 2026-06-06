@@ -21,11 +21,14 @@
 
 const mongoose = require('mongoose');
 const {
-  AccessoryType, AccessoryItem, AccessoryPurchase, AccessoryPayment, AccessoryBalance, Client, User
+  AccessoryType, AccessoryItem, AccessoryPurchase, AccessoryPayment, AccessoryConsumption, AccessoryBalance, Client, User
 } = require('../mongodb_schema');
 const accessoryService = require('../services/accessoryService');
 
-const MONGO_URI = process.argv[2] || process.env.MONGO_URI;
+const MONGO_URI = (process.argv[2] && !process.argv[2].startsWith('--')) ? process.argv[2] : process.env.MONGO_URI;
+// --wipe: delete ALL accessory data (purchases/payments/consumption/items/balances) for the
+// seeded types before reseeding — a truly fresh reset that also removes UI-entered rows.
+const WIPE = process.argv.includes('--wipe') || process.env.SEED_WIPE === '1';
 const SEED_TAG = 'SEED-OPENING-JUN2026';
 const OPENING_DATE = new Date('2026-06-01T00:00:00.000Z');
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -220,17 +223,32 @@ const DATA = {
     if (!type) { console.warn(`Type "${key}" missing — skipped.`); continue; }
     console.log(`=== ${type.name} ===`);
 
-    // 1. Upsert masters → name→item map
+    // 0. Full wipe (--wipe): remove EVERYTHING for this type, incl. UI-entered rows.
+    if (WIPE) {
+      const [dp, dpay, dcon, ditem] = await Promise.all([
+        AccessoryPurchase.deleteMany({ accessoryTypeId: type._id }),
+        AccessoryPayment.deleteMany({ accessoryTypeId: type._id }),
+        AccessoryConsumption.deleteMany({ accessoryTypeId: type._id }),
+        AccessoryItem.deleteMany({ accessoryTypeId: type._id }),
+      ]);
+      await AccessoryBalance.deleteOne({ accessoryTypeId: type._id });
+      console.log(`  WIPED — purchases:${dp.deletedCount} payments:${dpay.deletedCount} consumption:${dcon.deletedCount} items:${ditem.deletedCount} balance:reset`);
+    }
+
+    // 1. Upsert masters (incl. per-item opening stock) → name→item map
+    const stockMap = {};
+    (cfg.openingStock || []).forEach(s => { stockMap[s.item] = Number(s.qty) || 0; });
     const itemMap = new Map();
     for (const m of cfg.masters) {
       const clientId = await resolveClient(m.client);
       const item = await AccessoryItem.findOneAndUpdate(
         { accessoryTypeId: type._id, name: m.name },
-        { $set: { rate: m.rate || 0, subType: m.subType || null, clientId }, $setOnInsert: { isActive: true } },
+        { $set: { rate: m.rate || 0, subType: m.subType || null, clientId, openingStock: stockMap[m.name] || 0 }, $setOnInsert: { isActive: true } },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
       itemMap.set(m.name, item);
     }
+    const stockQty = Object.values(stockMap).reduce((s, q) => s + q, 0);
     const lineFor = (item, qty, rate) => {
       const m = itemMap.get(item);
       if (!m) throw new Error(`Item "${item}" not defined for ${key}`);
@@ -241,17 +259,7 @@ const DATA = {
     await AccessoryPurchase.deleteMany({ accessoryTypeId: type._id, notes: { $regex: 'SEED' } });
     await AccessoryPayment.deleteMany({ accessoryTypeId: type._id, notes: { $regex: 'SEED' } });
 
-    let stockQty = 0, totPurch = 0, totPay = 0;
-
-    // 2a. Opening-stock snapshot (rate 0) — zipper only.
-    const stockLines = (cfg.openingStock || []).filter(s => Number(s.qty) > 0).map(s => lineFor(s.item, s.qty, 0));
-    if (stockLines.length) {
-      stockQty = stockLines.reduce((sum, l) => sum + l.qty, 0);
-      await AccessoryPurchase.create({
-        accessoryTypeId: type._id, date: OPENING_DATE, vendorInvoiceNumber: '', supplier: '',
-        lines: stockLines, totalQty: stockQty, totalAmount: 0, notes: `${SEED_TAG} opening stock`, createdBy: user._id,
-      });
-    }
+    let totPurch = 0, totPay = 0;
 
     // 2b. Historical purchases.
     for (const p of (cfg.purchases || [])) {

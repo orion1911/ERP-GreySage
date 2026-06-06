@@ -46,6 +46,7 @@ function AccessoryLedger({ type, onStockChange }) {
   const [paymentModal, setPaymentModal] = useState(false);
   const [editPayment, setEditPayment] = useState(null);
   const [openingDialog, setOpeningDialog] = useState({ open: false, value: 0 });
+  const [confirmDel, setConfirmDel] = useState({ open: false, type: '', id: '' });
 
   // showSnackbar omitted from deps on purpose — its identity changes every layout render,
   // so depending on it would refetch on each setSnackbar and loop on a 401.
@@ -89,17 +90,21 @@ function AccessoryLedger({ type, onStockChange }) {
     onStockChange && onStockChange();
   };
 
-  const handleDeletePurchase = (id) => {
-    if (!window.confirm('Delete this purchase? Stock and balance will be recalculated.')) return;
-    apiService.accessories.deletePurchase(id)
-      .then(() => { loadBalance(); loadPurchases(purchasePage); onStockChange && onStockChange(); })
-      .catch(err => showSnackbar(err));
-  };
-  const handleDeletePayment = (id) => {
-    if (!window.confirm('Delete this payment?')) return;
-    apiService.accessories.deletePayment(id)
-      .then(() => { loadBalance(); loadPayments(paymentPage); })
-      .catch(err => showSnackbar(err));
+  const handleDeletePurchase = (id) => setConfirmDel({ open: true, type: 'purchase', id });
+  const handleDeletePayment = (id) => setConfirmDel({ open: true, type: 'payment', id });
+
+  const confirmDelete = () => {
+    const { type: delType, id } = confirmDel;
+    setConfirmDel({ open: false, type: '', id: '' });
+    if (delType === 'purchase') {
+      apiService.accessories.deletePurchase(id)
+        .then(() => { loadBalance(); loadPurchases(purchasePage); onStockChange && onStockChange(); })
+        .catch(err => showSnackbar(err));
+    } else if (delType === 'payment') {
+      apiService.accessories.deletePayment(id)
+        .then(() => { loadBalance(); loadPayments(paymentPage); })
+        .catch(err => showSnackbar(err));
+    }
   };
 
   const handleMarkPurchasePaid = (p) => {
@@ -279,6 +284,21 @@ function AccessoryLedger({ type, onStockChange }) {
         <DialogActions>
           <Button onClick={() => setOpeningDialog({ open: false, value: 0 })}>Cancel</Button>
           <Button variant="contained" onClick={handleSetOpening}>Save</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={confirmDel.open} onClose={() => setConfirmDel({ open: false, type: '', id: '' })} maxWidth="xs" fullWidth>
+        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {confirmDel.type === 'purchase'
+              ? 'Delete this purchase? Stock and balance will be recalculated.'
+              : 'Delete this payment? The balance will be recalculated.'}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDel({ open: false, type: '', id: '' })}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={confirmDelete}>Delete</Button>
         </DialogActions>
       </Dialog>
     </Box>

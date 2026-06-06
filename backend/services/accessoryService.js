@@ -123,25 +123,28 @@ const getAccessoryStock = async (accessoryTypeId) => {
     const purchased = purchasedByItem.get(String(item._id));
     const purchasedQty = purchased ? purchased.qty : 0;
     const consumedQty = consumedByItem.get(String(item._id)) || 0;
+    const openingQty = item.openingStock || 0;
     return {
       _id: item._id,
       name: item.name,
       rate: item.rate,
       subType: item.subType,
       isActive: item.isActive,
+      openingStock: openingQty,
       client: item.clientId ? { _id: item.clientId._id, name: item.clientId.name, clientCode: item.clientId.clientCode } : null,
       purchasedQty,
       consumedQty,
-      availableQty: purchasedQty - consumedQty
+      availableQty: openingQty + purchasedQty - consumedQty
     };
   });
 
   const totals = rows.reduce((acc, r) => {
+    acc.openingStock += r.openingStock;
     acc.purchasedQty += r.purchasedQty;
     acc.consumedQty += r.consumedQty;
     acc.availableQty += r.availableQty;
     return acc;
-  }, { purchasedQty: 0, consumedQty: 0, availableQty: 0 });
+  }, { openingStock: 0, purchasedQty: 0, consumedQty: 0, availableQty: 0 });
 
   return { items: rows, totals };
 };
@@ -160,7 +163,13 @@ const getStockSummary = async () => {
   ]);
   const consumedByType = new Map(consumeAgg.map(r => [String(r._id), r.qty]));
 
+  const openingAgg = await AccessoryItem.aggregate([
+    { $group: { _id: '$accessoryTypeId', qty: { $sum: '$openingStock' } } }
+  ]);
+  const openingByType = new Map(openingAgg.map(r => [String(r._id), r.qty]));
+
   return types.map(t => {
+    const openingQty = openingByType.get(String(t._id)) || 0;
     const purchasedQty = purchasedByType.get(String(t._id)) || 0;
     const consumedQty = consumedByType.get(String(t._id)) || 0;
     return {
@@ -169,9 +178,10 @@ const getStockSummary = async () => {
       name: t.name,
       unit: t.unit,
       consumptionStage: t.consumptionStage,
+      openingStock: openingQty,
       purchasedQty,
       consumedQty,
-      availableQty: purchasedQty - consumedQty
+      availableQty: openingQty + purchasedQty - consumedQty
     };
   });
 };

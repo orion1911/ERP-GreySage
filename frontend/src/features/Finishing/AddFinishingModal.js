@@ -92,12 +92,12 @@ function AddFinishingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lot
               .map(r => ({ accessoryItemId: String(r.accessoryItemId), qty: String(r.qty) }));
             if (matched.length) {
               initial[gKey(g)] = matched;
-              touchedRef.current.add(gKey(g)); // existing values are user data — don't auto-override
             } else {
-              // No prior consumption for this slot — pre-fill to the lot quantity (left
-              // untouched so it keeps tracking the Quantity field).
-              initial[gKey(g)] = [{ accessoryItemId: String(primaryItem(g)?._id || ''), qty: (baseQty * (g.multiplier || 1)) || '' }];
+              // Old record with no saved consumption → default to 0 so editing it doesn't
+              // force/decrement consumption. The user can fill it in if needed.
+              initial[gKey(g)] = [{ accessoryItemId: String(primaryItem(g)?._id || ''), qty: '' }];
             }
+            touchedRef.current.add(gKey(g)); // edit values are user-managed; don't auto-fill from qty
           }
         } else {
           touchedRef.current = new Set();
@@ -178,10 +178,7 @@ function AddFinishingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lot
       const k = gKey(g);
       const rows = consumption[k] || [];
       const total = rows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
-      if (total < 1) {
-        showSnackbar(`${g.label} consumption is required (enter the quantity used)`, 'error');
-        return;
-      }
+      // Zero is allowed (old records / lots that don't use this accessory) — no longer required.
       for (const r of rows) {
         if (r.accessoryItemId && Number(r.qty) > 0) {
           allocations.push({ accessoryItemId: r.accessoryItemId, qty: Number(r.qty) });
@@ -490,7 +487,7 @@ function AddFinishingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lot
                           <Chip
                           size="small"
                           variant="outlined"
-                          color={total < 1 ? 'error' : 'default'}
+                          color="default"
                           label={`${g.label}${g.multiplier > 1 ? ` ×${g.multiplier}` : ''}: ${total}${g.unit ? ' ' + g.unit : ''}`}
                         />
                         </Divider>

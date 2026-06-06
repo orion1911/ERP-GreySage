@@ -30,12 +30,13 @@ const OrderStatusChip = ({ status }) => {
       label={label}
       size='small'
       color={
-        status === 1 ? 'primary' :
-        status === 2 ? 'primary' :
-        status === 3 ? 'primary' :
-        status === 4 ? 'primary' :
-        status === 5 ? 'primary' :
-        status === 6 ? 'secondary' : 'default'
+        status === 1 ? 'default' :   // Placed
+        status === 2 ? 'primary' :   // Stitching
+        status === 3 ? 'secondary' :      // Washing
+        status === 4 ? 'warning' :   // Finishing
+        status === 5 ? 'success' :   // Complete
+        status === 6 ? 'error' :     // Cancelled
+        'default'
       }
       sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
     />

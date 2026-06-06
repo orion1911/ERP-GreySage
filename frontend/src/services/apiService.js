@@ -1039,15 +1039,15 @@ const apiService = {
         return response.data;
       } catch (error) { throw error; }
     },
-    getStock: async (typeId) => {
+    getStock: async (typeId, clientId = '') => {
       try {
-        const response = await axiosInstance.get('api/accessories/stock', { params: { typeId } });
+        const response = await axiosInstance.get('api/accessories/stock', { params: { typeId, clientId } });
         return response.data;
       } catch (error) { throw error; }
     },
-    getStockSummary: async () => {
+    getStockSummary: async (clientId = '') => {
       try {
-        const response = await axiosInstance.get('api/accessories/stock/summary');
+        const response = await axiosInstance.get('api/accessories/stock/summary', { params: { clientId } });
         return response.data;
       } catch (error) { throw error; }
     },

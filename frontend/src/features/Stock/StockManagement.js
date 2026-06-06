@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
   Box, Typography, Paper, Card, CardContent, Tabs, Tab, ToggleButton, ToggleButtonGroup,
-  CircularProgress, Stack, Chip
+  CircularProgress, Stack, Chip, FormControl, Select, MenuItem
 } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
@@ -44,6 +44,7 @@ function StockManagement() {
   const [selectedTypeId, setSelectedTypeId] = useState('');
   const [view, setView] = useState('ledger'); // 'ledger' | 'masters'
   const [clients, setClients] = useState([]);
+  const [clientFilter, setClientFilter] = useState(''); // '' = all, 'general', or a client _id
   const [loading, setLoading] = useState(true);
 
   const selectedType = types.find(t => t._id === selectedTypeId) || null;
@@ -52,22 +53,23 @@ function StockManagement() {
   // layout render (it's recreated in AuthenticatedLayout), so including it would refetch
   // on each setSnackbar — which on a 401 creates a refetch→error→snackbar→refetch loop.
   const loadSummary = useCallback(() => {
-    apiService.accessories.getStockSummary()
+    apiService.accessories.getStockSummary(clientFilter)
       .then(setSummary)
       .catch(err => showSnackbar(err));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [clientFilter]);
+
+  // (Re)load the summary on mount and whenever the client filter changes.
+  useEffect(() => { loadSummary(); }, [loadSummary]);
 
   useEffect(() => {
     setLoading(true);
     Promise.all([
       apiService.accessories.getTypes(),
-      apiService.accessories.getStockSummary(),
       apiService.client.getClients(),
     ])
-      .then(([typeList, summaryList, clientList]) => {
+      .then(([typeList, clientList]) => {
         setTypes(typeList);
-        setSummary(summaryList);
         setClients(clientList);
         if (typeList.length) setSelectedTypeId(typeList[0]._id);
       })
@@ -87,10 +89,29 @@ function StockManagement() {
       <Typography variant="h4" sx={{ mb: 2 }}>Stock Management</Typography>
 
       {/* ── Stock stats: available qty per article type ── */}
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
-        <Inventory2OutlinedIcon fontSize="small" color="primary" />
-        <Typography variant="subtitle1" fontWeight="bold">Available Stock</Typography>
-      </Stack>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 1.5, flexWrap: 'wrap' }}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Inventory2OutlinedIcon fontSize="small" color="primary" />
+          <Typography variant="subtitle1" fontWeight="bold">Available Stock</Typography>
+        </Stack>
+        <FormControl variant="standard" sx={{ minWidth: 170 }}>
+          <Select
+            value={clientFilter}
+            onChange={(e) => setClientFilter(e.target.value)}
+            displayEmpty
+            renderValue={(val) => {
+              if (!val) return 'All Clients';
+              if (val === 'general') return 'General (unassigned)';
+              const c = clients.find(x => String(x._id) === String(val));
+              return c ? c.name : 'Client';
+            }}
+          >
+            <MenuItem value=""><em>All Clients</em></MenuItem>
+            <MenuItem value="general"><em>General (unassigned)</em></MenuItem>
+            {clients.map(c => <MenuItem key={c._id} value={c._id}>{c.name}</MenuItem>)}
+          </Select>
+        </FormControl>
+      </Box>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3 }}>
         {summary.map((s) => {
           const isSelected = s._id === selectedTypeId;
@@ -126,6 +147,11 @@ function StockManagement() {
                   {fmtQty(s.availableQty)}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">{s.unit} available</Typography>
+                {s.rivetAvailable != null && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                    + {fmtQty(s.rivetAvailable)} rivets
+                  </Typography>
+                )}
                 <Stack direction="row" spacing={1.5} sx={{ mt: 1.25 }}>
                   <Stack direction="row" spacing={0.3} alignItems="center">
                     <ArrowUpwardIcon sx={{ fontSize: 14, color: 'success.main' }} />
@@ -169,14 +195,14 @@ function StockManagement() {
           <ToggleButton value="ledger">Purchases &amp; Payments</ToggleButton>
           <ToggleButton value="masters">Masters</ToggleButton>
         </ToggleButtonGroup>
-        {selectedType && (
+        {/* {selectedType && (
           <Chip
             size="small"
             sx={{ ml: 2, alignSelf: 'center' }}
             label={`Consumed at ${selectedType.consumptionStage}`}
             variant="outlined"
           />
-        )}
+        )} */}
       </Box>
 
       {selectedType && (
@@ -189,7 +215,7 @@ function StockManagement() {
             transition={{ duration: 0.2, ease: 'easeOut' }}
           >
             {view === 'masters'
-              ? <AccessoryMasters type={selectedType} clients={clients} onStockChange={loadSummary} />
+              ? <AccessoryMasters type={selectedType} clients={clients} clientFilter={clientFilter} onStockChange={loadSummary} />
               : <AccessoryLedger type={selectedType} onStockChange={loadSummary} />}
           </motion.div>
         </AnimatePresence>

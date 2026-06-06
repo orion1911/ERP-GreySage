@@ -354,15 +354,15 @@ const setOpeningBalance = async (req, res) => {
 };
 
 const getStock = async (req, res) => {
-  const { typeId } = req.query;
+  const { typeId, clientId } = req.query;
   if (!typeId) return res.status(400).json({ error: 'typeId is required' });
-  const stock = await accessoryService.getAccessoryStock(typeId);
+  const stock = await accessoryService.getAccessoryStock(typeId, clientId || null);
   res.json(stock);
 };
 
 const getStockSummary = async (req, res) => {
   await accessoryService.seedAccessoryTypes();
-  const summary = await accessoryService.getStockSummary();
+  const summary = await accessoryService.getStockSummary(req.query.clientId || null);
   res.json(summary);
 };
 

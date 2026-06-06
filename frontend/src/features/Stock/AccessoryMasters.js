@@ -13,7 +13,7 @@ import AccessoryItemModal from './AccessoryItemModal';
 
 const fmtQty = (n) => Number(n || 0).toLocaleString('en-IN');
 
-function AccessoryMasters({ type, clients, onStockChange }) {
+function AccessoryMasters({ type, clients, clientFilter = '', onStockChange }) {
   const { isMobile, showSnackbar } = useOutletContext();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -26,12 +26,12 @@ function AccessoryMasters({ type, clients, onStockChange }) {
   // so depending on it would refetch on each setSnackbar and loop on a 401.
   const load = useCallback(() => {
     setLoading(true);
-    apiService.accessories.getStock(type._id)
+    apiService.accessories.getStock(type._id, clientFilter)
       .then(res => setRows(res.items || []))
       .catch(err => showSnackbar(err))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type._id]);
+  }, [type._id, clientFilter]);
 
   useEffect(() => { load(); }, [load]);
 

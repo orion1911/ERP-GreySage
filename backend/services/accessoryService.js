@@ -98,10 +98,15 @@ const getAccessoryBalance = async (accessoryTypeId) => {
 // Per-item stock for a type: purchased qty − consumed qty → availableQty.
 // Computed on read (no denormalization → no drift). Returns one row per active item,
 // plus any inactive item that still carries stock movement.
-const getAccessoryStock = async (accessoryTypeId) => {
+const getAccessoryStock = async (accessoryTypeId, clientId) => {
   const typeObjId = new mongoose.Types.ObjectId(accessoryTypeId);
 
-  const items = await AccessoryItem.find({ accessoryTypeId })
+  // Optional client filter: '' = all, 'general' = unassigned, <id> = that client.
+  const itemFilter = { accessoryTypeId };
+  if (clientId === 'general') itemFilter.clientId = null;
+  else if (clientId) itemFilter.clientId = clientId;
+
+  const items = await AccessoryItem.find(itemFilter)
     .populate('clientId', 'name clientCode')
     .sort({ name: 1 })
     .lean();
@@ -149,39 +154,62 @@ const getAccessoryStock = async (accessoryTypeId) => {
   return { items: rows, totals };
 };
 
-// Top-card summary: available qty per article type (sum across that type's items).
-const getStockSummary = async () => {
+// Top-card summary: available qty per article type, computed per-item (so it can be
+// filtered by client and split by sub-type). For the Button type, `availableQty` is the
+// BUTTON-only count and `rivetAvailable` is the rivet sub-count.
+// clientId: '' = all, 'general' = unassigned, <id> = that client.
+const getStockSummary = async (clientId) => {
   const types = await AccessoryType.find().sort({ sortOrder: 1 }).lean();
 
-  const purchaseAgg = await AccessoryPurchase.aggregate([
-    { $group: { _id: '$accessoryTypeId', qty: { $sum: '$totalQty' } } }
-  ]);
-  const purchasedByType = new Map(purchaseAgg.map(r => [String(r._id), r.qty]));
+  const itemFilter = {};
+  if (clientId === 'general') itemFilter.clientId = null;
+  else if (clientId) itemFilter.clientId = clientId;
+  const items = await AccessoryItem.find(itemFilter, '_id accessoryTypeId subType openingStock').lean();
+  const itemIds = items.map(i => i._id);
 
-  const consumeAgg = await AccessoryConsumption.aggregate([
-    { $group: { _id: '$accessoryTypeId', qty: { $sum: '$qty' } } }
-  ]);
-  const consumedByType = new Map(consumeAgg.map(r => [String(r._id), r.qty]));
+  let purchasedByItem = new Map();
+  let consumedByItem = new Map();
+  if (itemIds.length) {
+    const purchaseAgg = await AccessoryPurchase.aggregate([
+      { $unwind: '$lines' },
+      { $match: { 'lines.accessoryItemId': { $in: itemIds } } },
+      { $group: { _id: '$lines.accessoryItemId', qty: { $sum: '$lines.qty' } } }
+    ]);
+    purchasedByItem = new Map(purchaseAgg.map(r => [String(r._id), r.qty]));
+    const consumeAgg = await AccessoryConsumption.aggregate([
+      { $match: { accessoryItemId: { $in: itemIds } } },
+      { $group: { _id: '$accessoryItemId', qty: { $sum: '$qty' } } }
+    ]);
+    consumedByItem = new Map(consumeAgg.map(r => [String(r._id), r.qty]));
+  }
 
-  const openingAgg = await AccessoryItem.aggregate([
-    { $group: { _id: '$accessoryTypeId', qty: { $sum: '$openingStock' } } }
-  ]);
-  const openingByType = new Map(openingAgg.map(r => [String(r._id), r.qty]));
+  const byType = new Map();
+  for (const it of items) {
+    const purchased = purchasedByItem.get(String(it._id)) || 0;
+    const consumed = consumedByItem.get(String(it._id)) || 0;
+    const avail = (it.openingStock || 0) + purchased - consumed;
+    const k = String(it.accessoryTypeId);
+    if (!byType.has(k)) byType.set(k, { available: 0, rivet: 0, purchased: 0, consumed: 0 });
+    const agg = byType.get(k);
+    agg.available += avail;
+    agg.purchased += purchased;
+    agg.consumed += consumed;
+    if (it.subType === 'rivet') agg.rivet += avail;
+  }
 
   return types.map(t => {
-    const openingQty = openingByType.get(String(t._id)) || 0;
-    const purchasedQty = purchasedByType.get(String(t._id)) || 0;
-    const consumedQty = consumedByType.get(String(t._id)) || 0;
+    const agg = byType.get(String(t._id)) || { available: 0, rivet: 0, purchased: 0, consumed: 0 };
+    const isButton = t.key === 'button';
     return {
       _id: t._id,
       key: t.key,
       name: t.name,
       unit: t.unit,
       consumptionStage: t.consumptionStage,
-      openingStock: openingQty,
-      purchasedQty,
-      consumedQty,
-      availableQty: openingQty + purchasedQty - consumedQty
+      purchasedQty: agg.purchased,
+      consumedQty: agg.consumed,
+      availableQty: isButton ? (agg.available - agg.rivet) : agg.available, // button-only for the Button card
+      rivetAvailable: isButton ? agg.rivet : undefined,                     // rivet sub-count
     };
   });
 };

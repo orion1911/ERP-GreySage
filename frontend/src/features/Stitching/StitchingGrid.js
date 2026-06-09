@@ -313,15 +313,35 @@ function StitchingGrid({
     {
       accessorKey: 'threadColors',
       header: 'THREADS',
-      cell: ({ row }) => (
-        <Box>
-          {row.original.threadColors.map((tc, index) => (
-            <Typography key={index} variant="subtitle2" style={{ fontSize: '.8rem' }}>
-              {tc.color}, {tc.quantity}
-            </Typography>
-          ))}
-        </Box>
-      ),
+      cell: ({ row }) => {
+        const threads = row.original.threadColors || [];
+        const fullText = threads.map(tc => `${tc.color}, ${tc.quantity}`).join('  |  ');
+        // When there are more than 2 threads, show only the first inline; reveal the rest on hover.
+        const overflow = threads.length > 2;
+        const visible = overflow ? threads.slice(0, 1) : threads;
+        const content = (
+          <Box sx={{ maxWidth: 130, mx: 'auto' }}>
+            {visible.map((tc, index) => (
+              <Typography
+                key={index}
+                variant="subtitle2"
+                noWrap
+                sx={{ fontSize: '.8rem', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              >
+                {tc.color}, {tc.quantity}
+              </Typography>
+            ))}
+            {overflow && (
+              <Typography variant="caption" color="primary" sx={{ fontSize: '.7rem', fontWeight: 600 }}>
+                +{threads.length - 1} more
+              </Typography>
+            )}
+          </Box>
+        );
+        return overflow
+          ? <Tooltip title={fullText} arrow placement="top">{content}</Tooltip>
+          : content;
+      },
     },
     {
       accessorKey: 'stitchOut',

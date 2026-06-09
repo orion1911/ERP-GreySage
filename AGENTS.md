@@ -3,7 +3,7 @@
 Single-file context for any AI coding assistant (Claude, GPT, Gemini, Cursor, Codex, etc.) working on this repo. Read this first before exploring source.
 
 **Repo root:** `D:\Work\SalesAndAccounting`
-**Last context refresh:** 2026-06-05 (Stock Management / Accessories module added — masters, purchase+payment ledger, stock stats, zipper@stitching + finishing consumption; plus vendor default rates, per-lot/per-purchase Paid markers, 12h token-refresh session, net-of-shortage stage pre-fill. Previous: Sales/Dispatch/Billing 2026-05-23 — see section 7.) (verify with `git log` and `git status` before trusting time-sensitive details)
+**Last context refresh:** 2026-06-06 (Stock Management / Accessories module — masters w/ per-item `openingStock`, purchase+payment ledger, client-filterable item-based stock summary w/ button/rivet split, zipper@stitching + finishing consumption (zero allowed); plus vendor default rates, per-lot/per-purchase Paid markers, 12h token-refresh session, net-of-shortage stage pre-fill + downstream shortage cascade + out-date auto-fill. Previous: Sales/Dispatch/Billing 2026-05-23 — see section 7.) (verify with `git log` and `git status` before trusting time-sensitive details)
 
 ---
 
@@ -69,7 +69,10 @@ D:\Work\SalesAndAccounting\
 │   │   ├── error.js          # Global handler, translates Mongo unique-violation
 │   │   └── requestValidator.js
 │   ├── migrations/
-│   │   └── migrate-orders-to-lots.js  # One-time historical migration
+│   │   ├── migrate-orders-to-lots.js  # One-time historical migration
+│   │   ├── seed-accessory-data.js     # Seeds accessory masters/opening-stock/purchases/payments
+│   │   │                              #   (idempotent; `--wipe` arg = full reset; URI as argv[2])
+│   │   └── dedupe-accessory-types.js  # One-off: removes duplicate AccessoryType rows
 │   ├── utils/logger.js       # logAction writes to AuditLog
 │   ├── BRD.MD                # Business requirements (READ THIS for domain)
 │   ├── server-side-excel-export-summary.md  # UTF-16 encoded; content describes xlsx refactor
@@ -138,6 +141,10 @@ All Mongoose models live in **one file**: `backend/mongodb_schema.js`. Summary:
 
 **Stage quantity pre-fill (UI):** each stage's available qty is **net of upstream shortage** — Washing pre-fills to `stitching.quantity − quantityShort`; Finishing pre-fills (and the modal *fetches the washing record* to compute) `Σ(washDetails.quantity − quantityShort)`. Backend validates Finishing qty == available washing qty, so keep these in sync.
 
+**Shortage cascades downstream (backend):** editing an earlier stage's shortage auto-adjusts later stages so quantities stay consistent. `updateStitching` → `cascadeShortageFromStitching` re-sums the washing `washDetails` to the new available (delta applied to the largest detail) then re-derives `finishing.quantity`; `updateWashing` → `recomputeFinishingFromWashing` re-derives `finishing.quantity`. After a stitching/washing edit the UI refetches downstream records.
+
+**Out-date auto-fill:** creating a **Washing** entry sets the stitching record's `stitchOutDate` to the washing entry's date; creating a **Finishing** entry sets the washing's `washOutDate` to the finishing entry's date (both use the *selected* date, not `new Date()`).
+
 **Per-lot "Paid" marker:** `Stitching/Washing/Finishing` each have `isPaid` + `paidAt`. The Vendor Payments **Lots** table has a PAID toggle per lot (`PATCH /api/vendor-balances/lot-paid` → `markLotPaid` flips the production record by `{lotId, vendorId}`); a paid row is dimmed. `getVendorLotsDetails` returns `isPaid` (+ `recordId`) per lot. **Purely a status flag — it does NOT touch the money ledger/balance.** (Accessory purchases have the same marker — see Stock Management.)
 
 Latest commit (`90c94c6`) relaxed validation to allow `quantity: 0` and `rate: 0` on Stitching entries (previously enforced `min: 1` / `min: 0`).
@@ -163,12 +170,14 @@ Latest commit (`90c94c6`) relaxed validation to allow `quantity: 0` and `rate: 0
 
 **Stock Management / Accessories** (added 2026-06-02 — Phase 1):
 Tracks consumable accessories (zippers, buttons, label-tags, pocketing, polybags). Two independent denormalized aggregates, both fed by `AccessoryPurchase`:
-- **STOCK** (per item, computed on read — no denormalization) = Σ purchase-line qty − Σ consumption qty.
+- **STOCK** (per item, computed on read — no denormalization) = `openingStock + Σ purchase-line qty − Σ consumption qty`.
 - **MONEY** (per type, denormalized into `AccessoryBalance`) = opening + Σ purchases − Σ payments − Σ adjustments.
+
+`getAccessoryStock(typeId, clientId)` and `getStockSummary(clientId)` accept a **client filter** (`''` = all, `'general'` = unassigned, `<id>` = that client — Stock page top-right dropdown). The summary is computed **per item** (not per-type aggregate) so it can be client-filtered and sub-type-split: for the **Button** type, `availableQty` is the BUTTON-only count and `rivetAvailable` is the rivet sub-count shown under it.
 
 Collections:
 - **`AccessoryType`** — seeded lookup (`key` slug drives behaviour). `key`, `name`, `unit` (pcs/mtr), `consumptionStage` ∈ `['stitching','finishing']`, `sortOrder`, `isActive`. Auto-seeded by `accessoryService.seedAccessoryTypes` (zipper/button/label-tag/pocketing/polybag) on first `/types` or `/stock/summary` hit.
-- **`AccessoryItem`** — the master/lookup per type (e.g. "AD BLUE 5.5 INCH"). `accessoryTypeId`, `name`, `rate`, `clientId` (**null = general/common-for-all**; set = custom for that client), `subType` ∈ `['label','tag',null]` (for the Phase-2 label-tag paired stream), `isActive`. Unique on `(accessoryTypeId, name)`.
+- **`AccessoryItem`** — the master/lookup per type (e.g. "AD BLUE 5.5 INCH"). `accessoryTypeId`, `name`, `rate`, `clientId` (**null = general/common-for-all**; set = custom for that client), `subType` ∈ `['label','tag','button','rivet',null]` (paired streams: label/tag and button/rivet), `openingStock` (go-live on-hand qty, set in the Masters form — counts toward available; preferred over the old rate-0 opening-stock purchase), `isActive`. Unique on `(accessoryTypeId, name)`. Selecting an item in a purchase line pre-fills the line rate from the item's master `rate`.
 - **`AccessoryPurchase`** — one supplier invoice = header + N `lines[{accessoryItemId, nameSnapshot, qty, rate, amount}]` (a single INV can carry both a label and a tag line). `accessoryTypeId`, `date`, `vendorInvoiceNumber`, `supplier`, `totalQty`, `totalAmount`, plus an `isPaid`/`paidAt`/`paidBy` settled marker (`PATCH /accessories/purchases/:id/paid`; paid rows are dimmed + Edit/Delete disabled — a status flag only, doesn't touch the balance). **Call `accessoryService.updateAccessoryBalance(typeId)` after any purchase write.** Purchases + payments are **server-paginated** (`page`/`limit`, default 10) → `{ rows, total }`.
 - **`AccessoryBalance.openingBalance`** is settable from the UI per type (Stock ledger → "Opening Balance" button → `PATCH /api/accessories/opening-balance`), mirroring client-balance opening. Used to carry the pre-go-live outstanding.
 - **`AccessoryPayment`** (+ **`AccessoryPaymentHistory`**) — payments/adjustments against an **article-type account** (the "account" is the AccessoryType, matching the Excel's per-type ledger tabs — there is intentionally no per-supplier ledger in Phase 1). Mirror of VendorPaymentEntry. **Call `updateAccessoryBalance` + write history after any payment write.**
@@ -177,7 +186,7 @@ Collections:
 
 **Zipper consumption hook (Stitching):** `createStitching`/`updateStitching` accept an optional `zipperConsumption: [{accessoryItemId, qty}]`. It's **optional/non-blocking** — if every qty is 0 (or no zipper masters exist) it's skipped so the critical stitching flow never breaks; but once **any** zipper qty is entered, the sum **must equal the lot quantity** (validated client- and server-side, returns 400 with a clear message). The stitching modal shows ALL applicable zipper items for the selected client (client-mapped items if any exist, else general), each defaulting to 0.
 
-**Finishing consumption hook (Phase 2):** `createFinishing`/`updateFinishing` accept `accessoryConsumption: [{accessoryItemId, qty}]` (a flat list across types; each item's type/name/clientLinked is resolved server-side). The modal calls `GET /api/accessories/finishing-items?invoiceNumber=` which resolves the lot's client and returns consumption **slots** — Button, **Label**, **Tag** (Label-Tag expands into two slots, consumed as a pair), Polybag — each listing client-mapped **AND** general items so a lot can be split partial-client + partial-general (each slot supports multiple split rows). **Rivets are NOT a slot**: they're auto-derived at **4× the total buttons** against the default rivet item (`subType:'rivet'`), carried on the Button group's `rivet` field and appended to the consumption set on save (1 button + 4 rivets per piece). **Pocketing is excluded** (metres, purchases/payments only — `accessoryService.FINISHING_CONSUMABLE_KEYS`). Each shown slot is **pre-filled to the finishing quantity** (which already nets stitching/washing shortage) and **required (≥1)**; users adjust upward per item for extras sent. Only slots that have items are shown/required.
+**Finishing consumption hook (Phase 2):** `createFinishing`/`updateFinishing` accept `accessoryConsumption: [{accessoryItemId, qty}]` (a flat list across types; each item's type/name/clientLinked is resolved server-side). The modal calls `GET /api/accessories/finishing-items?invoiceNumber=` which resolves the lot's client and returns consumption **slots** — Button, **Label**, **Tag** (Label-Tag expands into two slots, consumed as a pair), Polybag — each listing client-mapped **AND** general items so a lot can be split partial-client + partial-general (each slot supports multiple split rows). **Rivets are NOT a slot**: they're auto-derived at **4× the total buttons** against the default rivet item (`subType:'rivet'`), carried on the Button group's `rivet` field and appended to the consumption set on save (1 button + 4 rivets per piece). **Pocketing is excluded** (metres, purchases/payments only — `accessoryService.FINISHING_CONSUMABLE_KEYS`). New entries pre-fill each slot to the finishing quantity (which already nets stitching/washing shortage); users adjust upward for extras. **Zero is allowed** (not required) — editing an **old** finishing record (no saved consumption) defaults its slots to 0 so saving doesn't wrongly decrement stock. (Zipper consumption is likewise optional: all-zero skips, but a *partial* entry must still sum to the lot quantity.)
 
 **Dormant schemas** (still defined, not actively used):
 - `Order` — removed as entry point
@@ -314,6 +323,7 @@ Copy this triplet when adding a new lookup.
 Don't echo their contents into responses, don't commit them. Required keys (without values):
 - Backend: `MONGO_URI`, `JWT_SECRET`, `CORS_ORIGINS`, SendGrid creds
 - Frontend: `REACT_APP_MUI_LICENSE_KEY` (paid MUI X license)
+- **The Atlas cluster hosts multiple DBs** — prod is **`gs_sales_accounting`**, plus a **`gs_dev`** on the same cluster; the root `.env` `MONGO_URI` db-name has been switched between them. **Verify which DB a seed/migration targets before running** (scripts read the URI from argv[2] or `MONGO_URI`). Source the URI from `.env` without printing it, and mask the password when showing a connection string.
 
 **Archived folders to leave alone:**
 - `frontendv2/` — stalled rewrite, gitignored

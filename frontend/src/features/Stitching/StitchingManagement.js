@@ -8,6 +8,19 @@ import AddStitchingModal from './AddStitchingModal';
 import AddWashingModal from '../Washing/AddWashingModal';
 import AddFinishingModal from '../Finishing/AddFinishingModal';
 
+// Group a flat list of washing/finishing records into a { [lotId]: [...] } map —
+// the shape the grids already consume. Lets us bulk-fetch once instead of per-lot.
+const groupByLot = (records) => {
+  const map = {};
+  (records || []).forEach((r) => {
+    const lid = r.lotId?._id;
+    if (!lid) return;
+    if (!map[lid]) map[lid] = [];
+    map[lid].push(r);
+  });
+  return map;
+};
+
 function StitchingManagement() {
   const { showSnackbar } = useOutletContext();
 
@@ -30,11 +43,16 @@ function StitchingManagement() {
   const [selectedFinishingRecord, setSelectedFinishingRecord] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [vendorFilter, setVendorFilter] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
 
   const fetchData = async () => {
     try {
-      const [stitchingRes, stitchingVendorsRes, washingVendorsRes, finishingVendorsRes, clientsRes, fitStylesRes] = await Promise.all([
+      // Bulk-fetch washing + finishing once (each returns all records when unfiltered),
+      // then group by lotId — replaces the old per-lot N+1 fan-out (2 calls per stitching row).
+      const [stitchingRes, washingRes, finishingRes, stitchingVendorsRes, washingVendorsRes, finishingVendorsRes, clientsRes, fitStylesRes] = await Promise.all([
         apiService.stitching.getStitching(),
+        apiService.washing.getWashing(),
+        apiService.finishing.getFinishing(),
         apiService.stitchingVendors.getStitchingVendors(),
         apiService.washingVendors.getWashingVendors(),
         apiService.finishingVendors.getFinishingVendors(),
@@ -42,6 +60,8 @@ function StitchingManagement() {
         apiService.fitStyles.getFitstyles()
       ]);
       setTimeout(() => setStitchingRecords(stitchingRes), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
+      setWashingRecords(groupByLot(washingRes));
+      setFinishingRecords(groupByLot(finishingRes));
       setStitchingVendors(stitchingVendorsRes);
       setWashingVendors(washingVendorsRes);
       setFinishingVendors(finishingVendorsRes);
@@ -209,6 +229,15 @@ function StitchingManagement() {
               ))}
             </Select>
           </FormControl>
+          <FormControl variant="standard" sx={{ minWidth: 150 }}>
+            <InputLabel>Client</InputLabel>
+            <Select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} label="Client">
+              <MenuItem value=""><em>All Clients</em></MenuItem>
+              {clients.map(c => (
+                <MenuItem key={c._id} value={c._id}>{c.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </Box>
         <Button variant="contained" endIcon={<ContentCut />} onClick={() => { setSelectedRecord(null); setOpenStitchingModal(true); }} sx={{ mt: 2 }}>
           Add
@@ -230,6 +259,7 @@ function StitchingManagement() {
         setSelectedLot={setSelectedLot}
         searchTerm={searchTerm}
         vendorFilter={vendorFilter}
+        clientFilter={clientFilter}
         onEditStitching={handleEditStitching}
         onEditWashing={handleEditWashing}
         onEditFinishing={handleEditFinishing}

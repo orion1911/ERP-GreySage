@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Box, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, TablePagination } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, ContentCut, Add, MoreVert as MoreVertIcon, AutoAwesome } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'motion/react';
@@ -49,21 +49,8 @@ function StitchingGridSx({
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [selectedRecordId, setSelectedRecordId] = useState(null);
 
-  useEffect(() => {
-    if (processedRecords && Array.isArray(processedRecords)) {
-      processedRecords.forEach(record => {
-        if (record.lotId?._id) {
-          if (!(washingRecords && washingRecords[record.lotId._id])) {
-            fetchWashingRecords(record.lotId._id);
-          }
-          if (!(finishingRecords && finishingRecords[record.lotId._id])) {
-            fetchFinishingRecords(record.lotId._id);
-          }
-        }
-      });
-    }
-  }, [processedRecords, washingRecords, finishingRecords, fetchWashingRecords, fetchFinishingRecords]);
-
+  // Washing/finishing are bulk-fetched and grouped by lotId in the parent — no per-row
+  // fetch loop here anymore (this was the mobile half of the old N+1 fan-out).
   const toggleMobileRowExpansion = (rowId) => {
     setMobileExpandedRows(prev => ({
       ...prev,

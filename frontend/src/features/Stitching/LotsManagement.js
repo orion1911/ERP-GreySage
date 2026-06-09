@@ -11,9 +11,29 @@ export default function LotsManagement() {
   const [finishingRecords, setFinishingRecords] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Group a flat washing/finishing list into a { [lotId]: [...] } map for the grid.
+  const groupByLot = (records) => {
+    const map = {};
+    (records || []).forEach((r) => {
+      const lid = r.lotId?._id;
+      if (!lid) return;
+      if (!map[lid]) map[lid] = [];
+      map[lid].push(r);
+    });
+    return map;
+  };
+
   const fetchAllLots = async () => {
     try {
-      const res = await apiService.stitching.getStitching();
+      // Bulk-fetch all three sets at once and group washing/finishing by lotId,
+      // instead of firing a washing + finishing request per stitching row.
+      const [res, washingRes, finishingRes] = await Promise.all([
+        apiService.stitching.getStitching(),
+        apiService.washing.getWashing(),
+        apiService.finishing.getFinishing(),
+      ]);
+      setWashingRecords(groupByLot(washingRes));
+      setFinishingRecords(groupByLot(finishingRes));
       setTimeout(() => setStitchingRecords(res), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
     } catch (err) {
       console.log(err);

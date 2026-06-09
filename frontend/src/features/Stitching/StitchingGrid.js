@@ -31,6 +31,7 @@ function StitchingGrid({
   setSelectedLot,
   searchTerm,
   vendorFilter = '',
+  clientFilter = '',
   onEditStitching,
   onEditWashing,
   onEditFinishing,
@@ -46,21 +47,9 @@ function StitchingGrid({
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
 
-  useEffect(() => {
-    if (stitchingRecords && Array.isArray(stitchingRecords)) {
-      stitchingRecords.forEach(record => {
-        if (record.lotId?._id) {
-          if (!(washingRecords && washingRecords[record.lotId._id])) {
-            fetchWashingRecords(record.lotId._id);
-          }
-          if (!(finishingRecords && finishingRecords[record.lotId._id])) {
-            fetchFinishingRecords(record.lotId._id);
-          }
-        }
-      });
-    }
-  }, [stitchingRecords]);
-
+  // Washing/finishing records are now bulk-fetched and grouped by lotId in the parent,
+  // so no per-row fetch loop here. toggleRowExpansion keeps a lazy fetch as a safety net
+  // for any lot whose data wasn't preloaded (e.g. a freshly-added stitching row).
   const toggleRowExpansion = (rowId) => {
     setExpandedRows(prev => {
       const isOpen = !!prev[rowId];
@@ -175,6 +164,9 @@ function StitchingGrid({
     if (vendorFilter && filtered) {
       filtered = filtered.filter(record => record.vendorId?._id === vendorFilter);
     }
+    if (clientFilter && filtered) {
+      filtered = filtered.filter(record => record.lotId?.clientId?._id === clientFilter);
+    }
     if (filterStatus && filtered) {
       filtered = filtered.filter(record => {
         if (filterStatus === 'completed') return !!record.stitchOutDate;
@@ -183,13 +175,13 @@ function StitchingGrid({
       });
     }
     return sortData(filtered, sortBy, sortDirection);
-  }, [stitchingRecords, searchTerm, vendorFilter, sortBy, sortDirection, filterStatus]);
+  }, [stitchingRecords, searchTerm, vendorFilter, clientFilter, sortBy, sortDirection, filterStatus]);
 
   // Reset to the first page when the filters change (but NOT on a plain data update —
   // autoResetPageIndex is disabled below so editing a record keeps you on your page).
   useEffect(() => {
     setPage(0);
-  }, [searchTerm, vendorFilter, filterStatus]);
+  }, [searchTerm, vendorFilter, clientFilter, filterStatus]);
 
   const columns = [
     {

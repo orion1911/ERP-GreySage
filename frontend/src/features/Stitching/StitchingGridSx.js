@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, TablePagination } from '@mui/material';
+import { Box, Button, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, TablePagination } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, ContentCut, Add, MoreVert as MoreVertIcon, AutoAwesome } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'motion/react';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
@@ -13,6 +13,7 @@ import { MorphDateIconField } from '../../components/MuiCustom';
 
 
 function StitchingGridSx({
+  onAdd,
   processedRecords,
   totalCount,
   page,
@@ -98,8 +99,19 @@ function StitchingGridSx({
 
   return (
     <Box sx={{ pt: 1 }}>
-      <Grid container spacing={2} sx={{ mb: 2, justifyContent: 'flex-end' }}>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+        {!readOnly && onAdd && (
+          <Button
+            variant="contained"
+            size="small"
+            endIcon={<ContentCut sx={{ fontSize: '0.9rem' }} />}
+            onClick={onAdd}
+            sx={{ py: 0.25, px: 1, minWidth: 'auto', fontSize: '0.7rem', lineHeight: 1.4 }}
+          >
+            Add
+          </Button>
+        )}
+        <Box sx={{ ml: 'auto' }}>
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
             <Select
               variant="standard"
@@ -114,6 +126,7 @@ function StitchingGridSx({
               <MenuItem dense value="invoiceNumber">Invoice #</MenuItem>
               <MenuItem dense value="status">Status</MenuItem>
               <MenuItem dense value="date">Date</MenuItem>
+              <MenuItem dense value="clientName">Client</MenuItem>
               <MenuItem dense value="vendorName">Vendor</MenuItem>
               <MenuItem dense value="quantity">Quantity</MenuItem>
               <MenuItem dense value="quantityShort">QTY Short</MenuItem>
@@ -140,8 +153,8 @@ function StitchingGridSx({
               <MenuItem dense onClick={() => { setFilterStatus('pending'); setFilterAnchorEl(null); }}>Pending</MenuItem>
             </Menu>
           </Stack>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
       <AnimatePresence mode="wait">
         <motion.div
           key={!processedRecords ? 'loading' : 'data'}

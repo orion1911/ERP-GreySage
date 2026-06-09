@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { useTheme } from '@mui/material/styles';
+import { useTheme, alpha } from '@mui/material/styles';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, flexRender } from '@tanstack/react-table';
 import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, Box, IconButton, Tooltip, Badge, Typography } from '@mui/material';
 import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon, AutoAwesome } from '@mui/icons-material';
@@ -35,6 +35,7 @@ function StitchingGrid({
   onEditStitching,
   onEditWashing,
   onEditFinishing,
+  onAdd,
   readOnly = false
 }) {
   const theme = useTheme();
@@ -464,6 +465,7 @@ function StitchingGrid({
 
   return isMobile ? (
     <StitchingGridSx
+      onAdd={onAdd}
       processedRecords={paginatedRecordsSx}
       totalCount={processedRecords ? processedRecords.length : 0}
       page={page}
@@ -538,8 +540,11 @@ function StitchingGrid({
             table.getRowModel().rows.map((row, index) => (
               <React.Fragment key={row.id}>
                 <TableRow
-                  hover
-                  sx={{ backgroundColor: index % 2 ? theme.palette.action.hover : 'transparent' }}
+                  sx={{
+                    backgroundColor: index % 2 ? theme.palette.action.hover : 'transparent',
+                    transition: 'background-color 0.15s ease',
+                    '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.12) },
+                  }}
                 >
                   {row.getVisibleCells().map(cell => (
                     <TableCell

@@ -22,7 +22,7 @@ const groupByLot = (records) => {
 };
 
 function StitchingManagement() {
-  const { showSnackbar } = useOutletContext();
+  const { showSnackbar, isMobile } = useOutletContext();
 
   const [stitchingRecords, setStitchingRecords] = useState();
   const [washingRecords, setWashingRecords] = useState();
@@ -212,15 +212,15 @@ function StitchingManagement() {
     <>
       <Typography variant="h4" sx={{ mb: 1 }}>Stitching Management</Typography>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-end', flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
           <TextField
             label="Search Stitching"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             variant="standard"
-            sx={{ width: '190px' }}
+            sx={{ width: isMobile ? '100%' : '190px' }}
           />
-          <FormControl variant="standard" sx={{ minWidth: 150 }}>
+          <FormControl variant="standard" sx={{ minWidth: isMobile ? 0 : 150, flex: isMobile ? 1 : 'none' }}>
             <InputLabel>Vendor</InputLabel>
             <Select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)} label="Vendor">
               <MenuItem value=""><em>All Vendors</em></MenuItem>
@@ -229,7 +229,7 @@ function StitchingManagement() {
               ))}
             </Select>
           </FormControl>
-          <FormControl variant="standard" sx={{ minWidth: 150 }}>
+          <FormControl variant="standard" sx={{ minWidth: isMobile ? 0 : 150, flex: isMobile ? 1 : 'none' }}>
             <InputLabel>Client</InputLabel>
             <Select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} label="Client">
               <MenuItem value=""><em>All Clients</em></MenuItem>
@@ -239,9 +239,12 @@ function StitchingManagement() {
             </Select>
           </FormControl>
         </Box>
-        <Button variant="contained" endIcon={<ContentCut />} onClick={() => { setSelectedRecord(null); setOpenStitchingModal(true); }} sx={{ mt: 2 }}>
-          Add
-        </Button>
+        {/* On mobile the Add button is moved next to the sort/date filter inside the grid. */}
+        {!isMobile && (
+          <Button variant="contained" endIcon={<ContentCut />} onClick={() => { setSelectedRecord(null); setOpenStitchingModal(true); }} sx={{ mt: 2 }}>
+            Add
+          </Button>
+        )}
       </Box>
       <StitchingGrid
         stitchingRecords={stitchingRecords}
@@ -260,6 +263,7 @@ function StitchingManagement() {
         searchTerm={searchTerm}
         vendorFilter={vendorFilter}
         clientFilter={clientFilter}
+        onAdd={() => { setSelectedRecord(null); setOpenStitchingModal(true); }}
         onEditStitching={handleEditStitching}
         onEditWashing={handleEditWashing}
         onEditFinishing={handleEditFinishing}

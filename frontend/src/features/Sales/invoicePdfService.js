@@ -33,27 +33,27 @@ const documentTitle = (docType) => docType === 'TAX_INVOICE' ? 'TAX INVOICE' : '
 // jsPDF can't use — that's why earlier URLs 404'd. @expo-google-fonts/roboto
 // ships full TTFs at the file names listed below.
 //
-// We register Roboto-Medium (weight 500) as the "bold" style — jsPDF only
-// supports normal/bold/italic/bolditalic, so Medium-as-bold is the lever for
-// reducing visual heaviness without losing emphasis on labels/totals.
+// We register Roboto-Bold (weight 700) as the "bold" style to match the sample
+// invoice's bold weight (the sample embeds Roboto-Bold; an earlier pass used
+// Medium-as-bold which rendered visibly lighter than the reference).
 // On total failure → helvetica + "Rs." fallback (Rupee glyph won't render).
 const FONT_SOURCES = [
   {
     label: 'local /fonts/',
     normal: '/fonts/Roboto-Regular.ttf',
-    bold: '/fonts/Roboto-Medium.ttf',
+    bold: '/fonts/Roboto-Bold.ttf',
     italic: '/fonts/Roboto-Italic.ttf'
   },
   {
     label: 'jsdelivr CDN (@expo-google-fonts/roboto)',
     normal: 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/roboto/Roboto_400Regular.ttf',
-    bold:   'https://cdn.jsdelivr.net/npm/@expo-google-fonts/roboto/Roboto_500Medium.ttf',
+    bold:   'https://cdn.jsdelivr.net/npm/@expo-google-fonts/roboto/Roboto_700Bold.ttf',
     italic: 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/roboto/Roboto_400Regular_Italic.ttf'
   },
   {
     label: 'unpkg CDN (@expo-google-fonts/roboto)',
     normal: 'https://unpkg.com/@expo-google-fonts/roboto/Roboto_400Regular.ttf',
-    bold:   'https://unpkg.com/@expo-google-fonts/roboto/Roboto_500Medium.ttf',
+    bold:   'https://unpkg.com/@expo-google-fonts/roboto/Roboto_700Bold.ttf',
     italic: 'https://unpkg.com/@expo-google-fonts/roboto/Roboto_400Regular_Italic.ttf'
   }
 ];
@@ -129,9 +129,9 @@ const registerFonts = (doc, fonts) => {
   if (!fonts.loaded) return { F: 'helvetica', RS: 'Rs. ' };
   doc.addFileToVFS('Roboto-Regular.ttf', fonts.normal);
   doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
-  // Roboto-Medium (500) registered as 'bold' alias — reduces visual heaviness vs Roboto-Bold (700)
-  doc.addFileToVFS('Roboto-Medium.ttf', fonts.bold);
-  doc.addFont('Roboto-Medium.ttf', 'Roboto', 'bold');
+  // Roboto-Bold (700) registered as the 'bold' alias — matches the sample invoice's bold weight
+  doc.addFileToVFS('Roboto-Bold.ttf', fonts.bold);
+  doc.addFont('Roboto-Bold.ttf', 'Roboto', 'bold');
   doc.addFileToVFS('Roboto-Italic.ttf', fonts.italic);
   doc.addFont('Roboto-Italic.ttf', 'Roboto', 'italic');
   return { F: 'Roboto', RS: '₹' };
@@ -194,14 +194,14 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   if (settings?.pan) issuerBlocks.push({ label: 'PAN : ', value: settings.pan, size: 9, lineH: 4 });
   if (settings?.msmeType) issuerBlocks.push({ label: 'MSME/Udyam Type : ', value: settings.msmeType, size: 9, lineH: 4 });
   if (settings?.msmeNumber) issuerBlocks.push({ label: 'MSME/Udyam No : ', value: settings.msmeNumber, size: 9, lineH: 4 });
-  if (settings?.email) issuerBlocks.push({ label: 'email : ', value: settings.email, size: 9, lineH: 4 });
+  if (settings?.email) issuerBlocks.push({ label: 'Email : ', value: settings.email, size: 9, lineH: 4 });
   if (settings?.phone) issuerBlocks.push({ label: 'Phone : ', value: settings.phone, size: 9, lineH: 2.5 });
 
   // Per-section padding — issuer wants more top margin (company name breathing room)
   // and almost no bottom (kill trailing whitespace below Phone). Bill/Ship is its own pair.
   const ISSUER_PAD_T = 5;
   const ISSUER_PAD_B = 0;
-  const BILL_PAD_T = 4;
+  const BILL_PAD_T = 5; // gap above the biller name — matches the company name's top padding (ISSUER_PAD_T)
   const BILL_PAD_B = 0;
   const issuerContentH = issuerBlocks.reduce((sum, b) => sum + b.lineH, 0);
   const META_ROW_H = 13;
@@ -246,14 +246,14 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
 
   // Row 1 — Invoice No (left) | Date (right). Labels small normal, values 10pt bold.
   doc.setFont(F, 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(9);
   doc.text('Invoice No.:', metaX + 2, metaRow1Y + 4.5);
   doc.setFont(F, 'bold');
   doc.setFontSize(10);
   doc.text(invoice.invoiceNumber || '', metaX + 2, metaRow1Y + 10);
 
   doc.setFont(F, 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(9);
   doc.text('Date:', metaInnerSplit + 2, metaRow1Y + 4.5);
   doc.setFont(F, 'bold');
   doc.setFontSize(10);
@@ -261,7 +261,7 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
 
   // Row 2 — Place of Supply (spans)
   doc.setFont(F, 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(9);
   doc.text('Place of Supply:', metaX + 2, metaRow2Y + 4.5);
   doc.setFont(F, 'bold');
   doc.setFontSize(10);
@@ -295,12 +295,11 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   const ship = buildAddressBlocks(invoice.clientSnapshot, invoice.shipTo);
 
   // Sample body fonts are slightly smaller than my prior pass (8pt, tighter line heights).
-  const NAME_H = 5;
-  const ADDR_LINE_H = 3.5;
-  const ID_ROW_H = 3.5; // tightened from 3.8 — reduces gap below PAN
-  // Match the issuer's trailing-line trick (Phone lineH = 2.5) so the gap below PAN
-  // visually matches the gap below Phone in the Issuer section.
-  const LAST_ID_ROW_H = 2.5;
+  const NAME_H = 4;        // gap from firm name to first address line — matches sample (~3.8mm)
+  const ADDR_LINE_H = 3.7; // 9pt address line pitch — matches sample (~3.72mm)
+  const ID_ROW_H = 3.7;
+  // Trailing gap below PAN (mirrors the issuer's tighter last-line spacing).
+  const LAST_ID_ROW_H = 3;
   const sideContentH = (b) =>
     NAME_H + b.addressLines.length * ADDR_LINE_H + (b.idRows.length ? 1.5 : 0) +
     Math.max(0, b.idRows.length - 1) * ID_ROW_H +
@@ -332,7 +331,7 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
     doc.text(content.name, xStart + 2, y);
     y += NAME_H;
     doc.setFont(F, 'normal');
-    doc.setFontSize(8);
+    doc.setFontSize(9);
     content.addressLines.forEach((line) => {
       doc.text(line, xStart + 2, y);
       y += ADDR_LINE_H;
@@ -340,7 +339,7 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
     if (content.idRows.length) y += 1.5;
     content.idRows.forEach((row, i) => {
       doc.setFont(F, 'normal');
-      doc.setFontSize(8);
+      doc.setFontSize(9);
       doc.text(row.label, xStart + 2, y);
       doc.setFont(F, 'bold');
       doc.text(row.value, xEnd - 2, y, { align: 'right' });
@@ -407,6 +406,9 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
     },
     bodyStyles: {
       font: F,
+      // Tight vertical padding — item rows sit a touch tighter than the sample. Scoped to
+      // body — head/foot keep their own.
+      cellPadding: { top: 0.5, right: 2, bottom: 0.5, left: 2 },
       lineColor: BORDER,
       lineWidth: { top: 0, right: 0.2, bottom: 0, left: 0.2 }
     },
@@ -419,7 +421,7 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
     columnStyles: {
       0: { halign: 'center', cellWidth: 6 }, // serial # — usually single digit
       1: { halign: 'left' },
-      2: { halign: 'center', cellWidth: 22 },
+      2: { halign: 'center', cellWidth: 19 },
       3: { halign: 'right', cellWidth: 17 },
       4: { halign: 'right', cellWidth: 22 },
       5: { halign: 'right', cellWidth: 28 }
@@ -428,6 +430,11 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
     didParseCell: (data) => {
       if (data.section === 'body' && data.row.index === SPACER_ROW_IDX) {
         data.cell.styles.minCellHeight = 30;
+      }
+      // Extra top padding on the FIRST item row only — adds a little breathing room
+      // below the header without loosening the gap between subsequent rows.
+      if (data.section === 'body' && data.row.index === 0) {
+        data.cell.styles.cellPadding = { top: 2, right: 2, bottom: 0.5, left: 2 };
       }
       if (data.section === 'foot' && data.row.index === 0) {
         data.cell.styles.lineWidth = { top: 0.2, right: 0.2, bottom: 0, left: 0.2 };
@@ -445,7 +452,9 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
       doc.setFillColor(255, 255, 255);
       doc.rect(x + 0.3, y + 0.3, width - 0.6, height - 0.6, 'F');
       const padX = 2;
-      const padY = 2;
+      // Match bodyStyles cellPadding.top so description aligns with Qty/Rate/Amount.
+      // Row 0 gets extra top padding (see didParseCell) for header breathing room.
+      const padY = data.row.index === 0 ? 1.5 : 0.5;
       const maxW = width - padX * 2;
       let ty = y + padY + 3;
       doc.setFont(F, 'bold');

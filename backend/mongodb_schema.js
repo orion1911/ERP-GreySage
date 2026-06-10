@@ -41,9 +41,25 @@ const AddressSchema = new mongoose.Schema({
   country: { type: String, trim: true, default: 'India' }
 }, { _id: false });
 
+// BillingFirm: one of a client's billing identities (sub-biller). A client can transact
+// through several GST-registered firms, each with its own legal name + GST/PAN + addresses.
+// The chosen firm is snapshotted onto an Invoice at issue time (see snapshotClient).
+// Keeps default _id so each firm is addressable from the Invoice (billingFirmId).
+const BillingFirmSchema = new mongoose.Schema({
+  billingName: { type: String, required: true, trim: true, uppercase: true }, // firm name printed on invoice
+  contact: { type: String, trim: true }, // phone printed on invoice (clientSnapshot.phone)
+  gstin: { type: String, trim: true, uppercase: true },
+  pan: { type: String, trim: true, uppercase: true },
+  billingAddress: { type: AddressSchema, default: () => ({}) },
+  shippingAddress: { type: AddressSchema, default: () => ({}) },
+  isActive: { type: Boolean, default: true }
+});
+
 // Client Schema: Includes clientCode + GST/billing details
 // `name` is the internal display label (e.g. "ADAM HILL"); `billingName` is the legal
 // firm/company name (e.g. "BRANDKO MART LLP") printed on the invoice's Bill To / Ship To.
+// The client-level billing fields are the DEFAULT identity; `billingFirms` holds optional
+// additional firms selectable per-invoice (falls back to the default when none is chosen).
 const ClientSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   clientCode: { type: String, required: true, unique: true },
@@ -55,6 +71,7 @@ const ClientSchema = new mongoose.Schema({
   pan: { type: String, trim: true, uppercase: true },
   billingAddress: { type: AddressSchema, default: () => ({}) },
   shippingAddress: { type: AddressSchema, default: () => ({}) },
+  billingFirms: { type: [BillingFirmSchema], default: [] }, // optional additional billing firms (sub-billers)
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
 });
@@ -337,6 +354,7 @@ const InvoiceSchema = new mongoose.Schema({
   documentType: { type: String, enum: ['BILL_OF_SUPPLY', 'TAX_INVOICE'], default: 'BILL_OF_SUPPLY' },
   date: { type: Date, required: true },
   clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
+  billingFirmId: { type: mongoose.Schema.Types.ObjectId }, // chosen Client.billingFirms subdoc id; null = client default
   clientSnapshot: {
     name: String,         // internal client display name (e.g. "ADAM HILL") — for searches/listings
     billingName: String,  // firm name printed on PDF Bill To / Ship To (e.g. "BRANDKO MART LLP")

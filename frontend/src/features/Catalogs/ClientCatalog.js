@@ -87,13 +87,13 @@ function ClientCatalog() {
       enableSorting: true
     },
     {
-      accessorKey: 'email',
-      header: 'Email',
+      accessorKey: 'billingName',
+      header: 'Default Firm',
       enableSorting: true
     },
     {
-      accessorKey: 'address',
-      header: 'Address',
+      accessorKey: 'billingAddress.state',
+      header: 'State',
       enableSorting: true
     },
     {

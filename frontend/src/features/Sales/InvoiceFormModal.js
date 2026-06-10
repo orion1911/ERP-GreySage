@@ -44,6 +44,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
     defaultValues: {
       date: dayjs(),
       client: null,
+      billingFirmId: '',
       documentType: 'BILL_OF_SUPPLY',
       roundOff: 0,
       lines: [{ ...emptyLine }]
@@ -54,6 +55,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
   // didn't recompute on each keystroke until something else re-rendered (e.g. "Add Line").
   const lines = useWatch({ control, name: 'lines' });
   const client = watch('client');
+  const billingFirmId = watch('billingFirmId');
   const roundOff = Number(useWatch({ control, name: 'roundOff' })) || 0;
 
   // Fetch clients on open
@@ -69,15 +71,30 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
     return clients.find((c) => c._id === client._id) || null;
   }, [client?._id, clients]);
 
+  const billingFirms = useMemo(() => selectedClientFull?.billingFirms || [], [selectedClientFull]);
+  const selectedFirm = useMemo(
+    () => (billingFirmId ? billingFirms.find((f) => String(f._id) === String(billingFirmId)) : null) || null,
+    [billingFirmId, billingFirms]
+  );
+
+  // Auto-select a billing firm when the client has exactly one; otherwise default (''). Edit
+  // keeps the frozen choice (hydrated in reset) — only run this for new invoices.
+  useEffect(() => {
+    if (!open || editInvoice || !selectedClientFull) return;
+    setValue('billingFirmId', billingFirms.length === 1 ? String(billingFirms[0]._id) : '');
+  }, [open, editInvoice, selectedClientFull?._id, billingFirms, setValue]);
+
+  // Place of Supply derives from the chosen firm's address, falling back to the client's.
   const derivedPlaceOfSupply = useMemo(() => {
-    const ship = selectedClientFull?.shippingAddress;
-    const bill = selectedClientFull?.billingAddress;
+    const src0 = selectedFirm || selectedClientFull;
+    const ship = src0?.shippingAddress;
+    const bill = src0?.billingAddress;
     const src = (ship?.state || ship?.stateCode) ? ship : bill;
     return {
       stateName: src?.state || '',
       stateCode: src?.stateCode || ''
     };
-  }, [selectedClientFull]);
+  }, [selectedFirm, selectedClientFull]);
 
   // Hydrate when editing
   useEffect(() => {
@@ -90,6 +107,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
           name: editInvoice.clientSnapshot?.name,
           clientCode: editInvoice.clientSnapshot?.clientCode
         } : null,
+        billingFirmId: editInvoice.billingFirmId ? String(editInvoice.billingFirmId) : '',
         documentType: editInvoice.documentType || 'BILL_OF_SUPPLY',
         roundOff: editInvoice.roundOff || 0,
         lines: (editInvoice.lines || []).map((l) => ({
@@ -110,6 +128,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
       reset({
         date: dayjs(),
         client: null,
+        billingFirmId: '',
         documentType: 'BILL_OF_SUPPLY',
         roundOff: 0,
         lines: [{ ...emptyLine }]
@@ -168,6 +187,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
     const payload = {
       date: data.date?.toISOString ? data.date.toISOString() : new Date(data.date).toISOString(),
       clientId: data.client._id,
+      billingFirmId: data.billingFirmId || null,
       documentType: data.documentType,
       // placeOfSupply omitted on purpose — server derives from client's shipping address.
       // For edits, the snapshot is already frozen and not refreshed.
@@ -269,6 +289,34 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
                   )}
                 />
               </Grid>
+              {billingFirms.length > 0 && (
+                <Grid size={{ xs: 12, md: 3 }}>
+                  <Controller
+                    name="billingFirmId"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        select
+                        label="Billing Firm"
+                        fullWidth
+                        variant="standard"
+                        disabled={!!editInvoice}
+                        helperText={editInvoice ? 'Locked after issue' : 'Firm billed to on this invoice'}
+                        SelectProps={{ displayEmpty: true }}
+                        InputLabelProps={{ shrink: true }}
+                      >
+                        <MenuItem value="">
+                          {selectedClientFull?.billingName || selectedClientFull?.name || 'client'}
+                        </MenuItem>
+                        {billingFirms.map((f) => (
+                          <MenuItem key={f._id} value={String(f._id)}>{f.billingName}</MenuItem>
+                        ))}
+                      </TextField>
+                    )}
+                  />
+                </Grid>
+              )}
               <Grid size={{ xs: 6, md: 3 }}>
                 <Controller
                   name="documentType"

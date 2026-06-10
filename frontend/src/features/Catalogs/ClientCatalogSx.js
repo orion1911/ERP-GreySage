@@ -170,8 +170,8 @@ function ClientCatalogSx({
                     <Grid container spacing={1} sx={{ mt: 2, textAlign: 'center' }}>
                       <Grid size={{ xs: 8, sm: 8 }} sx={{ textAlign: 'left' }}>
                         <Typography variant="body2">
-                          <strong>Email</strong><br />
-                          {client.email || 'N/A'}
+                          <strong>Default Firm</strong><br />
+                          {client.billingName || 'N/A'}
                         </Typography>
                       </Grid>
                       <Grid size={{ xs: 4, sm: 4 }} sx={{ textAlign: 'left' }}>
@@ -182,8 +182,8 @@ function ClientCatalogSx({
                       </Grid>
                       <Grid size={{ xs: 12, sm: 12 }} sx={{ textAlign: 'left' }}>
                         <Typography variant="body2">
-                          <strong>Address</strong><br />
-                          {client.address || 'N/A'}
+                          <strong>State</strong><br />
+                          {client.billingAddress?.state || 'N/A'}
                         </Typography>
                       </Grid>
                     </Grid>

@@ -19,22 +19,27 @@ const {
 const { updateClientBalance } = require('../services/clientBalanceService');
 const { logAction } = require('../utils/logger');
 
+const toPlainAddress = (addr) => (addr?.toObject ? addr.toObject() : (addr || {}));
+
 /**
  * Snapshot a client into the shape stored on the Invoice. Frozen at issue time.
+ * When `firm` (a Client.billingFirms subdoc) is given, its identity (billingName/gstin/pan
+ * + billing/shipping address) is what gets frozen; otherwise the client-level default is used.
+ * `name`/`clientCode`/`phone`/`email` always come from the client.
  */
-const snapshotClient = (client) => ({
+const snapshotClient = (client, firm = null) => ({
   clientSnapshot: {
     name: client.name,
-    // Firm name printed on the invoice. Falls back to display name if billingName is blank.
-    billingName: client.billingName || client.name,
+    // Firm name printed on the invoice. Falls back to display name if blank.
+    billingName: (firm?.billingName) || client.billingName || client.name,
     clientCode: client.clientCode,
-    gstin: client.gstin,
-    pan: client.pan,
-    phone: client.contact,
+    gstin: firm ? firm.gstin : client.gstin,
+    pan: firm ? firm.pan : client.pan,
+    phone: (firm ? firm.contact : client.contact) || client.contact,
     email: client.email
   },
-  billTo: client.billingAddress?.toObject ? client.billingAddress.toObject() : (client.billingAddress || {}),
-  shipTo: client.shippingAddress?.toObject ? client.shippingAddress.toObject() : (client.shippingAddress || {})
+  billTo: toPlainAddress(firm ? firm.billingAddress : client.billingAddress),
+  shipTo: toPlainAddress(firm ? firm.shippingAddress : client.shippingAddress)
 });
 
 /**
@@ -118,6 +123,7 @@ const createInvoice = async (req, res) => {
   const {
     date,
     clientId,
+    billingFirmId,
     placeOfSupply,
     lines,
     roundOff = 0,
@@ -130,6 +136,10 @@ const createInvoice = async (req, res) => {
   const client = await Client.findById(clientId);
   if (!client) return res.status(404).json({ error: 'Client not found' });
 
+  // Resolve the chosen billing firm (sub-biller). null = client default identity.
+  const firm = billingFirmId ? client.billingFirms.id(billingFirmId) : null;
+  if (billingFirmId && !firm) return res.status(400).json({ error: 'Billing firm not found on client' });
+
   const builtLines = await buildAndValidateLines(lines);
 
   const settings = await CompanySettings.findOne();
@@ -139,10 +149,10 @@ const createInvoice = async (req, res) => {
   const invoiceNumber = await generateInvoiceNumber(date, prefix);
   const invoiceId = await generateInvoiceInternalId();
 
-  // Derive Place of Supply from the client's shipping address (fall back to billing).
-  // Client request may still override by passing an explicit placeOfSupply object.
-  const ship = client.shippingAddress;
-  const bill = client.billingAddress;
+  // Derive Place of Supply from the chosen firm's shipping address (fall back to billing),
+  // then to the client's. Client request may still override with an explicit placeOfSupply.
+  const ship = (firm ? firm.shippingAddress : client.shippingAddress);
+  const bill = (firm ? firm.billingAddress : client.billingAddress);
   const posSrc = (ship?.state || ship?.stateCode) ? ship : bill;
   const derivedPos = {
     stateName: posSrc?.state || '',
@@ -155,7 +165,8 @@ const createInvoice = async (req, res) => {
     documentType: docType,
     date: new Date(date),
     clientId,
-    ...snapshotClient(client),
+    billingFirmId: firm?._id || null,
+    ...snapshotClient(client, firm),
     placeOfSupply: placeOfSupply || derivedPos,
     lines: builtLines,
     roundOff: Number(roundOff) || 0,

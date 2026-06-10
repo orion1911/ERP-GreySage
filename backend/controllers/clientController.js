@@ -18,7 +18,7 @@ const getNextClientCodeNumber = async () => {
 };
 
 const createClient = async (req, res) => {
-  const { name, clientCodePrefix, billingName, contact, email, address, gstin, pan, billingAddress, shippingAddress } = req.body;
+  const { name, clientCodePrefix, billingName, contact, email, address, gstin, pan, billingAddress, shippingAddress, billingFirms } = req.body;
 
   const normalizedName = name.replace(/\s\s+/g, ' ').trim();
 
@@ -36,6 +36,7 @@ const createClient = async (req, res) => {
     gstin, pan,
     billingAddress: billingAddress || {},
     shippingAddress: shippingAddress || {},
+    billingFirms: billingFirms || [],
     isActive: true
   });
   await client.save();
@@ -63,21 +64,24 @@ const toggleClientActive = async (req, res) => {
 
 const updateClient = async (req, res) => {
   const { id } = req.params;
-  const { name, clientCode, billingName, contact, email, address, gstin, pan, billingAddress, shippingAddress } = req.body;
+  const { name, clientCode, billingName, contact, email, address, gstin, pan, billingAddress, shippingAddress, billingFirms } = req.body;
 
   const client = await Client.findById(id);
   if (!client) return res.status(404).json({ error: 'Client not found' });
 
   client.name = name || client.name;
   client.clientCode = clientCode || client.clientCode;
-  client.contact = contact || client.contact;
-  client.email = email || client.email;
-  client.address = address || client.address;
+  // Optional fields: use `!== undefined` so they can be cleared to blank (a `|| existing`
+  // fallback makes them un-blankable). name/clientCode keep the guard (required).
+  if (contact !== undefined) client.contact = contact;
+  if (email !== undefined) client.email = email;
+  if (address !== undefined) client.address = address;
   if (billingName !== undefined) client.billingName = billingName;
   if (gstin !== undefined) client.gstin = gstin;
   if (pan !== undefined) client.pan = pan;
   if (billingAddress !== undefined) client.billingAddress = billingAddress;
   if (shippingAddress !== undefined) client.shippingAddress = shippingAddress;
+  if (billingFirms !== undefined) client.billingFirms = billingFirms;
 
   await client.save();
   //await logAction(req.user.userId, 'update_client', 'Client', client._id, `Updated client: ${client.name}`);

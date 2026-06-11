@@ -29,6 +29,8 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import LocalLaundryServiceIcon from '@mui/icons-material/LocalLaundryService';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import { useOutletContext } from 'react-router-dom';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -58,6 +60,8 @@ const Dashboard = () => {
         totalMaking: 0,
         totalInWashing: 0,
         totalOutWashing: 0,
+        totalInFinishing: 0,
+        totalDispatched: 0,
     });
 
     // Table Data
@@ -94,6 +98,8 @@ const Dashboard = () => {
                 totalMaking: data.total_making || 0,
                 totalInWashing: data.total_in_washing || 0,
                 totalOutWashing: data.total_out_washing || 0,
+                totalInFinishing: data.total_in_finishing || 0,
+                totalDispatched: data.total_dispatched || 0,
             });
 
             setClientSummary(data.client_summary || []);
@@ -243,8 +249,8 @@ const Dashboard = () => {
                 >
                     <Grid container spacing={2} sx={{ mb: 4, alignItems: 'stretch' }}>
                         {loading ? (
-                            [0, 1, 2, 3].map((i) => (
-                                <Grid key={i} size={{ xs: 6, sm: 6, md: 3 }}>
+                            [0, 1, 2, 3, 4].map((i) => (
+                                <Grid key={i} size={{ xs: 6, sm: 4, md: 2.4 }}>
                                     <Paper elevation={1} sx={{ p: 2, borderRadius: 2 }}>
                                         <Skeleton variant="circular" width={40} height={40} sx={{ mb: 1 }} />
                                         <Skeleton variant="text" width="50%" height={16} />
@@ -259,9 +265,10 @@ const Dashboard = () => {
                                     { label: 'Total Pieces', value: kpiData.totalPcs, subtitle: 'All tracked items', color: '#5C6AC4', icon: GridViewIcon },
                                     { label: 'Making', value: kpiData.totalMaking, subtitle: 'In production', color: '#E8634A', icon: ContentCutIcon },
                                     { label: 'In Washing', value: kpiData.totalInWashing, subtitle: 'Being processed', color: '#D4920A', icon: LocalLaundryServiceIcon },
-                                    { label: 'Completed', value: kpiData.totalOutWashing, subtitle: 'Ready for delivery', color: '#2AA89A', icon: CheckCircleIcon },
+                                    { label: 'In Finishing', value: kpiData.totalInFinishing, subtitle: 'Awaiting dispatch', color: '#9966FF', icon: AutoAwesomeIcon },
+                                    { label: 'Dispatched', value: kpiData.totalDispatched, subtitle: 'Pieces dispatched', color: '#2AA89A', icon: LocalShippingIcon },
                                 ].map((card, i) => (
-                                    <Grid key={card.label} size={{ xs: 6, sm: 6, md: 3 }}>
+                                    <Grid key={card.label} size={{ xs: 6, sm: 4, md: 2.4 }}>
                                         <motion.div
                                             initial={{ opacity: 0, y: 20 }}
                                             animate={{ opacity: 1, y: 0 }}

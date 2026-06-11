@@ -35,45 +35,91 @@ const getFinalPcsForLot = async (lotId) => {
 };
 
 /**
- * Sum of pcs across all non-cancelled invoice lines that reference this lot.
+ * Sum of pcs across non-cancelled invoice lines referencing this lot, filtered by line type.
+ * lineType: 'good' (isDamaged != true) | 'damaged' (isDamaged == true) | 'all'.
  * Excludes a given invoiceId (used during update to ignore the current invoice).
  */
-const sumInvoicedPcsForLot = async (lotId, excludeInvoiceId = null) => {
+const sumLinePcsForLot = async (lotId, { excludeInvoiceId = null, lineType = 'all' } = {}) => {
+  const lotObjId = new mongoose.Types.ObjectId(lotId);
   const match = {
     status: { $ne: 'cancelled' },
-    'lines.lotId': new mongoose.Types.ObjectId(lotId)
+    'lines.lotId': lotObjId
   };
   if (excludeInvoiceId) {
     match._id = { $ne: new mongoose.Types.ObjectId(excludeInvoiceId) };
   }
+  const lineMatch = { 'lines.lotId': lotObjId };
+  if (lineType === 'good') lineMatch['lines.isDamaged'] = { $ne: true };
+  else if (lineType === 'damaged') lineMatch['lines.isDamaged'] = true;
   const result = await Invoice.aggregate([
     { $match: match },
     { $unwind: '$lines' },
-    { $match: { 'lines.lotId': new mongoose.Types.ObjectId(lotId) } },
+    { $match: lineMatch },
     { $group: { _id: null, total: { $sum: '$lines.pcs' } } }
   ]);
   return result.length > 0 ? result[0].total : 0;
 };
 
+// Good (client-dispatchable) pcs invoiced — what Lot.invoicedPcs caches.
+const sumGoodInvoicedForLot = (lotId, excludeInvoiceId = null) =>
+  sumLinePcsForLot(lotId, { excludeInvoiceId, lineType: 'good' });
+
+// Damaged pcs sold to third parties — what Lot.damagedSoldPcs caches.
+const sumDamagedSoldForLot = (lotId, excludeInvoiceId = null) =>
+  sumLinePcsForLot(lotId, { excludeInvoiceId, lineType: 'damaged' });
+
+// Back-compat alias: the historical name meant good/client pcs.
+const sumInvoicedPcsForLot = sumGoodInvoicedForLot;
+
 /**
- * Recompute and persist Lot.invoicedPcs. Call after every invoice create/update/cancel.
+ * Recompute and persist BOTH Lot.invoicedPcs (good) and Lot.damagedSoldPcs (damaged),
+ * AND keep the lot's dispatch status in sync (reversible):
+ *   good dispatched & none remaining → 7 (Dispatched)
+ *   good dispatched & some remaining → 6 (Partially Dispatched)
+ *   nothing dispatched & was 6/7      → 5 (Finished/Ready — e.g. a cancel returned all pcs)
+ *   otherwise                         → status untouched (still in production / already 5)
+ * Call after every invoice create/update/cancel/delete and after a damaged-pcs edit.
  */
 const recalcLotInvoiced = async (lotId) => {
   if (!lotId) return;
-  const invoicedPcs = await sumInvoicedPcsForLot(lotId);
-  await Lot.findByIdAndUpdate(lotId, { invoicedPcs });
-  return invoicedPcs;
+  const [invoicedPcs, damagedSoldPcs, finalPcs, lot] = await Promise.all([
+    sumGoodInvoicedForLot(lotId),
+    sumDamagedSoldForLot(lotId),
+    getFinalPcsForLot(lotId),
+    Lot.findById(lotId)
+  ]);
+  if (!lot) return { invoicedPcs, damagedSoldPcs };
+
+  lot.invoicedPcs = invoicedPcs;
+  lot.damagedSoldPcs = damagedSoldPcs;
+
+  const goodRemaining = finalPcs - (lot.damagedPcs || 0) - invoicedPcs;
+  let nextStatus = lot.status;
+  if (invoicedPcs > 0) {
+    nextStatus = goodRemaining <= 0 ? 7 : 6;
+  } else if (lot.status === 6 || lot.status === 7) {
+    nextStatus = 5; // dispatch fully reversed → back to Finished/Ready
+  }
+  if (nextStatus !== lot.status) {
+    lot.status = nextStatus;
+    lot.statusHistory.push({ status: nextStatus, changedAt: new Date() });
+  }
+
+  await lot.save();
+  return { invoicedPcs, damagedSoldPcs, status: lot.status };
 };
 
 /**
- * Get remaining dispatchable pcs for a lot: finalPcs - invoicedPcs (excluding given invoice).
+ * Get remaining GOOD (client-dispatchable) pcs for a lot:
+ * finalPcs - damagedPcs - goodInvoiced (excluding given invoice).
  */
 const getRemainingPcsForLot = async (lotId, excludeInvoiceId = null) => {
-  const [finalPcs, invoicedPcs] = await Promise.all([
+  const [finalPcs, invoicedPcs, lot] = await Promise.all([
     getFinalPcsForLot(lotId),
-    sumInvoicedPcsForLot(lotId, excludeInvoiceId)
+    sumGoodInvoicedForLot(lotId, excludeInvoiceId),
+    Lot.findById(lotId).select('damagedPcs').lean()
   ]);
-  return Math.max(0, finalPcs - invoicedPcs);
+  return Math.max(0, finalPcs - (lot?.damagedPcs || 0) - invoicedPcs);
 };
 
 /**
@@ -101,8 +147,10 @@ const getLotsAvailableForDispatch = async ({ clientId, search, limit = 50 } = {}
   const results = [];
   for (const lot of lots) {
     const finalPcs = await getFinalPcsForLot(lot._id);
+    const damagedPcs = lot.damagedPcs || 0;
     const invoicedPcs = lot.invoicedPcs || 0;
-    const remainingPcs = Math.max(0, finalPcs - invoicedPcs);
+    // Good remaining excludes damaged pcs (those are sold combined to a third party).
+    const remainingPcs = Math.max(0, finalPcs - damagedPcs - invoicedPcs);
     if (remainingPcs <= 0) continue;
     results.push({
       _id: lot._id,
@@ -118,12 +166,123 @@ const getLotsAvailableForDispatch = async ({ clientId, search, limit = 50 } = {}
       waistSize: lot.waistSize,
       date: lot.date,
       finalPcs,
+      damagedPcs,
       invoicedPcs,
       remainingPcs
     });
     if (results.length >= limit) break;
   }
   return results;
+};
+
+/**
+ * List lots that have damaged pcs still available to sell — CROSS-CLIENT (not filtered by
+ * clientId), since the combined-damaged invoice goes to a third-party buyer while the lots
+ * belong to their original clients. Returns lots where damagedPcs - damagedSoldPcs > 0.
+ * Data source for the "Combined Damaged Sale" lot picker.
+ */
+const getLotsWithDamagedAvailable = async ({ search, limit = 50 } = {}) => {
+  const query = { damagedPcs: { $gt: 0 } };
+  if (search && search.trim()) {
+    const re = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const orClauses = [{ lotNumber: re }];
+    const asNum = parseInt(search.trim(), 10);
+    if (!Number.isNaN(asNum)) orClauses.push({ invoiceNumber: asNum });
+    query.$or = orClauses;
+  }
+
+  const lots = await Lot.find(query)
+    .populate('clientId', 'name clientCode')
+    .populate('fitStyleId', 'name')
+    .sort({ createdAt: -1 })
+    .limit(limit * 3); // overfetch; filter damagedAvailable > 0 below
+
+  const results = [];
+  for (const lot of lots) {
+    const damagedAvailable = Math.max(0, (lot.damagedPcs || 0) - (lot.damagedSoldPcs || 0));
+    if (damagedAvailable <= 0) continue;
+    results.push({
+      _id: lot._id,
+      lotId: lot.lotId,
+      lotNumber: lot.lotNumber,
+      invoiceNumber: lot.invoiceNumber,
+      clientId: lot.clientId?._id,
+      clientName: lot.clientId?.name, // original owner of the lot (reference only)
+      clientCode: lot.clientId?.clientCode,
+      fitStyleId: lot.fitStyleId?._id,
+      fitStyleName: lot.fitStyleId?.name,
+      fabric: lot.fabric,
+      waistSize: lot.waistSize,
+      date: lot.date,
+      damagedPcs: lot.damagedPcs || 0,
+      damagedSoldPcs: lot.damagedSoldPcs || 0,
+      damagedAvailable
+    });
+    if (results.length >= limit) break;
+  }
+  return results;
+};
+
+/**
+ * Paginated feed for the Pending Dispatch page. Lists production-complete lots with their
+ * dispatch position. dispatchStatus is derived on read (NOT persisted to Lot.status, which
+ * the production grids own): 'pending' (nothing dispatched), 'partial', 'dispatched' (all
+ * good pcs invoiced). Optional `status` filter narrows to one of those.
+ */
+const getPendingDispatch = async ({ search, status, page = 0, limit = 25 } = {}) => {
+  const query = {};
+  if (search && search.trim()) {
+    const re = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const orClauses = [{ lotNumber: re }];
+    const asNum = parseInt(search.trim(), 10);
+    if (!Number.isNaN(asNum)) orClauses.push({ invoiceNumber: asNum });
+    query.$or = orClauses;
+  }
+
+  const lots = await Lot.find(query)
+    .populate('clientId', 'name clientCode')
+    .populate('fitStyleId', 'name')
+    .sort({ createdAt: -1 });
+
+  const rows = [];
+  for (const lot of lots) {
+    const finalPcs = await getFinalPcsForLot(lot._id);
+    if (finalPcs <= 0) continue; // nothing produced yet → not dispatch-relevant
+    const damagedPcs = lot.damagedPcs || 0;
+    const invoicedPcs = lot.invoicedPcs || 0;
+    const damagedSoldPcs = lot.damagedSoldPcs || 0;
+    const goodTotal = Math.max(0, finalPcs - damagedPcs);
+    const goodRemaining = Math.max(0, goodTotal - invoicedPcs);
+    const damagedRemaining = Math.max(0, damagedPcs - damagedSoldPcs);
+    const dispatchStatus = invoicedPcs <= 0 ? 'pending' : (goodRemaining > 0 ? 'partial' : 'dispatched');
+    if (status && status !== dispatchStatus) continue;
+    rows.push({
+      _id: lot._id,
+      lotId: lot.lotId,
+      lotNumber: lot.lotNumber,
+      invoiceNumber: lot.invoiceNumber,
+      clientId: lot.clientId?._id,
+      clientName: lot.clientId?.name,
+      clientCode: lot.clientId?.clientCode,
+      fitStyleId: lot.fitStyleId?._id,
+      fitStyleName: lot.fitStyleId?.name,
+      fabric: lot.fabric,
+      waistSize: lot.waistSize,
+      date: lot.date,
+      finalPcs,
+      damagedPcs,
+      damagedSoldPcs,
+      invoicedPcs,
+      goodTotal,
+      goodRemaining,
+      damagedRemaining,
+      dispatchStatus
+    });
+  }
+
+  const total = rows.length;
+  const start = page * limit;
+  return { rows: rows.slice(start, start + limit), total };
 };
 
 /**
@@ -254,9 +413,13 @@ const getInvoiceHistory = async (invoiceId) => {
 module.exports = {
   getFinalPcsForLot,
   sumInvoicedPcsForLot,
+  sumGoodInvoicedForLot,
+  sumDamagedSoldForLot,
   recalcLotInvoiced,
   getRemainingPcsForLot,
   getLotsAvailableForDispatch,
+  getLotsWithDamagedAvailable,
+  getPendingDispatch,
   fyShortFor,
   generateInvoiceNumber,
   generateInvoiceInternalId,

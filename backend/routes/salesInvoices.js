@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const {
   getLotsAvailable,
+  getLotsDamagedAvailable,
+  getPendingDispatchList,
+  updateLotDamaged,
   createInvoice,
   updateInvoice,
   cancelInvoice,
@@ -15,6 +18,9 @@ const {
 const { authenticateToken, restrictTo } = require('../middleware/auth');
 
 router.get('/lots-available', authenticateToken, getLotsAvailable);
+router.get('/lots-damaged-available', authenticateToken, getLotsDamagedAvailable);
+router.get('/pending-dispatch', authenticateToken, getPendingDispatchList);
+router.patch('/lots/:lotId/damaged', authenticateToken, updateLotDamaged);
 router.get('/counter', authenticateToken, getInvoiceCounter);
 router.put('/counter', authenticateToken, restrictTo('admin'), setInvoiceCounter);
 router.get('/', authenticateToken, listInvoices);

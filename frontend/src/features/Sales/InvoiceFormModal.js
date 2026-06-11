@@ -4,7 +4,8 @@ import { useForm, Controller, useFieldArray, useWatch } from 'react-hook-form';
 import {
   Box, Modal, Typography, TextField, Button, IconButton, Grid,
   Autocomplete, MenuItem, Table, TableHead, TableRow, TableCell, TableBody,
-  Stack, Divider, CircularProgress, Card, CardContent, useTheme
+  Stack, Divider, CircularProgress, Card, CardContent, useTheme,
+  FormControlLabel, Switch
 } from '@mui/material';
 import {
   Close as CloseIcon, Save as SaveIcon, Publish as PublishIcon,
@@ -32,12 +33,13 @@ const emptyLine = {
   finalPcs: null
 };
 
-function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
+function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
   const theme = useTheme();
   const [submitting, setSubmitting] = useState(false);
   const [clients, setClients] = useState([]);
   const [lotsForClient, setLotsForClient] = useState([]);
+  const [damagedLots, setDamagedLots] = useState([]); // cross-client pool for damaged sale
   const [lotsLoading, setLotsLoading] = useState(false);
 
   const { control, handleSubmit, watch, setValue, reset, getValues } = useForm({
@@ -46,6 +48,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
       client: null,
       billingFirmId: '',
       documentType: 'BILL_OF_SUPPLY',
+      damagedMode: false,
       roundOff: 0,
       lines: [{ ...emptyLine }]
     }
@@ -56,7 +59,11 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
   const lines = useWatch({ control, name: 'lines' });
   const client = watch('client');
   const billingFirmId = watch('billingFirmId');
+  const damagedMode = watch('damagedMode');
   const roundOff = Number(useWatch({ control, name: 'roundOff' })) || 0;
+
+  // Combined Damaged Sale draws from a cross-client pool; otherwise client-filtered good lots.
+  const lotOptions = damagedMode ? damagedLots : lotsForClient;
 
   // Fetch clients on open
   useEffect(() => {
@@ -109,6 +116,9 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
         } : null,
         billingFirmId: editInvoice.billingFirmId ? String(editInvoice.billingFirmId) : '',
         documentType: editInvoice.documentType || 'BILL_OF_SUPPLY',
+        // Preserve the invoice's nature on edit (a combined-damaged sale has isDamaged lines).
+        // The toggle is hidden when editing, so this stays fixed at the hydrated value.
+        damagedMode: (editInvoice.lines || []).some((l) => l.isDamaged),
         roundOff: editInvoice.roundOff || 0,
         lines: (editInvoice.lines || []).map((l) => ({
           lotId: l.lotId || null,
@@ -124,19 +134,42 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
           finalPcs: null
         }))
       });
+    } else if (preset?.client) {
+      // Prefilled from the Pending Dispatch page: client + one good-dispatch line for the lot.
+      const lot = preset.lot;
+      reset({
+        date: dayjs(),
+        client: { _id: preset.client._id, name: preset.client.name, clientCode: preset.client.clientCode },
+        billingFirmId: '',
+        documentType: 'BILL_OF_SUPPLY',
+        damagedMode: false,
+        roundOff: 0,
+        lines: [lot ? {
+          ...emptyLine,
+          lotId: lot._id,
+          lotNumber: lot.lotNumber,
+          lotInvoiceNumber: lot.invoiceNumber,
+          description: `${lot.fitStyleName || ''}${lot.fabric ? ` (${lot.fabric})` : ''} - LOT ${lot.lotNumber}`.trim(),
+          pcs: lot.goodRemaining ?? '',
+          remainingPcs: lot.goodRemaining ?? null,
+          finalPcs: lot.finalPcs ?? null
+        } : { ...emptyLine }]
+      });
     } else {
       reset({
         date: dayjs(),
         client: null,
         billingFirmId: '',
         documentType: 'BILL_OF_SUPPLY',
+        damagedMode: false,
         roundOff: 0,
         lines: [{ ...emptyLine }]
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editInvoice, reset]);
 
-  // Reload lots when client changes
+  // Reload client-filtered good lots when client changes
   useEffect(() => {
     if (!open || !client?._id) {
       setLotsForClient([]);
@@ -148,6 +181,19 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
       .catch((e) => showSnackbar(e))
       .finally(() => setLotsLoading(false));
   }, [open, client?._id]);
+
+  // Load the cross-client damaged pool when Combined Damaged Sale is toggled on
+  useEffect(() => {
+    if (!open || !damagedMode) {
+      setDamagedLots([]);
+      return;
+    }
+    setLotsLoading(true);
+    apiService.salesInvoices.getLotsDamagedAvailable()
+      .then((data) => setDamagedLots(data))
+      .catch((e) => showSnackbar(e))
+      .finally(() => setLotsLoading(false));
+  }, [open, damagedMode]);
 
   // Live totals
   const totals = useMemo(() => {
@@ -170,15 +216,18 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
       setValue(`lines.${idx}.finalPcs`, null);
       return;
     }
+    // In damaged mode the available qty is the lot's damaged pool, not the good remaining.
+    const avail = damagedMode ? lotOption.damagedAvailable : lotOption.remainingPcs;
+    const finalRef = damagedMode ? lotOption.damagedPcs : lotOption.finalPcs;
     setValue(`lines.${idx}.lotId`, lotOption._id);
     setValue(`lines.${idx}.lotNumber`, lotOption.lotNumber);
     setValue(`lines.${idx}.lotInvoiceNumber`, lotOption.invoiceNumber);
-    setValue(`lines.${idx}.remainingPcs`, lotOption.remainingPcs);
-    setValue(`lines.${idx}.finalPcs`, lotOption.finalPcs);
-    const desc = `${lotOption.fitStyleName || ''}${lotOption.fabric ? ` (${lotOption.fabric})` : ''} - LOT ${lotOption.lotNumber}`.trim();
+    setValue(`lines.${idx}.remainingPcs`, avail);
+    setValue(`lines.${idx}.finalPcs`, finalRef);
+    const desc = `${lotOption.fitStyleName || ''}${lotOption.fabric ? ` (${lotOption.fabric})` : ''} - LOT ${lotOption.lotNumber}${damagedMode ? ' (DAMAGED)' : ''}`.trim();
     if (!getValues(`lines.${idx}.description`)) setValue(`lines.${idx}.description`, desc);
-    if (!getValues(`lines.${idx}.pcs`)) setValue(`lines.${idx}.pcs`, lotOption.remainingPcs);
-  }, [setValue, getValues]);
+    if (!getValues(`lines.${idx}.pcs`)) setValue(`lines.${idx}.pcs`, avail);
+  }, [setValue, getValues, damagedMode]);
 
   const onSubmit = (data) => {
     if (!data.client?._id) return showSnackbar('Please select a client');
@@ -199,7 +248,8 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
         hsnSac: l.hsnSac,
         pcs: parseInt(l.pcs, 10),
         unit: l.unit,
-        rate: Number(l.rate)
+        rate: Number(l.rate),
+        isDamaged: !!data.damagedMode
       }))
     };
 
@@ -236,7 +286,9 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
       }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6">
-            {editInvoice ? `Edit Invoice ${editInvoice.invoiceNumber}` : 'New Invoice / Dispatch'}
+            {editInvoice
+              ? `Edit Invoice ${editInvoice.invoiceNumber}`
+              : (damagedMode ? 'New Combined Damaged Sale' : 'New Invoice / Dispatch')}
           </Typography>
           <IconButton onClick={onClose}><CloseIcon /></IconButton>
         </Box>
@@ -340,6 +392,37 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
                   helperText={!client ? 'Pick a client' : (!derivedPlaceOfSupply.stateName ? 'No state on client — edit to fix' : '')}
                 />
               </Grid>
+              {!editInvoice && (
+                <Grid size={{ xs: 12, md: 12 }}>
+                  <Controller
+                    name="damagedMode"
+                    control={control}
+                    render={({ field }) => (
+                      <FormControlLabel
+                        control={(
+                          <Switch
+                            checked={!!field.value}
+                            onChange={(e) => {
+                              field.onChange(e.target.checked);
+                              // Reset line lot selections — the two pools are different lists.
+                              (getValues('lines') || []).forEach((_, i) => handleLotChange(i, null));
+                            }}
+                            color="warning"
+                          />
+                        )}
+                        label={(
+                          <Typography variant="body2">
+                            Combined Damaged Sale
+                            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                              (sell damaged pcs across lots to a third-party buyer)
+                            </Typography>
+                          </Typography>
+                        )}
+                      />
+                    )}
+                  />
+                </Grid>
+              )}
             </Grid>
           </LocalizationProvider>
 
@@ -369,25 +452,27 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
                         render={() => (
                           <Autocomplete
                             size="small"
-                            options={lotsForClient}
+                            options={lotOptions}
                             getOptionLabel={(o) => o ? `${o.lotNumber} (Inv ${o.invoiceNumber})` : ''}
                             isOptionEqualToValue={(o, v) => o?._id === v?._id}
                             loading={lotsLoading}
-                            value={lotsForClient.find((l) => String(l._id) === String(cur.lotId)) || null}
+                            value={lotOptions.find((l) => String(l._id) === String(cur.lotId)) || null}
                             onChange={(_, v) => handleLotChange(idx, v)}
-                            disabled={!client}
+                            disabled={!damagedMode && !client}
                             renderOption={(props, option) => (
                               <Box component="li" {...props}>
                                 <Box>
                                   <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
                                   <Typography variant="caption" color="text.secondary">
-                                    {option.fitStyleName} · {option.fabric} · Remaining {option.remainingPcs} of {option.finalPcs} pcs
+                                    {damagedMode
+                                      ? `${option.clientName || ''} · ${option.fitStyleName} · ${option.damagedAvailable} damaged pcs`
+                                      : `${option.fitStyleName} · ${option.fabric} · Remaining ${option.remainingPcs} of ${option.finalPcs} pcs`}
                                   </Typography>
                                 </Box>
                               </Box>
                             )}
                             renderInput={(params) => (
-                              <TextField {...params} label="Lot # / Invoice #" variant="standard" placeholder={client ? 'Pick a lot' : 'Pick a client first'} />
+                              <TextField {...params} label="Lot # / Invoice #" variant="standard" placeholder={(damagedMode || client) ? 'Pick a lot' : 'Pick a client first'} />
                             )}
                           />
                         )}
@@ -531,7 +616,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice }) {
                                   </Box>
                                 )}
                                 renderInput={(params) => (
-                                  <TextField {...params} variant="standard" placeholder={client ? 'Pick a lot' : 'Pick a client first'} />
+                                  <TextField {...params} variant="standard" placeholder={(damagedMode || client) ? 'Pick a lot' : 'Pick a client first'} />
                                 )}
                               />
                             )}

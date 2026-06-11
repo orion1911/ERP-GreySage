@@ -32,6 +32,8 @@ function StitchingGrid({
   searchTerm,
   vendorFilter = '',
   clientFilter = '',
+  statusFilter = '',
+  setStatusFilter = () => {},
   onEditStitching,
   onEditWashing,
   onEditFinishing,
@@ -168,6 +170,9 @@ function StitchingGrid({
     if (clientFilter && filtered) {
       filtered = filtered.filter(record => record.lotId?.clientId?._id === clientFilter);
     }
+    if (statusFilter && filtered) {
+      filtered = filtered.filter(record => record.lotId?.status === Number(statusFilter));
+    }
     if (filterStatus && filtered) {
       filtered = filtered.filter(record => {
         if (filterStatus === 'completed') return !!record.stitchOutDate;
@@ -176,13 +181,13 @@ function StitchingGrid({
       });
     }
     return sortData(filtered, sortBy, sortDirection);
-  }, [stitchingRecords, searchTerm, vendorFilter, clientFilter, sortBy, sortDirection, filterStatus]);
+  }, [stitchingRecords, searchTerm, vendorFilter, clientFilter, statusFilter, sortBy, sortDirection, filterStatus]);
 
   // Reset to the first page when the filters change (but NOT on a plain data update —
   // autoResetPageIndex is disabled below so editing a record keeps you on your page).
   useEffect(() => {
     setPage(0);
-  }, [searchTerm, vendorFilter, clientFilter, filterStatus]);
+  }, [searchTerm, vendorFilter, clientFilter, statusFilter, filterStatus]);
 
   const columns = [
     {
@@ -495,6 +500,8 @@ function StitchingGrid({
       setFilterAnchorEl={setFilterAnchorEl}
       filterStatus={filterStatus}
       setFilterStatus={setFilterStatus}
+      statusFilter={statusFilter}
+      setStatusFilter={setStatusFilter}
       readOnly={readOnly}
     />
   ) : (

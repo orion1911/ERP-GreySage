@@ -769,6 +769,24 @@ const apiService = {
         return response.data;
       } catch (error) { throw error; }
     },
+    getLotsDamagedAvailable: async (params = {}) => {
+      try {
+        const response = await axiosInstance.get('api/sales-invoices/lots-damaged-available', { params });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getPendingDispatch: async (params = {}) => {
+      try {
+        const response = await axiosInstance.get('api/sales-invoices/pending-dispatch', { params });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    updateLotDamaged: async (lotId, damagedPcs) => {
+      try {
+        const response = await axiosInstance.patch(`api/sales-invoices/lots/${lotId}/damaged`, { damagedPcs });
+        return response.data;
+      } catch (error) { throw error; }
+    },
     getInvoiceCounter: async (fyShort) => {
       try {
         const response = await axiosInstance.get('api/sales-invoices/counter', { params: fyShort ? { fyShort } : {} });

@@ -10,6 +10,7 @@ import {
   AutoAwesome as AutoAwesomeIcon, PieChart as PieChartIcon,
   Leaderboard as LeaderboardIcon, ContentCut as ContentCutIcon,
   CreditCard as CreditCardIcon, RequestQuote as InvoiceIcon,
+  LocalShipping as DispatchIcon,
   AccountBalance as ClientPayIcon, Business as CompanyIcon,
   Warehouse as WarehouseIcon, Category as CategoryIcon,
   ExpandLess as ExpandLessIcon, ExpandMore as ExpandMoreIcon
@@ -48,6 +49,7 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
     // { label: 'Dashboard XL', path: '/dashboardxl', icon: <LeaderboardIcon /> },
     { label: 'Stitching', path: '/stitching', icon: <ContentCutIcon /> },
     { label: 'Sales / Invoices', path: '/sales/invoices', icon: <InvoiceIcon /> },
+    { label: 'Pending Dispatch', path: '/sales/dispatch', icon: <DispatchIcon /> },
     { label: 'Client Payments', path: '/sales/client-payments', icon: <ClientPayIcon /> },
     { label: 'Vendor Payments', path: '/vendor-payments', icon: <CreditCardIcon /> },
     { label: 'Stock Management', path: '/stock', icon: <WarehouseIcon /> },

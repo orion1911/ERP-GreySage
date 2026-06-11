@@ -44,6 +44,7 @@ function StitchingManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [vendorFilter, setVendorFilter] = useState('');
   const [clientFilter, setClientFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   const fetchData = async () => {
     try {
@@ -218,9 +219,9 @@ function StitchingManagement() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             variant="standard"
-            sx={{ width: isMobile ? '100%' : '190px' }}
+            sx={{ width: isMobile ? 'auto' : '190px', flex: isMobile ? '1 1 45%' : 'none' }}
           />
-          <FormControl variant="standard" sx={{ minWidth: isMobile ? 0 : 150, flex: isMobile ? 1 : 'none' }}>
+          <FormControl variant="standard" sx={{ minWidth: isMobile ? 0 : 150, flex: isMobile ? '1 1 45%' : 'none' }}>
             <InputLabel>Vendor</InputLabel>
             <Select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)} label="Vendor">
               <MenuItem value=""><em>All Vendors</em></MenuItem>
@@ -229,13 +230,25 @@ function StitchingManagement() {
               ))}
             </Select>
           </FormControl>
-          <FormControl variant="standard" sx={{ minWidth: isMobile ? 0 : 150, flex: isMobile ? 1 : 'none' }}>
+          <FormControl variant="standard" sx={{ minWidth: isMobile ? 0 : 150, flex: isMobile ? '1 1 45%' : 'none' }}>
             <InputLabel>Client</InputLabel>
             <Select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} label="Client">
               <MenuItem value=""><em>All Clients</em></MenuItem>
               {clients.map(c => (
                 <MenuItem key={c._id} value={c._id}>{c.name}</MenuItem>
               ))}
+            </Select>
+          </FormControl>
+          <FormControl variant="standard" sx={{ minWidth: isMobile ? 0 : 150, flex: isMobile ? '1 1 45%' : 'none' }}>
+            <InputLabel>Status</InputLabel>
+            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} label="Status">
+              <MenuItem value=""><em>All Statuses</em></MenuItem>
+              <MenuItem value={2}>Stitching</MenuItem>
+              <MenuItem value={3}>Washing</MenuItem>
+              <MenuItem value={4}>Finishing</MenuItem>
+              <MenuItem value={5}>Finished</MenuItem>
+              <MenuItem value={6}>Part Dispatch</MenuItem>
+              <MenuItem value={7}>Dispatched</MenuItem>
             </Select>
           </FormControl>
         </Box>
@@ -263,6 +276,8 @@ function StitchingManagement() {
         searchTerm={searchTerm}
         vendorFilter={vendorFilter}
         clientFilter={clientFilter}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
         onAdd={() => { setSelectedRecord(null); setOpenStitchingModal(true); }}
         onEditStitching={handleEditStitching}
         onEditWashing={handleEditWashing}

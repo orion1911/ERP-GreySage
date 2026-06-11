@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Button, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, TablePagination } from '@mui/material';
+import { Box, Button, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, TablePagination, Divider, ListSubheader } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, ContentCut, Add, MoreVert as MoreVertIcon, AutoAwesome } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'motion/react';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
@@ -43,6 +43,8 @@ function StitchingGridSx({
   setFilterAnchorEl,
   filterStatus,
   setFilterStatus,
+  statusFilter = '',
+  setStatusFilter = () => {},
   readOnly = false
 }) {
   const theme = useTheme();
@@ -106,7 +108,7 @@ function StitchingGridSx({
             size="small"
             endIcon={<ContentCut sx={{ fontSize: '0.9rem' }} />}
             onClick={onAdd}
-            sx={{ py: 0.25, px: 1, minWidth: 'auto', fontSize: '0.7rem', lineHeight: 1.4 }}
+            sx={{ py: 0.25, px: 1, minWidth: 'auto', fontSize: '0.8rem' }}
           >
             Add
           </Button>
@@ -148,9 +150,19 @@ function StitchingGridSx({
               open={Boolean(filterAnchorEl)}
               onClose={() => setFilterAnchorEl(null)}
             >
-              <MenuItem dense onClick={() => { setFilterStatus(''); setFilterAnchorEl(null); }}>All</MenuItem>
-              <MenuItem dense onClick={() => { setFilterStatus('completed'); setFilterAnchorEl(null); }}>Completed</MenuItem>
-              <MenuItem dense onClick={() => { setFilterStatus('pending'); setFilterAnchorEl(null); }}>Pending</MenuItem>
+              <ListSubheader sx={{ lineHeight: '28px', fontSize: '0.7rem' }}>Stitch-out</ListSubheader>
+              <MenuItem dense selected={filterStatus === ''} onClick={() => { setFilterStatus(''); setFilterAnchorEl(null); }}>All</MenuItem>
+              <MenuItem dense selected={filterStatus === 'completed'} onClick={() => { setFilterStatus('completed'); setFilterAnchorEl(null); }}>Completed</MenuItem>
+              <MenuItem dense selected={filterStatus === 'pending'} onClick={() => { setFilterStatus('pending'); setFilterAnchorEl(null); }}>Pending</MenuItem>
+              <Divider />
+              <ListSubheader sx={{ lineHeight: '28px', fontSize: '0.7rem' }}>Lot Status</ListSubheader>
+              <MenuItem dense selected={statusFilter === ''} onClick={() => { setStatusFilter(''); setFilterAnchorEl(null); }}>All Statuses</MenuItem>
+              <MenuItem dense selected={statusFilter === 2} onClick={() => { setStatusFilter(2); setFilterAnchorEl(null); }}>Stitching</MenuItem>
+              <MenuItem dense selected={statusFilter === 3} onClick={() => { setStatusFilter(3); setFilterAnchorEl(null); }}>Washing</MenuItem>
+              <MenuItem dense selected={statusFilter === 4} onClick={() => { setStatusFilter(4); setFilterAnchorEl(null); }}>Finishing</MenuItem>
+              <MenuItem dense selected={statusFilter === 5} onClick={() => { setStatusFilter(5); setFilterAnchorEl(null); }}>Finished</MenuItem>
+              <MenuItem dense selected={statusFilter === 6} onClick={() => { setStatusFilter(6); setFilterAnchorEl(null); }}>Part Dispatch</MenuItem>
+              <MenuItem dense selected={statusFilter === 7} onClick={() => { setStatusFilter(7); setFilterAnchorEl(null); }}>Dispatched</MenuItem>
             </Menu>
           </Stack>
         </Box>

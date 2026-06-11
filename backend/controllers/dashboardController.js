@@ -784,11 +784,11 @@ const getOrdersByStatus = async (req, res) => {
       { $sort: { _id: 1 } }
     ]);
 
-    const labels = ['Status 2', 'Status 3', 'Status 4', 'Status 5', 'Status 6'];
-    const data = Array(5).fill(0);
+    const labels = ['Stitching', 'Washing', 'Finishing', 'Finished', 'Partially Dispatched', 'Dispatched'];
+    const data = Array(6).fill(0);
     lotsByStatus.forEach(item => {
       const idx = item._id - 2; // status 2 maps to index 0
-      if (idx >= 0 && idx < 5) data[idx] = item.count;
+      if (idx >= 0 && idx < 6) data[idx] = item.count;
     });
 
     res.json({
@@ -796,8 +796,8 @@ const getOrdersByStatus = async (req, res) => {
       datasets: [{
         label: 'Number of Lots',
         data,
-        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'],
-        borderColor: ['#CC4B67', '#2A8CBF', '#CCA33D', '#3A9999', '#7A52CC'],
+        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#2AA89A'],
+        borderColor: ['#CC4B67', '#2A8CBF', '#CCA33D', '#3A9999', '#7A52CC', '#1F8077'],
         borderWidth: 1
       }]
     });
@@ -1270,6 +1270,41 @@ const getProductionDashboard = async (req, res) => {
       });
       // .sort((a, b) => b.PCS - a.PCS);
 
+    // Dispatch KPIs.
+    // "In Finishing" = good pcs finished but not yet dispatched. Computed over lots that
+    //   reached finishing, scoped by Finishing.date to honour the date filter.
+    const finishingDateMatch = {};
+    if (fromDate || toDate) {
+      finishingDateMatch.date = {};
+      if (fromDate) finishingDateMatch.date.$gte = new Date(fromDate);
+      if (toDate) finishingDateMatch.date.$lte = new Date(toDate);
+    }
+    const inFinishingAgg = await Finishing.aggregate([
+      { $match: finishingDateMatch },
+      { $group: { _id: '$lotId', finalGross: { $sum: { $subtract: ['$quantity', { $ifNull: ['$quantityShort', 0] }] } } } },
+      { $lookup: { from: Lot.collection.collectionName, localField: '_id', foreignField: '_id', as: 'lot' } },
+      { $unwind: '$lot' },
+      {
+        $project: {
+          awaiting: {
+            $max: [
+              0,
+              { $subtract: [{ $subtract: ['$finalGross', { $ifNull: ['$lot.damagedPcs', 0] }] }, { $ifNull: ['$lot.invoicedPcs', 0] }] }
+            ]
+          }
+        }
+      },
+      { $group: { _id: null, totalInFinishing: { $sum: '$awaiting' } } }
+    ]);
+    const total_in_finishing = inFinishingAgg[0]?.totalInFinishing || 0;
+
+    // "Dispatched" = actual good pcs invoiced across ALL lots (incl. lots dispatched before
+    //   finishing). A cumulative current-state total, not narrowed by the date filter.
+    const dispatchedAgg = await Lot.aggregate([
+      { $group: { _id: null, totalDispatched: { $sum: { $ifNull: ['$invoicedPcs', 0] } } } }
+    ]);
+    const total_dispatched = dispatchedAgg[0]?.totalDispatched || 0;
+
     const processingTime = (Date.now() - startTime) / 1000;
 
     res.json({
@@ -1277,6 +1312,8 @@ const getProductionDashboard = async (req, res) => {
       total_making: totalMaking,
       total_in_washing: totalInWashing,
       total_out_washing: totalOutWashing,
+      total_in_finishing,
+      total_dispatched,
       client_summary,
       washer_summary,
       stitching_vendor_summary,

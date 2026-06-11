@@ -7,8 +7,11 @@ const {
 } = require('../mongodb_schema');
 const {
   getLotsAvailableForDispatch,
+  getLotsWithDamagedAvailable,
+  getPendingDispatch,
   getFinalPcsForLot,
-  sumInvoicedPcsForLot,
+  sumGoodInvoicedForLot,
+  sumDamagedSoldForLot,
   recalcLotInvoiced,
   generateInvoiceNumber,
   generateInvoiceInternalId,
@@ -44,15 +47,18 @@ const snapshotClient = (client, firm = null) => ({
 
 /**
  * Validate the incoming line payload — return the line subdoc shape after enrichment.
- * Verifies pcs ≤ remaining for the lot (excluding the invoice we're editing).
+ * Each line draws from either the lot's GOOD pool (finalPcs − damagedPcs) or, when
+ * `isDamaged` is set, the DAMAGED pool (damagedPcs). Verifies pcs ≤ remaining for the
+ * relevant pool (excluding the invoice we're editing).
  */
 const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
   if (!Array.isArray(rawLines) || rawLines.length === 0) {
     throw new Error('Invoice must have at least one line item');
   }
   const lines = [];
-  // Track per-lot pcs being added in this single invoice (across multiple lines on same lot)
-  const lotPcsInThisInvoice = new Map();
+  // Track per-lot pcs added in this single invoice, separately per pool (good vs damaged).
+  const goodInThisInvoice = new Map();
+  const damagedInThisInvoice = new Map();
 
   for (let i = 0; i < rawLines.length; i++) {
     const raw = rawLines[i];
@@ -85,19 +91,38 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
       line.lotId = lot._id;
       line.lotNumberSnapshot = lot.lotNumber;
       line.lotInvoiceNumberSnapshot = lot.invoiceNumber;
+      line.isDamaged = !!raw.isDamaged;
 
-      const finalPcs = await getFinalPcsForLot(lot._id);
-      const otherInvoicedPcs = await sumInvoicedPcsForLot(lot._id, excludeInvoiceId);
-      const alreadyInThisInvoice = lotPcsInThisInvoice.get(String(lot._id)) || 0;
-      const remaining = finalPcs - otherInvoicedPcs - alreadyInThisInvoice;
-      if (pcs > remaining) {
-        throw new Error(
-          `Line ${i + 1}: lot ${lot.lotNumber} only has ${remaining} pcs remaining ` +
-          `(final ${finalPcs}, already invoiced elsewhere ${otherInvoicedPcs}` +
-          (alreadyInThisInvoice > 0 ? `, in this invoice ${alreadyInThisInvoice}` : '') + ')'
-        );
+      const damagedPcs = lot.damagedPcs || 0;
+
+      if (line.isDamaged) {
+        // Combined-damaged third-party sale — draws from the lot's damaged pool.
+        const otherSold = await sumDamagedSoldForLot(lot._id, excludeInvoiceId);
+        const alreadyInThisInvoice = damagedInThisInvoice.get(String(lot._id)) || 0;
+        const remaining = damagedPcs - otherSold - alreadyInThisInvoice;
+        if (pcs > remaining) {
+          throw new Error(
+            `Line ${i + 1}: lot ${lot.lotNumber} only has ${remaining} DAMAGED pcs available ` +
+            `(damaged ${damagedPcs}, already sold elsewhere ${otherSold}` +
+            (alreadyInThisInvoice > 0 ? `, in this invoice ${alreadyInThisInvoice}` : '') + ')'
+          );
+        }
+        damagedInThisInvoice.set(String(lot._id), alreadyInThisInvoice + pcs);
+      } else {
+        // Good dispatch to the assigned client — draws from finalPcs − damagedPcs.
+        const finalPcs = await getFinalPcsForLot(lot._id);
+        const otherInvoicedPcs = await sumGoodInvoicedForLot(lot._id, excludeInvoiceId);
+        const alreadyInThisInvoice = goodInThisInvoice.get(String(lot._id)) || 0;
+        const remaining = finalPcs - damagedPcs - otherInvoicedPcs - alreadyInThisInvoice;
+        if (pcs > remaining) {
+          throw new Error(
+            `Line ${i + 1}: lot ${lot.lotNumber} only has ${remaining} pcs remaining ` +
+            `(final ${finalPcs}, damaged set-aside ${damagedPcs}, already invoiced elsewhere ${otherInvoicedPcs}` +
+            (alreadyInThisInvoice > 0 ? `, in this invoice ${alreadyInThisInvoice}` : '') + ')'
+          );
+        }
+        goodInThisInvoice.set(String(lot._id), alreadyInThisInvoice + pcs);
       }
-      lotPcsInThisInvoice.set(String(lot._id), alreadyInThisInvoice + pcs);
     }
 
     lines.push(line);
@@ -114,6 +139,80 @@ const getLotsAvailable = async (req, res) => {
   const { clientId, search } = req.query;
   const lots = await getLotsAvailableForDispatch({ clientId, search });
   res.json(lots);
+};
+
+/**
+ * GET /api/sales-invoices/lots-damaged-available?search=
+ * Cross-client list of lots with damaged pcs still available (for the combined-damaged sale).
+ */
+const getLotsDamagedAvailable = async (req, res) => {
+  const { search } = req.query;
+  const lots = await getLotsWithDamagedAvailable({ search });
+  res.json(lots);
+};
+
+/**
+ * GET /api/sales-invoices/pending-dispatch?search=&status=&page=&limit=
+ * Paginated dispatch-position feed for the Pending Dispatch page → { rows, total }.
+ */
+const getPendingDispatchList = async (req, res) => {
+  const { search, status } = req.query;
+  const page = parseInt(req.query.page, 10) || 0;
+  const limit = parseInt(req.query.limit, 10) || 25;
+  const result = await getPendingDispatch({ search, status, page, limit });
+  res.json(result);
+};
+
+/**
+ * PATCH /api/sales-invoices/lots/:lotId/damaged  — body { damagedPcs }
+ * Set/adjust the damaged-pieces pool held back from the assigned client.
+ * Guards against stranding already-dispatched good pcs or unsetting already-sold damaged pcs.
+ */
+const updateLotDamaged = async (req, res) => {
+  const { lotId } = req.params;
+  const damagedPcs = parseInt(req.body.damagedPcs, 10);
+  if (!Number.isInteger(damagedPcs) || damagedPcs < 0) {
+    return res.status(400).json({ error: 'damagedPcs must be a non-negative integer' });
+  }
+
+  const lot = await Lot.findById(lotId);
+  if (!lot) return res.status(404).json({ error: 'Lot not found' });
+
+  const finalPcs = await getFinalPcsForLot(lot._id);
+  const invoicedPcs = lot.invoicedPcs || 0;     // good pcs already dispatched
+  const damagedSoldPcs = lot.damagedSoldPcs || 0; // damaged pcs already sold
+
+  // Can't set aside more than what's left after good dispatch.
+  if (damagedPcs > finalPcs - invoicedPcs) {
+    return res.status(400).json({
+      error: `Cannot set ${damagedPcs} damaged — only ${finalPcs - invoicedPcs} pcs remain undispatched ` +
+        `(final ${finalPcs}, good dispatched ${invoicedPcs}).`
+    });
+  }
+  // Can't drop the pool below what's already been sold to third parties.
+  if (damagedPcs < damagedSoldPcs) {
+    return res.status(400).json({
+      error: `Cannot set ${damagedPcs} damaged — ${damagedSoldPcs} damaged pcs have already been sold.`
+    });
+  }
+
+  lot.damagedPcs = damagedPcs;
+  await lot.save();
+  await recalcLotInvoiced(lot._id); // keep caches consistent
+
+  await logAction(req.user.userId, 'update_lot_damaged', 'Lot', lot._id,
+    `Set damaged pcs to ${damagedPcs} for lot ${lot.lotNumber}`);
+
+  res.json({
+    _id: lot._id,
+    lotNumber: lot.lotNumber,
+    finalPcs,
+    damagedPcs: lot.damagedPcs,
+    damagedSoldPcs,
+    invoicedPcs,
+    goodRemaining: Math.max(0, finalPcs - lot.damagedPcs - invoicedPcs),
+    damagedRemaining: Math.max(0, lot.damagedPcs - damagedSoldPcs)
+  });
 };
 
 /**
@@ -402,6 +501,9 @@ const setInvoiceCounter = async (req, res) => {
 
 module.exports = {
   getLotsAvailable,
+  getLotsDamagedAvailable,
+  getPendingDispatchList,
+  updateLotDamaged,
   createInvoice,
   updateInvoice,
   cancelInvoice,

@@ -26,7 +26,7 @@ import WashingVendorCatalog from './features/Catalogs/WashingVendorCatalog';
 import FinishingVendorCatalog from './features/Catalogs/FinishingVendorCatalog';
 import StitchingManagement from './features/Stitching/StitchingManagement';
 import { VendorPaymentManagement } from './features/VendorPayments';
-import { InvoiceManagement } from './features/Sales';
+import { InvoiceManagement, DispatchManagement } from './features/Sales';
 import { ClientPaymentManagement } from './features/ClientPayments';
 import { StockManagement } from './features/Stock';
 import NotFound from './components/NotFound';
@@ -205,6 +205,7 @@ function App() {
               <Route path="/stock" element={<StockManagement />} />
               <Route path="/vendor-payments" element={<VendorPaymentManagement />} />
               <Route path="/sales/invoices" element={<InvoiceManagement />} />
+              <Route path="/sales/dispatch" element={<DispatchManagement />} />
               <Route path="/sales/client-payments" element={<ClientPaymentManagement />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/clients" element={<ClientCatalog />} />

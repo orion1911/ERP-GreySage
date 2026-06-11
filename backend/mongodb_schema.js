@@ -155,13 +155,22 @@ const LotSchema = new mongoose.Schema({
   fitStyleId: { type: mongoose.Schema.Types.ObjectId, ref: 'FitStyle', required: true },
   waistSize: { type: String, required: true },
   date: { type: Date, required: true },
-  status: { type: Number, enum: [2, 3, 4, 5, 6], default: 2 },
+  // 2 Stitching · 3 Washing · 4 Finishing · 5 Finished/Ready · 6 Partially Dispatched · 7 Dispatched
+  status: { type: Number, enum: [2, 3, 4, 5, 6, 7], default: 2 },
   statusHistory: [{ status: Number, changedAt: { type: Date, default: Date.now } }],
   description: { type: String },
-  // Sales-side cached aggregate: sum of all issued invoice-line pcs for this lot.
-  // Recomputed by invoiceService.recalcLotInvoiced after every invoice write.
-  // remainingPcs = finalPcs(production) - invoicedPcs.
+  // Sales-side cached aggregate: sum of all issued GOOD invoice-line pcs for this lot
+  // (lines where isDamaged != true). Recomputed by invoiceService.recalcLotInvoiced
+  // after every invoice write. goodRemaining = finalPcs - damagedPcs - invoicedPcs.
   invoicedPcs: { type: Number, default: 0, min: 0 },
+  // Damaged pcs set aside from the client-dispatchable pool (editable anytime via the
+  // Pending Dispatch page). These are real/sellable, held back from the assigned client
+  // and later sold combined to a third party. clientDispatchableGood = finalPcs - damagedPcs.
+  damagedPcs: { type: Number, default: 0, min: 0 },
+  // Cached aggregate: sum of issued DAMAGED invoice-line pcs (lines where isDamaged == true),
+  // i.e. damaged pcs already sold to third parties. Recomputed alongside invoicedPcs.
+  // damagedRemaining = damagedPcs - damagedSoldPcs.
+  damagedSoldPcs: { type: Number, default: 0, min: 0 },
   createdAt: { type: Date, default: Date.now }
 });
 LotSchema.index({ lotNumber: 1, invoiceNumber: 1 });
@@ -342,7 +351,10 @@ const InvoiceLineSchema = new mongoose.Schema({
   pcs: { type: Number, required: true, min: 1, validate: { validator: Number.isInteger, message: 'pcs must be integer' } },
   unit: { type: String, trim: true, default: '' },
   rate: { type: Number, required: true, min: 0 },
-  amount: { type: Number, required: true, min: 0 } // pcs * rate, recomputed server-side
+  amount: { type: Number, required: true, min: 0 }, // pcs * rate, recomputed server-side
+  // true = this line draws from the lot's DAMAGED pool (combined-damaged third-party sale)
+  // instead of the good/client-dispatchable pool. Default false ⇒ legacy lines stay "good".
+  isDamaged: { type: Boolean, default: false }
 }, { _id: true });
 
 // Invoice: parent doc = dispatch event = printable bill. Client + addresses are

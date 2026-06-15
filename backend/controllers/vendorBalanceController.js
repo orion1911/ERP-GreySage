@@ -28,7 +28,8 @@ const getVendorsByType = async (req, res) => {
       'finishing': FinishingVendor
     }[vendorType];
 
-    const vendors = await VendorModel.find({ isActive: true });
+    // Include inactive vendors too — payments to deactivated vendors must still be manageable.
+    const vendors = await VendorModel.find({});
     
     // Get balance for each vendor
     const vendorsWithBalance = await Promise.all(

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, useTheme } from '@mui/material';
-import { PersonAdd, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Switch, useTheme } from '@mui/material';
+import { PersonAdd, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon, SwapVert } from '@mui/icons-material';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import apiService from '../../services/apiService';
 import ClientCatalogSx from './ClientCatalogSx';
 import ClientCatalogAdd from './ClientCatalogAdd';
+import CatalogReorderList from './CatalogReorderList';
 import { motion, AnimatePresence } from 'motion/react';
 
 function ClientCatalog() {
@@ -19,10 +20,13 @@ function ClientCatalog() {
   const [editClient, setEditClient] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [clientToToggle, setClientToToggle] = useState(null);
+  const [reorderMode, setReorderMode] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
 
   const getClients = () => {
     setLoading(true);
-    apiService.client.getClients(search)
+    apiService.client.getClients(search, showInactive)
       .then(res => {
         setClients(res);
         setLoading(false);
@@ -36,7 +40,7 @@ function ClientCatalog() {
 
   useEffect(() => {
     getClients();
-  }, [search]);
+  }, [search, showInactive]);
 
   const handleToggleActive = (id) => {
     setClientToToggle(id);
@@ -68,6 +72,26 @@ function ClientCatalog() {
   const handleEditClient = (client) => {
     setEditClient(client);
     setOpenModal(true);
+  };
+
+  // Reorder mode shows the FULL active list — clear any search filter first so the
+  // user isn't reordering a partial subset.
+  const handleEnterReorder = () => { setSearch(''); setShowInactive(false); setReorderMode(true); };
+
+  const handleSaveOrder = (orderedIds) => {
+    setSavingOrder(true);
+    apiService.client.reorderClients(orderedIds)
+      .then(() => {
+        setSavingOrder(false);
+        setReorderMode(false);
+        getClients();
+        showSnackbar('Client order updated', 'success');
+      })
+      .catch(err => {
+        setSavingOrder(false);
+        console.log(err);
+        showSnackbar(err);
+      });
   };
 
   const columns = [
@@ -102,8 +126,8 @@ function ClientCatalog() {
       enableSorting: false,
       cell: ({ row }) => (
         <Stack direction="row" spacing={1} justifyContent="center">
-          <IconButton disabled={loading} onClick={() => handleToggleActive(row.original._id)} size="small">
-            <DeleteIcon fontSize="small" />
+          <IconButton disabled={loading} color={row.original.isActive ? 'warning' : 'success'} onClick={() => handleToggleActive(row.original._id)} size="small">
+            {row.original.isActive ? <DeleteIcon fontSize="small" /> : <CheckIcon fontSize="small" />}
           </IconButton>
           <IconButton disabled={loading} onClick={() => handleEditClient(row.original)} size="small">
             <EditIcon fontSize="small" />
@@ -137,26 +161,51 @@ function ClientCatalog() {
   return (
     <>
       <Typography variant="h4" sx={{ mb: 1 }}>Client Catalog</Typography>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <TextField
-          label="Search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          fullWidth
-          variant="standard"
-          sx={{ maxWidth: '190px' }}
+      {!reorderMode && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
+            <TextField
+              label="Search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              variant="standard"
+              sx={{ width: 190, maxWidth: '100%' }}
+            />
+            <FormControlLabel
+              control={<Switch size="small" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />}
+              label={<Typography variant="caption">Inactive</Typography>}
+            />
+          </Stack>
+          <Stack direction="row" spacing={1} sx={{ display: { xs: 'none', sm: 'flex' } }}>
+            <Button
+              variant="outlined"
+              startIcon={<SwapVert />}
+              onClick={handleEnterReorder}
+              disabled={loading}
+            >
+              Order
+            </Button>
+            <Button
+              variant="contained"
+              endIcon={<PersonAdd />}
+              onClick={() => { setEditClient(null); setOpenModal(true); }}
+              disabled={loading}
+            >
+              Add
+            </Button>
+          </Stack>
+        </Box>
+      )}
+      {reorderMode ? (
+        <CatalogReorderList
+          items={clients}
+          getPrimary={(c) => c.name}
+          getSecondary={(c) => c.clientCode}
+          onSave={handleSaveOrder}
+          onCancel={() => setReorderMode(false)}
+          saving={savingOrder}
         />
-        <Button
-          variant="contained"
-          endIcon={<PersonAdd />}
-          onClick={() => { setEditClient(null); setOpenModal(true); }}
-          disabled={loading}
-          sx={{ mt: 2 }}
-        >
-          Add Client
-        </Button>
-      </Box>
-      {isMobile ? (
+      ) : isMobile ? (
         <ClientCatalogSx
           clients={clients}
           search={search}
@@ -165,6 +214,8 @@ function ClientCatalog() {
           showSnackbar={showSnackbar}
           handleEditClient={handleEditClient}
           table={table}
+          onReorder={handleEnterReorder}
+          onAdd={() => { setEditClient(null); setOpenModal(true); }}
         />
       ) : (
         <AnimatePresence mode="wait">

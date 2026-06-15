@@ -31,6 +31,7 @@ function StitchingGrid({
   setSelectedLot,
   searchTerm,
   vendorFilter = '',
+  washingVendorFilter = '',
   clientFilter = '',
   statusFilter = '',
   setStatusFilter = () => {},
@@ -167,6 +168,13 @@ function StitchingGrid({
     if (vendorFilter && filtered) {
       filtered = filtered.filter(record => record.vendorId?._id === vendorFilter);
     }
+    if (washingVendorFilter && filtered) {
+      // Keep stitching rows whose lot has a washing record with the chosen washing vendor.
+      filtered = filtered.filter(record => {
+        const lotWashing = washingRecords && washingRecords[record.lotId?._id];
+        return Array.isArray(lotWashing) && lotWashing.some(w => (w.vendorId?._id || w.vendorId) === washingVendorFilter);
+      });
+    }
     if (clientFilter && filtered) {
       filtered = filtered.filter(record => record.lotId?.clientId?._id === clientFilter);
     }
@@ -181,13 +189,13 @@ function StitchingGrid({
       });
     }
     return sortData(filtered, sortBy, sortDirection);
-  }, [stitchingRecords, searchTerm, vendorFilter, clientFilter, statusFilter, sortBy, sortDirection, filterStatus]);
+  }, [stitchingRecords, washingRecords, searchTerm, vendorFilter, washingVendorFilter, clientFilter, statusFilter, sortBy, sortDirection, filterStatus]);
 
   // Reset to the first page when the filters change (but NOT on a plain data update —
   // autoResetPageIndex is disabled below so editing a record keeps you on your page).
   useEffect(() => {
     setPage(0);
-  }, [searchTerm, vendorFilter, clientFilter, statusFilter, filterStatus]);
+  }, [searchTerm, vendorFilter, washingVendorFilter, clientFilter, statusFilter, filterStatus]);
 
   const columns = [
     {

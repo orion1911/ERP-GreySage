@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, useTheme } from '@mui/material';
-import { PersonAdd, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Switch, useTheme } from '@mui/material';
+import { AutoAwesome as AutoAwesomeIcon, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon, SwapVert } from '@mui/icons-material';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import apiService from '../../services/apiService';
 import FinishingVendorCatalogSx from './FinishingVendorCatalogSx';
 import FinishingVendorCatalogAdd from './FinishingVendorCatalogAdd';
+import CatalogReorderList from './CatalogReorderList';
 import { motion, AnimatePresence } from 'motion/react';
 
 function FinishingVendorCatalog() {
@@ -19,10 +20,13 @@ function FinishingVendorCatalog() {
   const [editVendor, setEditVendor] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [vendorToToggle, setVendorToToggle] = useState(null);
+  const [reorderMode, setReorderMode] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
 
   const getFinishingVendors = () => {
     setLoading(true);
-    apiService.finishingVendors.getFinishingVendors(search)
+    apiService.finishingVendors.getFinishingVendors(search, showInactive)
       .then(res => {
         setTimeout(() => {
           setVendors(res);
@@ -38,7 +42,7 @@ function FinishingVendorCatalog() {
 
   useEffect(() => {
     getFinishingVendors();
-  }, [search]);
+  }, [search, showInactive]);
 
   const handleToggleActive = (id) => {
     setVendorToToggle(id);
@@ -72,6 +76,25 @@ function FinishingVendorCatalog() {
     setOpenModal(true);
   };
 
+  // Reorder mode shows the FULL active list — clear any search filter first.
+  const handleEnterReorder = () => { setSearch(''); setShowInactive(false); setReorderMode(true); };
+
+  const handleSaveOrder = (orderedIds) => {
+    setSavingOrder(true);
+    apiService.finishingVendors.reorderFinishingVendors(orderedIds)
+      .then(() => {
+        setSavingOrder(false);
+        setReorderMode(false);
+        getFinishingVendors();
+        showSnackbar('Vendor order updated', 'success');
+      })
+      .catch(err => {
+        setSavingOrder(false);
+        console.log(err);
+        showSnackbar(err);
+      });
+  };
+
   const columns = [
     {
       accessorKey: 'name',
@@ -100,8 +123,8 @@ function FinishingVendorCatalog() {
       enableSorting: false,
       cell: ({ row }) => (
         <Stack direction="row" spacing={1} justifyContent='center'>
-          <IconButton disabled={loading} onClick={() => handleToggleActive(row.original._id)} size="small">
-            <DeleteIcon fontSize="small" />
+          <IconButton disabled={loading} color={row.original.isActive ? 'warning' : 'success'} onClick={() => handleToggleActive(row.original._id)} size="small">
+            {row.original.isActive ? <DeleteIcon fontSize="small" /> : <CheckIcon fontSize="small" />}
           </IconButton>
           <IconButton disabled={loading} onClick={() => handleEditVendor(row.original)} size="small">
             <EditIcon fontSize="small" />
@@ -135,26 +158,51 @@ function FinishingVendorCatalog() {
   return (
     <>
       <Typography variant="h4" sx={{ mb: 1 }}>Finishing Vendor</Typography>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <TextField
-          label="Search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          fullWidth
-          variant="standard"
-          sx={{ maxWidth: '190px' }}
+      {!reorderMode && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
+            <TextField
+              label="Search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              variant="standard"
+              sx={{ width: 190, maxWidth: '100%' }}
+            />
+            <FormControlLabel
+              control={<Switch size="small" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />}
+              label={<Typography variant="caption">Inactive</Typography>}
+            />
+          </Stack>
+          <Stack direction="row" spacing={1} sx={{ display: { xs: 'none', sm: 'flex' } }}>
+            <Button
+              variant="outlined"
+              startIcon={<SwapVert />}
+              onClick={handleEnterReorder}
+              disabled={loading}
+            >
+              Order
+            </Button>
+            <Button
+              variant="contained"
+              endIcon={<AutoAwesomeIcon />}
+              onClick={() => { setEditVendor(null); setOpenModal(true); }}
+              disabled={loading}
+            >
+              Add
+            </Button>
+          </Stack>
+        </Box>
+      )}
+      {reorderMode ? (
+        <CatalogReorderList
+          items={vendors}
+          getPrimary={(v) => v.name}
+          getSecondary={(v) => v.contact}
+          onSave={handleSaveOrder}
+          onCancel={() => setReorderMode(false)}
+          saving={savingOrder}
         />
-        <Button
-          variant="contained"
-          endIcon={<PersonAdd />}
-          onClick={() => { setEditVendor(null); setOpenModal(true); }}
-          disabled={loading}
-          sx={{ mt: 2 }}
-        >
-          Add Vendor
-        </Button>
-      </Box>
-      {isMobile ? (
+      ) : isMobile ? (
         <FinishingVendorCatalogSx
           vendors={vendors}
           search={search}
@@ -162,6 +210,8 @@ function FinishingVendorCatalog() {
           handleToggleActive={handleToggleActive}
           showSnackbar={showSnackbar}
           handleEditVendor={handleEditVendor}
+          onReorder={handleEnterReorder}
+          onAdd={() => { setEditVendor(null); setOpenModal(true); }}
         />
       ) : (
         <AnimatePresence mode="wait">

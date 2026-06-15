@@ -73,6 +73,7 @@ const ClientSchema = new mongoose.Schema({
   shippingAddress: { type: AddressSchema, default: () => ({}) },
   billingFirms: { type: [BillingFirmSchema], default: [] }, // optional additional billing firms (sub-billers)
   isActive: { type: Boolean, default: true },
+  sortOrder: { type: Number, default: 0 }, // user-defined display order for dropdowns/catalog (lower = first)
   createdAt: { type: Date, default: Date.now }
 });
 ClientSchema.index({ name: 1 }, { unique: true }); // Unique index on name
@@ -83,6 +84,7 @@ const FitStyleSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true, trim: true },
   description: { type: String },
   isActive: { type: Boolean, default: true },
+  sortOrder: { type: Number, default: 0 }, // user-defined display order for dropdowns/catalog (lower = first)
   createdAt: { type: Date, default: Date.now }
 });
 FitStyleSchema.index({ name: 1 }, { unique: true }); // Unique index on name
@@ -93,6 +95,7 @@ const FabricVendorSchema = new mongoose.Schema({
   contact: { type: String },
   address: { type: String },
   isActive: { type: Boolean, default: true },
+  sortOrder: { type: Number, default: 0 }, // user-defined display order for dropdowns/catalog (lower = first)
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -103,6 +106,7 @@ const StitchingVendorSchema = new mongoose.Schema({
   address: { type: String },
   defaultRate: { type: Number, default: 0 }, // pre-fills the per-piece rate when selected at the stage
   isActive: { type: Boolean, default: true },
+  sortOrder: { type: Number, default: 0 }, // user-defined display order for dropdowns/catalog (lower = first)
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -113,6 +117,7 @@ const WashingVendorSchema = new mongoose.Schema({
   address: { type: String },
   defaultRate: { type: Number, default: 0 }, // pre-fills the per-piece rate when selected at the stage
   isActive: { type: Boolean, default: true },
+  sortOrder: { type: Number, default: 0 }, // user-defined display order for dropdowns/catalog (lower = first)
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -123,6 +128,7 @@ const FinishingVendorSchema = new mongoose.Schema({
   address: { type: String },
   defaultRate: { type: Number, default: 0 }, // pre-fills the per-piece rate when selected at the stage
   isActive: { type: Boolean, default: true },
+  sortOrder: { type: Number, default: 0 }, // user-defined display order for dropdowns/catalog (lower = first)
   createdAt: { type: Date, default: Date.now }
 });
 

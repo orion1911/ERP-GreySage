@@ -16,7 +16,11 @@ const {
   updateFabricVendor,
   updateStitchingVendor,
   updateWashingVendor,
-  updateFinishingVendor
+  updateFinishingVendor,
+  reorderFabricVendors,
+  reorderStitchingVendors,
+  reorderWashingVendors,
+  reorderFinishingVendors
 } = require('../controllers/vendorController');
 const { authenticateToken } = require('../middleware/auth');
 
@@ -28,6 +32,11 @@ router.get('/fabric-vendors', authenticateToken, getFabricVendors);
 router.get('/stitching-vendors', authenticateToken, getStitchingVendors);
 router.get('/washing-vendors', authenticateToken, getWashingVendors);
 router.get('/finishing-vendors', authenticateToken, getFinishingVendors);
+// Reorder routes must precede the '/:id' PATCH so 'reorder' isn't captured as an :id.
+router.patch('/fabric-vendors/reorder', authenticateToken, reorderFabricVendors);
+router.patch('/stitching-vendors/reorder', authenticateToken, reorderStitchingVendors);
+router.patch('/washing-vendors/reorder', authenticateToken, reorderWashingVendors);
+router.patch('/finishing-vendors/reorder', authenticateToken, reorderFinishingVendors);
 router.put('/fabric-vendors/:id/toggle-active', authenticateToken, toggleFabricVendorActive);
 router.put('/stitching-vendors/:id/toggle-active', authenticateToken, toggleStitchingVendorActive);
 router.put('/washing-vendors/:id/toggle-active', authenticateToken, toggleWashingVendorActive);

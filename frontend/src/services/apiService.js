@@ -393,6 +393,15 @@ const apiService = {
         throw error;
       }
     },
+
+    reorderFabricVendors: async (orderedIds) => {
+      try {
+        const response = await axiosInstance.patch('api/fabric-vendors/reorder', { order: orderedIds });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
   },
 
   // Stitching Vendors API calls
@@ -429,6 +438,15 @@ const apiService = {
     updateStitchingVendor: async (id, vendorData) => {
       try {
         const response = await axiosInstance.patch(`api/stitching-vendors/${id}`, vendorData);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    reorderStitchingVendors: async (orderedIds) => {
+      try {
+        const response = await axiosInstance.patch('api/stitching-vendors/reorder', { order: orderedIds });
         return response.data;
       } catch (error) {
         throw error;
@@ -475,6 +493,15 @@ const apiService = {
         throw error;
       }
     },
+
+    reorderWashingVendors: async (orderedIds) => {
+      try {
+        const response = await axiosInstance.patch('api/washing-vendors/reorder', { order: orderedIds });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
   },
 
   // Finishing Vendors API calls
@@ -511,6 +538,15 @@ const apiService = {
     updateFinishingVendor: async (id, vendorData) => {
       try {
         const response = await axiosInstance.patch(`api/finishing-vendors/${id}`, vendorData);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    reorderFinishingVendors: async (orderedIds) => {
+      try {
+        const response = await axiosInstance.patch('api/finishing-vendors/reorder', { order: orderedIds });
         return response.data;
       } catch (error) {
         throw error;
@@ -562,10 +598,10 @@ const apiService = {
       }
     },
 
-    getClients: async (search = '') => {
+    getClients: async (search = '', showInactive = false) => {
       try {
         const response = await axiosInstance.get('api/clients', {
-          params: { search },
+          params: { search, showInactive },
         });
         return response.data;
       } catch (error) {
@@ -576,6 +612,15 @@ const apiService = {
     updateClient: async (id, clientData) => {
       try {
         const response = await axiosInstance.patch(`api/clients/${id}`, clientData);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    reorderClients: async (orderedIds) => {
+      try {
+        const response = await axiosInstance.patch('api/clients/reorder', { order: orderedIds });
         return response.data;
       } catch (error) {
         throw error;
@@ -897,10 +942,10 @@ const apiService = {
       }
     },
 
-    getFitstyles: async (search = '') => {
+    getFitstyles: async (search = '', showInactive = false) => {
       try {
         const response = await axiosInstance.get('api/fitstyles', {
-          params: { search },
+          params: { search, showInactive },
         });
         return response.data;
       } catch (error) {
@@ -920,6 +965,15 @@ const apiService = {
     updateFitstyle: async (id, fitStyleData) => {
       try {
         const response = await axiosInstance.patch(`api/fitstyles/${id}`, fitStyleData);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    reorderFitstyles: async (orderedIds) => {
+      try {
+        const response = await axiosInstance.patch('api/fitstyles/reorder', { order: orderedIds });
         return response.data;
       } catch (error) {
         throw error;

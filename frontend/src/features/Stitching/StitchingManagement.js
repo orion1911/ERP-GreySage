@@ -43,6 +43,7 @@ function StitchingManagement() {
   const [selectedFinishingRecord, setSelectedFinishingRecord] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [vendorFilter, setVendorFilter] = useState('');
+  const [washingVendorFilter, setWashingVendorFilter] = useState('');
   const [clientFilter, setClientFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
@@ -103,6 +104,16 @@ function StitchingManagement() {
     }
   };
 
+  // Downstream writes (add washing/finishing, mark finish-out) advance the lot's
+  // status server-side and return it on the populated lotId. Copy that status onto
+  // the matching stitching row(s) so the STATUS chip refreshes without a reload.
+  const syncLotStatus = (lotId, status) => {
+    if (!lotId || status == null) return;
+    setStitchingRecords(prev => prev && prev.map(r =>
+      r.lotId?._id === lotId ? { ...r, lotId: { ...r.lotId, status } } : r
+    ));
+  };
+
   const handleAddStitching = (newStitching) => {
     if (selectedRecord && selectedRecord._id === newStitching._id) {
       const updatedRecords = stitchingRecords.map(record =>
@@ -147,9 +158,16 @@ function StitchingManagement() {
         ...prev,
         [lotId]: [...(prev[lotId] || []), newWashing]
       }));
-      // New washing auto-set the stitch-out date — reflect it on the stitching row.
+      // New washing auto-set the stitch-out date AND advanced the lot status (→ Washing).
+      // Reflect both on the stitching row(s) so the date + STATUS chip refresh without a reload.
       setStitchingRecords(prev => prev && prev.map(r =>
-        r.lotId?._id === lotId && !r.stitchOutDate ? { ...r, stitchOutDate: newWashing.date } : r
+        r.lotId?._id === lotId
+          ? {
+              ...r,
+              stitchOutDate: r.stitchOutDate || newWashing.date,
+              lotId: { ...r.lotId, status: newWashing.lotId?.status ?? r.lotId?.status }
+            }
+          : r
       ));
     }
     setSelectedWashingRecord(null);
@@ -189,6 +207,8 @@ function StitchingManagement() {
         ...prev,
         [lotId]: prev[lotId].map(w => !w.washOutDate ? { ...w, washOutDate: newFinishing.date } : w)
       } : prev);
+      // New finishing advanced the lot status (→ Finishing) — refresh the STATUS chip.
+      syncLotStatus(lotId, newFinishing.lotId?.status);
     }
     setSelectedFinishingRecord(null);
     setOpenFinishingModal(false);
@@ -201,6 +221,8 @@ function StitchingManagement() {
           ...prev,
           [lotId]: prev[lotId].map(record => record._id === id ? res : record)
         }));
+        // Marking finish-out advanced the lot status (→ Finished) — refresh the STATUS chip.
+        syncLotStatus(lotId, res?.lotId?.status);
       });
   };
 
@@ -219,13 +241,22 @@ function StitchingManagement() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             variant="standard"
-            sx={{ width: isMobile ? 'auto' : '190px', flex: isMobile ? '1 1 45%' : 'none' }}
+            sx={{ width: isMobile ? 'auto' : '190px', flex: isMobile ? '1 1 100%' : 'none' }}
           />
           <FormControl variant="standard" sx={{ minWidth: isMobile ? 0 : 150, flex: isMobile ? '1 1 45%' : 'none' }}>
-            <InputLabel>Vendor</InputLabel>
-            <Select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)} label="Vendor">
-              <MenuItem value=""><em>All Vendors</em></MenuItem>
+            <InputLabel>Stitching</InputLabel>
+            <Select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)} label="Stitching">
+              <MenuItem value=""><em>All Stitching</em></MenuItem>
               {stitchingVendors.map(v => (
+                <MenuItem key={v._id} value={v._id}>{v.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl variant="standard" sx={{ minWidth: isMobile ? 0 : 150, flex: isMobile ? '1 1 45%' : 'none' }}>
+            <InputLabel>Washing</InputLabel>
+            <Select value={washingVendorFilter} onChange={(e) => setWashingVendorFilter(e.target.value)} label="Washing">
+              <MenuItem value=""><em>All Washing</em></MenuItem>
+              {washingVendors.map(v => (
                 <MenuItem key={v._id} value={v._id}>{v.name}</MenuItem>
               ))}
             </Select>
@@ -275,6 +306,7 @@ function StitchingManagement() {
         setSelectedLot={setSelectedLot}
         searchTerm={searchTerm}
         vendorFilter={vendorFilter}
+        washingVendorFilter={washingVendorFilter}
         clientFilter={clientFilter}
         statusFilter={statusFilter}
         setStatusFilter={setStatusFilter}

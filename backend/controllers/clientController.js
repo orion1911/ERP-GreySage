@@ -31,12 +31,16 @@ const createClient = async (req, res) => {
   const prefix = clientCodePrefix || generateClientCodePrefix(name);
   const number = await getNextClientCodeNumber();
   const clientCode = `${prefix}-${number}`;
+  // Place new clients at the END of the custom display order (highest sortOrder + 1).
+  const lastOrdered = await Client.findOne().sort({ sortOrder: -1 }).select('sortOrder');
+  const sortOrder = (lastOrdered?.sortOrder ?? -1) + 1;
   const client = new Client({
     name, clientCode, billingName, contact, email, address,
     gstin, pan,
     billingAddress: billingAddress || {},
     shippingAddress: shippingAddress || {},
     billingFirms: billingFirms || [],
+    sortOrder,
     isActive: true
   });
   await client.save();
@@ -46,10 +50,29 @@ const createClient = async (req, res) => {
 
 const getClients = async (req, res) => {
   const { search, showInactive } = req.query;
-  const query = { isActive: showInactive === 'true' ? false : true };
+  // Default to active-only; include inactive (alongside active) when the catalog toggle is on.
+  const query = {};
+  if (showInactive !== 'true') query.isActive = true;
   if (search) query.name = { $regex: search, $options: 'i' };
-  const clients = await Client.find(query);
+  // Honour the user-defined display order; fall back to name for ties / legacy rows.
+  const clients = await Client.find(query).sort({ sortOrder: 1, name: 1 });
   res.json(clients);
+};
+
+// Bulk-persist a new display order. Body: { order: [clientId, ...] } in the desired sequence.
+const reorderClients = async (req, res) => {
+  const { order } = req.body;
+  if (!Array.isArray(order) || order.length === 0) {
+    return res.status(400).json({ error: 'order must be a non-empty array of client ids' });
+  }
+  try {
+    await Client.bulkWrite(order.map((id, i) => ({
+      updateOne: { filter: { _id: id }, update: { $set: { sortOrder: i } } }
+    })));
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 };
 
 const toggleClientActive = async (req, res) => {
@@ -88,4 +111,4 @@ const updateClient = async (req, res) => {
   res.json(client);
 };
 
-module.exports = { createClient, getClients, toggleClientActive, updateClient };
+module.exports = { createClient, getClients, toggleClientActive, updateClient, reorderClients };

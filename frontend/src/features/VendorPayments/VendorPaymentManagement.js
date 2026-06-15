@@ -623,7 +623,7 @@ const VendorPaymentManagement = () => {
                                     <MenuItem value="">Select Vendor</MenuItem>
                                     {vendors.map((vendor) => (
                                         <MenuItem key={vendor._id} value={vendor._id}>
-                                            {vendor.name}
+                                            {vendor.name}{vendor.isActive === false ? ' (Inactive)' : ''}
                                         </MenuItem>
                                     ))}
                                 </Select>

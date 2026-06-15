@@ -1270,22 +1270,27 @@ const getProductionDashboard = async (req, res) => {
       });
       // .sort((a, b) => b.PCS - a.PCS);
 
-    // Dispatch KPIs.
-    // "In Finishing" = good pcs finished but not yet dispatched. Computed over lots that
-    //   reached finishing, scoped by Finishing.date to honour the date filter.
+    // Dispatch KPIs — good-pcs aggregation over lots that reached finishing (scoped by
+    // Finishing.date to honour the date filter), split by the lot's CURRENT status. Marking
+    // finish-out advances a lot 4 -> 5, so status is the lot-level "finish-out marked" signal:
+    //   - "In Finishing"     = pcs in lots still being finished        (status 4, no finish-out).
+    //   - "Pending Dispatch" = finished pcs not yet dispatched         (status 5 + 6); a
+    //       part-dispatched lot (6) contributes only its REMAINING pcs via the per-lot
+    //       subtraction of already-invoiced (dispatched) pcs below.
     const finishingDateMatch = {};
     if (fromDate || toDate) {
       finishingDateMatch.date = {};
       if (fromDate) finishingDateMatch.date.$gte = new Date(fromDate);
       if (toDate) finishingDateMatch.date.$lte = new Date(toDate);
     }
-    const inFinishingAgg = await Finishing.aggregate([
+    const finishingByStatusAgg = await Finishing.aggregate([
       { $match: finishingDateMatch },
       { $group: { _id: '$lotId', finalGross: { $sum: { $subtract: ['$quantity', { $ifNull: ['$quantityShort', 0] }] } } } },
       { $lookup: { from: Lot.collection.collectionName, localField: '_id', foreignField: '_id', as: 'lot' } },
       { $unwind: '$lot' },
       {
         $project: {
+          status: '$lot.status',
           awaiting: {
             $max: [
               0,
@@ -1294,9 +1299,12 @@ const getProductionDashboard = async (req, res) => {
           }
         }
       },
-      { $group: { _id: null, totalInFinishing: { $sum: '$awaiting' } } }
+      { $group: { _id: '$status', awaiting: { $sum: '$awaiting' } } }
     ]);
-    const total_in_finishing = inFinishingAgg[0]?.totalInFinishing || 0;
+    const awaitingByStatus = finishingByStatusAgg.reduce((acc, r) => { acc[r._id] = r.awaiting; return acc; }, {});
+    const total_in_finishing = awaitingByStatus[4] || 0;
+    const total_pending_dispatch = (awaitingByStatus[5] || 0) + (awaitingByStatus[6] || 0);
+    const total_part_dispatch_pending = awaitingByStatus[6] || 0; // subset of pending, from part-dispatched lots
 
     // "Dispatched" = actual good pcs invoiced across ALL lots (incl. lots dispatched before
     //   finishing). A cumulative current-state total, not narrowed by the date filter.
@@ -1313,6 +1321,8 @@ const getProductionDashboard = async (req, res) => {
       total_in_washing: totalInWashing,
       total_out_washing: totalOutWashing,
       total_in_finishing,
+      total_pending_dispatch,
+      total_part_dispatch_pending,
       total_dispatched,
       client_summary,
       washer_summary,

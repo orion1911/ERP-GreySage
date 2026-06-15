@@ -3,6 +3,9 @@ const { logAction } = require('../utils/logger');
 
 const createFitStyle = async (req, res) => {
   const fitStyle = new FitStyle(req.body);
+  // Place new fit styles at the END of the custom display order (highest sortOrder + 1).
+  const lastOrdered = await FitStyle.findOne().sort({ sortOrder: -1 }).select('sortOrder');
+  fitStyle.sortOrder = (lastOrdered?.sortOrder ?? -1) + 1;
   await fitStyle.save();
   //await logAction(req.user.userId, 'create_fitstyle', 'FitStyle', fitStyle._id, `Created fit style: ${fitStyle.name}`);
   res.status(201).json(fitStyle);
@@ -10,10 +13,29 @@ const createFitStyle = async (req, res) => {
 
 const getFitStyles = async (req, res) => {
   const { search, showInactive } = req.query;
-  const query = { isActive: showInactive === 'true' ? undefined : true };
+  // Default to active-only; include inactive when the catalog toggle is on.
+  const query = {};
+  if (showInactive !== 'true') query.isActive = true;
   if (search) query.name = { $regex: search, $options: 'i' };
-  const fitStyles = await FitStyle.find(query);
+  // Honour the user-defined display order; fall back to name for ties / legacy rows.
+  const fitStyles = await FitStyle.find(query).sort({ sortOrder: 1, name: 1 });
   res.json(fitStyles);
+};
+
+// Bulk-persist a new display order. Body: { order: [fitStyleId, ...] } in the desired sequence.
+const reorderFitStyles = async (req, res) => {
+  const { order } = req.body;
+  if (!Array.isArray(order) || order.length === 0) {
+    return res.status(400).json({ error: 'order must be a non-empty array of fit style ids' });
+  }
+  try {
+    await FitStyle.bulkWrite(order.map((id, i) => ({
+      updateOne: { filter: { _id: id }, update: { $set: { sortOrder: i } } }
+    })));
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 };
 
 const toggleFitStyleActive = async (req, res) => {
@@ -39,4 +61,4 @@ const updateFitStyle = async (req, res) => {
   res.status(200).json(fitStyle);
 };
 
-module.exports = { createFitStyle, getFitStyles, toggleFitStyleActive, updateFitStyle };
+module.exports = { createFitStyle, getFitStyles, toggleFitStyleActive, updateFitStyle, reorderFitStyles };

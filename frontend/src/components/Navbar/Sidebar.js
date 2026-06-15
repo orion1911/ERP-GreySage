@@ -4,7 +4,7 @@ import { Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText
 import { useTheme } from '@mui/material/styles';
 import {
   Menu as MenuIcon, ChevronLeft as ChevronLeftIcon, Receipt as ReceiptIcon,
-  People as PeopleIcon, Inventory as InventoryIcon,
+  People as PeopleIcon, Style as StyleIcon,
   Assessment as AssessmentIcon, Group as GroupIcon, History as AuditIcon,
   DryCleaning as DryCleaningIcon, LocalLaundryService as LaundryIcon,
   AutoAwesome as AutoAwesomeIcon, PieChart as PieChartIcon,
@@ -56,7 +56,7 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
     {
       label: 'Masters', icon: <CategoryIcon />, children: [
         { label: 'Clients', path: '/clients', icon: <PeopleIcon /> },
-        { label: 'Fit Style', path: '/products', icon: <InventoryIcon /> },
+        { label: 'Fit Style', path: '/products', icon: <StyleIcon /> },
         { label: 'Fabric Vendors', path: '/fabric-vendors', icon: <DryCleaningIcon /> },
         { label: 'Stitching Vendors', path: '/stitching-vendors', icon: <ContentCutIcon /> },
         { label: 'Washing Vendors', path: '/washing-vendors', icon: <LaundryIcon /> },

@@ -31,6 +31,7 @@ import LocalLaundryServiceIcon from '@mui/icons-material/LocalLaundryService';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import PendingActionsIcon from '@mui/icons-material/PendingActions';
 import { useOutletContext } from 'react-router-dom';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -61,6 +62,8 @@ const Dashboard = () => {
         totalInWashing: 0,
         totalOutWashing: 0,
         totalInFinishing: 0,
+        totalPendingDispatch: 0,
+        totalPartDispatchPending: 0,
         totalDispatched: 0,
     });
 
@@ -99,6 +102,8 @@ const Dashboard = () => {
                 totalInWashing: data.total_in_washing || 0,
                 totalOutWashing: data.total_out_washing || 0,
                 totalInFinishing: data.total_in_finishing || 0,
+                totalPendingDispatch: data.total_pending_dispatch || 0,
+                totalPartDispatchPending: data.total_part_dispatch_pending || 0,
                 totalDispatched: data.total_dispatched || 0,
             });
 
@@ -217,22 +222,28 @@ const Dashboard = () => {
 
     return (
         <Container maxWidth="xl" sx={{ pt: '0 !important', pb: 2, px: '0 !important' }}>
-            {/* Header */}
-            <Stack direction="row" alignItems="center" sx={{ mb: 4, mt: 1, flexWrap: 'wrap', gap: 2 }}>
+            {/* Header — on mobile the date filter + refresh drop to a centered row below the title */}
+            <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                alignItems={{ xs: 'stretch', md: 'center' }}
+                sx={{ mb: 3, mt: 1, flexWrap: 'wrap', gap: 2 }}
+            >
                 <Typography variant="h4">Dashboard</Typography>
-                <LocalizationProvider dateAdapter={AdapterDayjs}>
-                    <DateRangePicker
-                        value={dateRange}
-                        onChange={(newValue) => setDateRange(newValue)}
-                        format="DD/MM/YY"
-                        slots={{ textField: MorphDateTextField }}
-                        slotProps={{ textField: { variant: 'standard', size: 'small' } }}
-                        sx={{ width: 180 }}
-                    />
-                </LocalizationProvider>
-                <IconButton onClick={loadData} disabled={loading}>
-                    <RefreshIcon />
-                </IconButton>
+                <Stack direction="row" alignItems="center" justifyContent="flex-start" sx={{ gap: 2 }}>
+                    <LocalizationProvider dateAdapter={AdapterDayjs}>
+                        <DateRangePicker
+                            value={dateRange}
+                            onChange={(newValue) => setDateRange(newValue)}
+                            format="DD/MM/YY"
+                            slots={{ textField: MorphDateTextField }}
+                            slotProps={{ textField: { variant: 'standard', size: 'small' } }}
+                            sx={{ width: 180 }}
+                        />
+                    </LocalizationProvider>
+                    <IconButton onClick={loadData} disabled={loading}>
+                        <RefreshIcon />
+                    </IconButton>
+                </Stack>
             </Stack>
 
             {/* Error Message */}
@@ -265,10 +276,11 @@ const Dashboard = () => {
                                     { label: 'Total Pieces', value: kpiData.totalPcs, subtitle: 'All tracked items', color: '#5C6AC4', icon: GridViewIcon },
                                     { label: 'Making', value: kpiData.totalMaking, subtitle: 'In production', color: '#E8634A', icon: ContentCutIcon },
                                     { label: 'In Washing', value: kpiData.totalInWashing, subtitle: 'Being processed', color: '#D4920A', icon: LocalLaundryServiceIcon },
-                                    { label: 'In Finishing', value: kpiData.totalInFinishing, subtitle: 'Awaiting dispatch', color: '#9966FF', icon: AutoAwesomeIcon },
+                                    { label: 'In Finishing', value: kpiData.totalInFinishing, subtitle: 'Being finished', color: '#9966FF', icon: AutoAwesomeIcon },
+                                    { label: 'Pending Dispatch', value: kpiData.totalPendingDispatch, subtitle: `${formatNumber(kpiData.totalPartDispatchPending)} - part-dispatch`, color: '#E8923D', icon: PendingActionsIcon },
                                     { label: 'Dispatched', value: kpiData.totalDispatched, subtitle: 'Pieces dispatched', color: '#2AA89A', icon: LocalShippingIcon },
                                 ].map((card, i) => (
-                                    <Grid key={card.label} size={{ xs: 6, sm: 4, md: 2.4 }}>
+                                    <Grid key={card.label} size={{ xs: 6, sm: 4, md: 2 }}>
                                         <motion.div
                                             initial={{ opacity: 0, y: 20 }}
                                             animate={{ opacity: 1, y: 0 }}

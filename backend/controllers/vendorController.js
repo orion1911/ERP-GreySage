@@ -13,6 +13,9 @@ const createVendor = async (req, res, Model, vendorType) => {
   if (vendorExist) return res.status(400).json({ error: `${vendorExist.name} vendor already exists` });
 
   const vendor = new Model(req.body);
+  // Place new vendors at the END of the custom display order (highest sortOrder + 1).
+  const lastOrdered = await Model.findOne().sort({ sortOrder: -1 }).select('sortOrder');
+  vendor.sortOrder = (lastOrdered?.sortOrder ?? -1) + 1;
   await vendor.save();
   // await logAction(req.user.userId, `create_${vendorType}_vendor`, vendorType, vendor._id, `Created ${vendorType} vendor: ${vendor.name}`);
   res.status(201).json(vendor);
@@ -20,10 +23,29 @@ const createVendor = async (req, res, Model, vendorType) => {
 
 const getVendors = async (req, res, Model) => {
   const { search, showInactive } = req.query;
-  const query = { isActive: showInactive === 'true' ? undefined : true };
+  // Default to active-only; include inactive (alongside active) when the catalog toggle is on.
+  const query = {};
+  if (showInactive !== 'true') query.isActive = true;
   if (search) query.name = { $regex: search, $options: 'i' };
-  const vendors = await Model.find(query);
+  // Honour the user-defined display order; fall back to name for ties / legacy rows.
+  const vendors = await Model.find(query).sort({ sortOrder: 1, name: 1 });
   res.json(vendors);
+};
+
+// Bulk-persist a new display order. Body: { order: [vendorId, ...] } in the desired sequence.
+const reorderVendors = async (req, res, Model) => {
+  const { order } = req.body;
+  if (!Array.isArray(order) || order.length === 0) {
+    return res.status(400).json({ error: 'order must be a non-empty array of vendor ids' });
+  }
+  try {
+    await Model.bulkWrite(order.map((id, i) => ({
+      updateOne: { filter: { _id: id }, update: { $set: { sortOrder: i } } }
+    })));
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 };
 
 const toggleVendorActive = async (req, res, Model, vendorType) => {
@@ -72,6 +94,11 @@ const updateStitchingVendor = async (req, res) => updateVendor(req, res, Stitchi
 const updateWashingVendor = async (req, res) => updateVendor(req, res, WashingVendor, 'WashingVendor');
 const updateFinishingVendor = async (req, res) => updateVendor(req, res, FinishingVendor, 'FinishingVendor');
 
+const reorderFabricVendors = async (req, res) => reorderVendors(req, res, FabricVendor);
+const reorderStitchingVendors = async (req, res) => reorderVendors(req, res, StitchingVendor);
+const reorderWashingVendors = async (req, res) => reorderVendors(req, res, WashingVendor);
+const reorderFinishingVendors = async (req, res) => reorderVendors(req, res, FinishingVendor);
+
 module.exports = {
   createFabricVendor,
   createStitchingVendor,
@@ -88,5 +115,9 @@ module.exports = {
   updateFabricVendor,
   updateStitchingVendor,
   updateWashingVendor,
-  updateFinishingVendor
+  updateFinishingVendor,
+  reorderFabricVendors,
+  reorderStitchingVendors,
+  reorderWashingVendors,
+  reorderFinishingVendors
 };

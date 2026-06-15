@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Typography, useTheme, Grid, Select, MenuItem, Tooltip, TablePagination } from '@mui/material';
-import { ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon } from '@mui/icons-material';
+import { ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon, SwapVert } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -10,7 +10,9 @@ function ProductCatalogSx({
   loading,
   handleToggleActive,
   showSnackbar,
-  handleEditProduct
+  handleEditProduct,
+  onReorder,
+  onAdd
 }) {
   const theme = useTheme();
   const [expandedRows, setExpandedRows] = useState({});
@@ -54,31 +56,32 @@ function ProductCatalogSx({
 
   return (
     <Box sx={{ pt: 1 }}>
-      <Grid container spacing={2} sx={{ mb: 2, justifyContent: 'flex-end' }}>
-        <Grid item xs={12} sm={6} md={4}>
-          <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-            <Select
-              variant="standard"
-              size="small"
-              value={sortBy}
-              onChange={(e) => {
-                setSortBy(e.target.value);
-                setSortDirection('asc');
-              }}
-            >
-              <MenuItem value="name">Sort By Design</MenuItem>
-              <MenuItem value="description">Sort By Description</MenuItem>
-              {/* <MenuItem value="isActive">Sort By Status</MenuItem> */}
-            </Select>
-            <IconButton
-              onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
-              sx={{ ml: 1 }}
-            >
-              {sortDirection === 'asc' ? <ArrowUpward /> : <ArrowDownward />}
-            </IconButton>
-          </Stack>
-        </Grid>
-      </Grid>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2, justifyContent: 'space-between', alignItems: 'center' }}>
+        <Stack direction="row" spacing={1}>
+          <Button size="small" variant="outlined" startIcon={<SwapVert />} onClick={onReorder} disabled={loading}>Order</Button>
+          <Button size="small" variant="contained" onClick={onAdd} disabled={loading}>Add</Button>
+        </Stack>
+        <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+          <Select
+            variant="standard"
+            size="small"
+            value={sortBy}
+            onChange={(e) => {
+              setSortBy(e.target.value);
+              setSortDirection('asc');
+            }}
+          >
+            <MenuItem value="name">Design</MenuItem>
+            <MenuItem value="description">Description</MenuItem>
+          </Select>
+          <IconButton
+            onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+            sx={{ ml: 1 }}
+          >
+            {sortDirection === 'asc' ? <ArrowUpward /> : <ArrowDownward />}
+          </IconButton>
+        </Stack>
+      </Box>
       <AnimatePresence mode="wait">
         <motion.div
           key={!processedProducts ? 'loading' : 'data'}

@@ -53,11 +53,15 @@ function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }
           backgroundColor: 'transparent !important',
           background: 'none',
           zIndex: 1200,
+          // Transparent bar must not intercept clicks on content beneath it
+          // (e.g. the right-aligned Order/Add buttons on catalog pages).
+          // Re-enabled on the interactive icon wrapper(s) below.
+          pointerEvents: 'none',
         }}
       >
-        <Toolbar sx={{ justifyContent: 'flex-end', p: 1 }}>
+        <Toolbar sx={{ justifyContent: 'flex-end', p: 1, minHeight: { xs: 44, sm: 48 } }}>
           {isMobile ? (
-            <Box sx={{ display: 'flex', flexDirection: 'row-reverse', gap: 1, alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'row-reverse', gap: 1, alignItems: 'center', pointerEvents: 'auto' }}>
               <IconButton
                 onClick={handleMenuClick}
                 color='inherit'
@@ -83,7 +87,7 @@ function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }
               </motion.div>
             </Box>
           ) : (
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', pointerEvents: 'auto' }}>
               <ThemeToggle />
               <IconButton
                 onClick={handleLogout}

@@ -44,6 +44,7 @@ function StitchingManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [vendorFilter, setVendorFilter] = useState('');
   const [washingVendorFilter, setWashingVendorFilter] = useState('');
+  const [finishingVendorFilter, setFinishingVendorFilter] = useState('');
   const [clientFilter, setClientFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
@@ -241,7 +242,7 @@ function StitchingManagement() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             variant="standard"
-            sx={{ width: isMobile ? 'auto' : '190px', flex: isMobile ? '1 1 100%' : 'none' }}
+            sx={{ width: isMobile ? 'auto' : '190px', flex: isMobile ? '1 1 45%' : 'none' }}
           />
           <FormControl variant="standard" sx={{ minWidth: isMobile ? 0 : 150, flex: isMobile ? '1 1 45%' : 'none' }}>
             <InputLabel>Stitching</InputLabel>
@@ -257,6 +258,15 @@ function StitchingManagement() {
             <Select value={washingVendorFilter} onChange={(e) => setWashingVendorFilter(e.target.value)} label="Washing">
               <MenuItem value=""><em>All Washing</em></MenuItem>
               {washingVendors.map(v => (
+                <MenuItem key={v._id} value={v._id}>{v.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl variant="standard" sx={{ minWidth: isMobile ? 0 : 150, flex: isMobile ? '1 1 45%' : 'none' }}>
+            <InputLabel>Finishing</InputLabel>
+            <Select value={finishingVendorFilter} onChange={(e) => setFinishingVendorFilter(e.target.value)} label="Finishing">
+              <MenuItem value=""><em>All Finishing</em></MenuItem>
+              {finishingVendors.map(v => (
                 <MenuItem key={v._id} value={v._id}>{v.name}</MenuItem>
               ))}
             </Select>
@@ -307,6 +317,7 @@ function StitchingManagement() {
         searchTerm={searchTerm}
         vendorFilter={vendorFilter}
         washingVendorFilter={washingVendorFilter}
+        finishingVendorFilter={finishingVendorFilter}
         clientFilter={clientFilter}
         statusFilter={statusFilter}
         setStatusFilter={setStatusFilter}

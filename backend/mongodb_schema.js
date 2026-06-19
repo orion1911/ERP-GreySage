@@ -343,14 +343,30 @@ const CompanySettingsSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+// One source-lot slice of a MERGED invoice line. A merged line draws its pcs from
+// several lots (two system lots that are physically one combined batch) but prints as a
+// single row. Each source records how many pcs came from a given lot, so per-lot dispatch
+// accounting stays exact even though the line shows one combined total + one description.
+const InvoiceLineSourceSchema = new mongoose.Schema({
+  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot', required: true },
+  lotNumberSnapshot: { type: String, trim: true },     // frozen lot # (audit only; not printed)
+  lotInvoiceNumberSnapshot: { type: Number },          // frozen upstream invoice #
+  pcs: { type: Number, required: true, min: 1, validate: { validator: Number.isInteger, message: 'pcs must be integer' } }
+}, { _id: false });
+
 // InvoiceLine subdoc: one row of an invoice. Each line ships pcs from one of our Lots
 // (or null for legacy/manual entries). lotNumberSnapshot + lotInvoiceNumberSnapshot
 // are frozen at issue time so renaming a Lot later doesn't mutate historical invoices.
+// A line is either SINGLE-LOT (top-level lotId + pcs, sources empty) or MERGED
+// (lotId null, pcs = displayed total, sources[] carries the per-lot split summing to pcs).
 const InvoiceLineSchema = new mongoose.Schema({
   lineNo: { type: Number, required: true, min: 1 },
-  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot' }, // null allowed for legacy lines
+  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot' }, // null allowed for legacy + merged lines
   lotNumberSnapshot: { type: String, trim: true },     // frozen lot # for printing
   lotInvoiceNumberSnapshot: { type: Number },          // frozen upstream invoice #
+  // Per-lot breakdown for a MERGED line (empty for single-lot/legacy lines). pcs across
+  // sources sums to the line's pcs; each source's pcs is what subtracts from that lot.
+  sources: { type: [InvoiceLineSourceSchema], default: [] },
   description: { type: String, required: true, trim: true }, // free-form; prefilled from lot
   remark: { type: String, trim: true }, // optional secondary line printed under description in PDF
   hsnSac: { type: String, trim: true },
@@ -405,6 +421,7 @@ InvoiceSchema.index({ clientId: 1, date: -1 });
 InvoiceSchema.index({ date: 1 });
 InvoiceSchema.index({ status: 1, date: -1 });
 InvoiceSchema.index({ 'lines.lotId': 1 }); // "which invoices reference this lot"
+InvoiceSchema.index({ 'lines.sources.lotId': 1 }); // same, for merged-line source lots
 
 // InvoiceHistory: audit log mirror of VendorPaymentEntryHistory
 const InvoiceHistorySchema = new mongoose.Schema({

@@ -46,6 +46,22 @@ const snapshotClient = (client, firm = null) => ({
 });
 
 /**
+ * Every lot id touched by a set of lines — both a single-lot line's `lotId` and a merged
+ * line's `sources[].lotId` — as a de-duplicated array of strings. Used to fan out
+ * recalcLotInvoiced() after a create/update/cancel/delete so every affected lot is recomputed.
+ */
+const collectLotIds = (lines = []) => {
+  const ids = new Set();
+  for (const l of lines) {
+    if (l.lotId) ids.add(String(l.lotId));
+    for (const s of (l.sources || [])) {
+      if (s.lotId) ids.add(String(s.lotId));
+    }
+  }
+  return [...ids];
+};
+
+/**
  * Validate the incoming line payload — return the line subdoc shape after enrichment.
  * Each line draws from either the lot's GOOD pool (finalPcs − damagedPcs) or, when
  * `isDamaged` is set, the DAMAGED pool (damagedPcs). Verifies pcs ≤ remaining for the
@@ -60,71 +76,111 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
   const goodInThisInvoice = new Map();
   const damagedInThisInvoice = new Map();
 
+  // Reserve `pcs` from one lot's good/damaged pool, validating against what remains (excluding
+  // this invoice) plus what earlier lines/sources in THIS invoice already consumed. Returns the
+  // lot's frozen snapshot fields. Shared by single-lot lines AND each source of a merged line,
+  // so a lot referenced from several lines/sources is still validated against one shared pool.
+  const consumeFromLot = async (lotId, pcs, isDamaged, label) => {
+    const lot = await Lot.findById(lotId).lean();
+    if (!lot) throw new Error(`${label}: lot not found`);
+    const damagedPcs = lot.damagedPcs || 0;
+
+    if (isDamaged) {
+      // Combined-damaged third-party sale — draws from the lot's damaged pool.
+      const otherSold = await sumDamagedSoldForLot(lot._id, excludeInvoiceId);
+      const already = damagedInThisInvoice.get(String(lot._id)) || 0;
+      const remaining = damagedPcs - otherSold - already;
+      if (pcs > remaining) {
+        throw new Error(
+          `${label}: lot ${lot.lotNumber} only has ${remaining} DAMAGED pcs available ` +
+          `(damaged ${damagedPcs}, already sold elsewhere ${otherSold}` +
+          (already > 0 ? `, in this invoice ${already}` : '') + ')'
+        );
+      }
+      damagedInThisInvoice.set(String(lot._id), already + pcs);
+    } else {
+      // Good dispatch to the assigned client — draws from finalPcs − damagedPcs.
+      const finalPcs = await getFinalPcsForLot(lot._id);
+      const otherInvoicedPcs = await sumGoodInvoicedForLot(lot._id, excludeInvoiceId);
+      const already = goodInThisInvoice.get(String(lot._id)) || 0;
+      const remaining = finalPcs - damagedPcs - otherInvoicedPcs - already;
+      if (pcs > remaining) {
+        throw new Error(
+          `${label}: lot ${lot.lotNumber} only has ${remaining} pcs remaining ` +
+          `(final ${finalPcs}, damaged set-aside ${damagedPcs}, already invoiced elsewhere ${otherInvoicedPcs}` +
+          (already > 0 ? `, in this invoice ${already}` : '') + ')'
+        );
+      }
+      goodInThisInvoice.set(String(lot._id), already + pcs);
+    }
+    return { lotId: lot._id, lotNumberSnapshot: lot.lotNumber, lotInvoiceNumberSnapshot: lot.invoiceNumber };
+  };
+
   for (let i = 0; i < rawLines.length; i++) {
     const raw = rawLines[i];
-    const pcs = parseInt(raw.pcs, 10);
+    const label = `Line ${i + 1}`;
     const rate = Number(raw.rate);
-    if (!Number.isInteger(pcs) || pcs < 1) {
-      throw new Error(`Line ${i + 1}: pcs must be a positive integer`);
-    }
     if (!Number.isFinite(rate) || rate < 0) {
-      throw new Error(`Line ${i + 1}: rate must be a non-negative number`);
+      throw new Error(`${label}: rate must be a non-negative number`);
     }
     if (!raw.description || !String(raw.description).trim()) {
-      throw new Error(`Line ${i + 1}: description is required`);
+      throw new Error(`${label}: description is required`);
     }
+
+    const isMerged = Array.isArray(raw.sources) && raw.sources.length > 0;
+    const isDamaged = !!raw.isDamaged;
 
     const line = {
       lineNo: i + 1,
       description: String(raw.description).trim(),
       remark: raw.remark ? String(raw.remark).trim() : undefined,
       hsnSac: raw.hsnSac ? String(raw.hsnSac).trim() : undefined,
-      pcs,
       unit: raw.unit ? String(raw.unit).trim() : '',
-      rate,
-      amount: pcs * rate
+      rate
     };
 
-    if (raw.lotId) {
-      const lot = await Lot.findById(raw.lotId).lean();
-      if (!lot) throw new Error(`Line ${i + 1}: lot not found`);
-      line.lotId = lot._id;
-      line.lotNumberSnapshot = lot.lotNumber;
-      line.lotInvoiceNumberSnapshot = lot.invoiceNumber;
-      line.isDamaged = !!raw.isDamaged;
-
-      const damagedPcs = lot.damagedPcs || 0;
-
-      if (line.isDamaged) {
-        // Combined-damaged third-party sale — draws from the lot's damaged pool.
-        const otherSold = await sumDamagedSoldForLot(lot._id, excludeInvoiceId);
-        const alreadyInThisInvoice = damagedInThisInvoice.get(String(lot._id)) || 0;
-        const remaining = damagedPcs - otherSold - alreadyInThisInvoice;
-        if (pcs > remaining) {
-          throw new Error(
-            `Line ${i + 1}: lot ${lot.lotNumber} only has ${remaining} DAMAGED pcs available ` +
-            `(damaged ${damagedPcs}, already sold elsewhere ${otherSold}` +
-            (alreadyInThisInvoice > 0 ? `, in this invoice ${alreadyInThisInvoice}` : '') + ')'
-          );
+    if (isMerged) {
+      // MERGED line — pcs is the sum of its per-lot sources; each source subtracts from its lot,
+      // but the line prints as a single row. lotId/lotNumberSnapshot stay blank (description carries it).
+      const builtSources = [];
+      let total = 0;
+      for (let j = 0; j < raw.sources.length; j++) {
+        const s = raw.sources[j];
+        const sLabel = `${label} source ${j + 1}`;
+        const sPcs = parseInt(s.pcs, 10);
+        if (!Number.isInteger(sPcs) || sPcs < 1) {
+          throw new Error(`${sLabel}: pcs must be a positive integer`);
         }
-        damagedInThisInvoice.set(String(lot._id), alreadyInThisInvoice + pcs);
-      } else {
-        // Good dispatch to the assigned client — draws from finalPcs − damagedPcs.
-        const finalPcs = await getFinalPcsForLot(lot._id);
-        const otherInvoicedPcs = await sumGoodInvoicedForLot(lot._id, excludeInvoiceId);
-        const alreadyInThisInvoice = goodInThisInvoice.get(String(lot._id)) || 0;
-        const remaining = finalPcs - damagedPcs - otherInvoicedPcs - alreadyInThisInvoice;
-        if (pcs > remaining) {
-          throw new Error(
-            `Line ${i + 1}: lot ${lot.lotNumber} only has ${remaining} pcs remaining ` +
-            `(final ${finalPcs}, damaged set-aside ${damagedPcs}, already invoiced elsewhere ${otherInvoicedPcs}` +
-            (alreadyInThisInvoice > 0 ? `, in this invoice ${alreadyInThisInvoice}` : '') + ')'
-          );
-        }
-        goodInThisInvoice.set(String(lot._id), alreadyInThisInvoice + pcs);
+        if (!s.lotId) throw new Error(`${sLabel}: lotId is required`);
+        const snap = await consumeFromLot(s.lotId, sPcs, isDamaged, sLabel);
+        builtSources.push({ ...snap, pcs: sPcs });
+        total += sPcs;
+      }
+      // A merged line needs at least two sources to be meaningful, but one is allowed.
+      // If the client also sent an explicit pcs, it must agree with the sources.
+      const rawPcs = raw.pcs;
+      if (rawPcs !== undefined && rawPcs !== null && rawPcs !== '' && parseInt(rawPcs, 10) !== total) {
+        throw new Error(`${label}: pcs (${parseInt(rawPcs, 10)}) must equal the sum of its source pcs (${total})`);
+      }
+      line.pcs = total;
+      line.sources = builtSources;
+      line.isDamaged = isDamaged;
+    } else {
+      const pcs = parseInt(raw.pcs, 10);
+      if (!Number.isInteger(pcs) || pcs < 1) {
+        throw new Error(`${label}: pcs must be a positive integer`);
+      }
+      line.pcs = pcs;
+      if (raw.lotId) {
+        const snap = await consumeFromLot(raw.lotId, pcs, isDamaged, label);
+        line.lotId = snap.lotId;
+        line.lotNumberSnapshot = snap.lotNumberSnapshot;
+        line.lotInvoiceNumberSnapshot = snap.lotInvoiceNumberSnapshot;
+        line.isDamaged = isDamaged;
       }
     }
 
+    line.amount = line.pcs * rate;
     lines.push(line);
   }
   return lines;
@@ -276,7 +332,7 @@ const createInvoice = async (req, res) => {
   await invoice.save();
 
   // Update per-lot invoicedPcs cache and the client balance
-  const affectedLotIds = [...new Set(builtLines.map((l) => l.lotId).filter(Boolean).map(String))];
+  const affectedLotIds = collectLotIds(builtLines);
   await Promise.all(affectedLotIds.map((id) => recalcLotInvoiced(id)));
   await updateClientBalance(clientId);
 
@@ -298,7 +354,7 @@ const updateInvoice = async (req, res) => {
   }
 
   const before = existing.toObject();
-  const prevLotIds = new Set(existing.lines.map((l) => l.lotId).filter(Boolean).map(String));
+  const prevLotIds = new Set(collectLotIds(existing.lines));
 
   const {
     date,
@@ -325,7 +381,7 @@ const updateInvoice = async (req, res) => {
   await existing.save();
 
   // Recalc all lots that were ever on this invoice (added, removed, or kept)
-  const nextLotIds = new Set(existing.lines.map((l) => l.lotId).filter(Boolean).map(String));
+  const nextLotIds = new Set(collectLotIds(existing.lines));
   const allAffected = new Set([...prevLotIds, ...nextLotIds]);
   await Promise.all([...allAffected].map((lid) => recalcLotInvoiced(lid)));
   await updateClientBalance(existing.clientId);
@@ -353,7 +409,7 @@ const cancelInvoice = async (req, res) => {
   invoice.updatedAt = new Date();
   await invoice.save();
 
-  const affectedLotIds = [...new Set(invoice.lines.map((l) => l.lotId).filter(Boolean).map(String))];
+  const affectedLotIds = collectLotIds(invoice.lines);
   await Promise.all(affectedLotIds.map((lid) => recalcLotInvoiced(lid)));
   await updateClientBalance(invoice.clientId);
 
@@ -373,7 +429,7 @@ const deleteInvoice = async (req, res) => {
 
   const before = invoice.toObject();
   const clientId = invoice.clientId;
-  const affectedLotIds = [...new Set(invoice.lines.map((l) => l.lotId).filter(Boolean).map(String))];
+  const affectedLotIds = collectLotIds(invoice.lines);
 
   await Invoice.findByIdAndDelete(id);
   await Promise.all(affectedLotIds.map((lid) => recalcLotInvoiced(lid)));

@@ -38,24 +38,57 @@ const getFinalPcsForLot = async (lotId) => {
  * Sum of pcs across non-cancelled invoice lines referencing this lot, filtered by line type.
  * lineType: 'good' (isDamaged != true) | 'damaged' (isDamaged == true) | 'all'.
  * Excludes a given invoiceId (used during update to ignore the current invoice).
+ *
+ * Attributes pcs from BOTH line shapes:
+ *   - single-lot line  → lines.pcs when lines.lotId == lot
+ *   - merged line      → sum of lines.sources[].pcs where source.lotId == lot
+ * isDamaged is line-level, so the good/damaged filter applies to the whole line either way.
  */
 const sumLinePcsForLot = async (lotId, { excludeInvoiceId = null, lineType = 'all' } = {}) => {
   const lotObjId = new mongoose.Types.ObjectId(lotId);
   const match = {
     status: { $ne: 'cancelled' },
-    'lines.lotId': lotObjId
+    $or: [{ 'lines.lotId': lotObjId }, { 'lines.sources.lotId': lotObjId }]
   };
   if (excludeInvoiceId) {
     match._id = { $ne: new mongoose.Types.ObjectId(excludeInvoiceId) };
   }
-  const lineMatch = { 'lines.lotId': lotObjId };
+  const lineMatch = {};
   if (lineType === 'good') lineMatch['lines.isDamaged'] = { $ne: true };
   else if (lineType === 'damaged') lineMatch['lines.isDamaged'] = true;
+
   const result = await Invoice.aggregate([
     { $match: match },
     { $unwind: '$lines' },
-    { $match: lineMatch },
-    { $group: { _id: null, total: { $sum: '$lines.pcs' } } }
+    ...(Object.keys(lineMatch).length ? [{ $match: lineMatch }] : []),
+    {
+      $project: {
+        pcsForLot: {
+          $cond: [
+            { $gt: [{ $size: { $ifNull: ['$lines.sources', []] } }, 0] },
+            // merged line: sum the pcs of the sources that point at this lot
+            {
+              $sum: {
+                $map: {
+                  input: {
+                    $filter: {
+                      input: '$lines.sources',
+                      as: 's',
+                      cond: { $eq: ['$$s.lotId', lotObjId] }
+                    }
+                  },
+                  as: 's',
+                  in: '$$s.pcs'
+                }
+              }
+            },
+            // single-lot line: full pcs if it points at this lot, else 0
+            { $cond: [{ $eq: ['$lines.lotId', lotObjId] }, '$lines.pcs', 0] }
+          ]
+        }
+      }
+    },
+    { $group: { _id: null, total: { $sum: '$pcsForLot' } } }
   ]);
   return result.length > 0 ? result[0].total : 0;
 };

@@ -340,17 +340,41 @@ const CompanySettingsSchema = new mongoose.Schema({
   },
   defaultInvoicePrefix: { type: String, trim: true, default: 'INV' },
   defaultDocumentType: { type: String, enum: ['BILL_OF_SUPPLY', 'TAX_INVOICE'], default: 'BILL_OF_SUPPLY' },
+  // Notification preferences. lowStock drives the daily low-stock email digest (Vercel Cron).
+  notifications: {
+    lowStock: {
+      enabled: { type: Boolean, default: false },     // master on/off for the digest
+      emails: { type: [String], default: [] },        // recipient addresses (need not be app users)
+      sendHour: { type: Number, default: 9 }          // intended local send hour; actual fire time is fixed in vercel.json (UTC)
+    }
+  },
   updatedAt: { type: Date, default: Date.now }
 });
+
+// One source-lot slice of a MERGED invoice line. A merged line draws its pcs from
+// several lots (two system lots that are physically one combined batch) but prints as a
+// single row. Each source records how many pcs came from a given lot, so per-lot dispatch
+// accounting stays exact even though the line shows one combined total + one description.
+const InvoiceLineSourceSchema = new mongoose.Schema({
+  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot', required: true },
+  lotNumberSnapshot: { type: String, trim: true },     // frozen lot # (audit only; not printed)
+  lotInvoiceNumberSnapshot: { type: Number },          // frozen upstream invoice #
+  pcs: { type: Number, required: true, min: 1, validate: { validator: Number.isInteger, message: 'pcs must be integer' } }
+}, { _id: false });
 
 // InvoiceLine subdoc: one row of an invoice. Each line ships pcs from one of our Lots
 // (or null for legacy/manual entries). lotNumberSnapshot + lotInvoiceNumberSnapshot
 // are frozen at issue time so renaming a Lot later doesn't mutate historical invoices.
+// A line is either SINGLE-LOT (top-level lotId + pcs, sources empty) or MERGED
+// (lotId null, pcs = displayed total, sources[] carries the per-lot split summing to pcs).
 const InvoiceLineSchema = new mongoose.Schema({
   lineNo: { type: Number, required: true, min: 1 },
-  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot' }, // null allowed for legacy lines
+  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot' }, // null allowed for legacy + merged lines
   lotNumberSnapshot: { type: String, trim: true },     // frozen lot # for printing
   lotInvoiceNumberSnapshot: { type: Number },          // frozen upstream invoice #
+  // Per-lot breakdown for a MERGED line (empty for single-lot/legacy lines). pcs across
+  // sources sums to the line's pcs; each source's pcs is what subtracts from that lot.
+  sources: { type: [InvoiceLineSourceSchema], default: [] },
   description: { type: String, required: true, trim: true }, // free-form; prefilled from lot
   remark: { type: String, trim: true }, // optional secondary line printed under description in PDF
   hsnSac: { type: String, trim: true },
@@ -405,6 +429,7 @@ InvoiceSchema.index({ clientId: 1, date: -1 });
 InvoiceSchema.index({ date: 1 });
 InvoiceSchema.index({ status: 1, date: -1 });
 InvoiceSchema.index({ 'lines.lotId': 1 }); // "which invoices reference this lot"
+InvoiceSchema.index({ 'lines.sources.lotId': 1 }); // same, for merged-line source lots
 
 // InvoiceHistory: audit log mirror of VendorPaymentEntryHistory
 const InvoiceHistorySchema = new mongoose.Schema({
@@ -497,6 +522,8 @@ const AccessoryTypeSchema = new mongoose.Schema({
   unit: { type: String, trim: true, default: 'pcs' },           // pcs | mtr
   consumptionStage: { type: String, enum: ['stitching', 'finishing'], default: 'finishing' },
   sortOrder: { type: Number, default: 0 },
+  monitorLowStock: { type: Boolean, default: true },        // per-type kill-switch for low-stock alerts (e.g. turn off Pocketing)
+  reorderLevel: { type: Number, default: 0, min: 0 },       // default threshold for items of this type when the item has none
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
 });
@@ -511,6 +538,8 @@ const AccessoryItemSchema = new mongoose.Schema({
   clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', default: null },
   subType: { type: String, enum: ['label', 'tag', 'button', 'rivet', null], default: null }, // paired streams (label/tag, button/rivet)
   openingStock: { type: Number, default: 0, min: 0 }, // go-live on-hand qty; counts toward available
+  monitorLowStock: { type: Boolean, default: false },       // opt-in: only flagged items are checked for low-stock alerts
+  reorderLevel: { type: Number, default: 0, min: 0 },       // alert when availableQty <= this (0 = fall back to the type's reorderLevel)
   description: { type: String, trim: true },
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }

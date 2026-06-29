@@ -989,6 +989,26 @@ const apiService = {
         return response.data;
       } catch (error) { throw error; }
     },
+    updateType: async (id, data) => {
+      try {
+        const response = await axiosInstance.patch(`api/accessories/types/${id}`, data);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+
+    // Low-stock alerts
+    getLowStock: async () => {
+      try {
+        const response = await axiosInstance.get('api/accessories/low-stock');
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    sendLowStockTest: async () => {
+      try {
+        const response = await axiosInstance.post('api/accessories/low-stock/test');
+        return response.data;
+      } catch (error) { throw error; }
+    },
 
     // Masters / items
     getItems: async ({ typeId, search = '', clientId = '', showInactive = false } = {}) => {

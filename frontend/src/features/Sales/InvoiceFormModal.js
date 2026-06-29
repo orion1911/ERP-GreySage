@@ -19,10 +19,35 @@ import apiService from '../../services/apiService';
 
 const fmtINR = (n) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n) || 0);
 
+// Sum of good-remaining pcs across the lots selected for a merged line.
+const sumRemaining = (mergeLots) => (mergeLots || []).reduce((a, l) => a + (Number(l.remainingPcs) || 0), 0);
+
+// Allocate `total` pcs across the selected lots IN ORDER, each capped at its remainingPcs
+// (FIFO: fill the first lot before spilling into the next). Returns [{ lotId, lotNumber, pcs }].
+// If total exceeds the combined remaining, the leftover is simply not allocated (the caller
+// then sees sum(sources) < total and blocks submit).
+const computeFifoSources = (mergeLots, total) => {
+  let left = Math.max(0, parseInt(total, 10) || 0);
+  const out = [];
+  for (const lot of (mergeLots || [])) {
+    if (left <= 0) break;
+    const cap = Math.max(0, Number(lot.remainingPcs) || 0);
+    const take = Math.min(cap, left);
+    if (take > 0) {
+      out.push({ lotId: lot._id, lotNumber: lot.lotNumber, pcs: take });
+      left -= take;
+    }
+  }
+  return out;
+};
+
 const emptyLine = {
   lotId: null,
   lotNumber: '',
   lotInvoiceNumber: '',
+  merged: false,      // true ⇒ this line draws from several lots, printed as one row
+  mergeLots: [],      // selected lot options for a merged line (good pool only)
+  sources: [],        // saved per-lot split [{lotId, lotNumber, pcs}] — used to lock merged lines on edit
   description: '',
   remark: '',
   hsnSac: '',
@@ -120,19 +145,32 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
         // The toggle is hidden when editing, so this stays fixed at the hydrated value.
         damagedMode: (editInvoice.lines || []).some((l) => l.isDamaged),
         roundOff: editInvoice.roundOff || 0,
-        lines: (editInvoice.lines || []).map((l) => ({
-          lotId: l.lotId || null,
-          lotNumber: l.lotNumberSnapshot || '',
-          lotInvoiceNumber: l.lotInvoiceNumberSnapshot || '',
-          description: l.description || '',
-          remark: l.remark || '',
-          hsnSac: l.hsnSac || '',
-          pcs: l.pcs,
-          unit: l.unit || '',
-          rate: l.rate,
-          remainingPcs: null,
-          finalPcs: null
-        }))
+        lines: (editInvoice.lines || []).map((l) => {
+          const merged = Array.isArray(l.sources) && l.sources.length > 0;
+          return {
+            lotId: l.lotId || null,
+            lotNumber: l.lotNumberSnapshot || '',
+            lotInvoiceNumber: l.lotInvoiceNumberSnapshot || '',
+            merged,
+            // Best-effort option-shaped objects so the (disabled) multi-select shows the lots.
+            mergeLots: merged ? l.sources.map((s) => ({
+              _id: s.lotId, lotNumber: s.lotNumberSnapshot, invoiceNumber: s.lotInvoiceNumberSnapshot,
+              remainingPcs: s.pcs, finalPcs: s.pcs
+            })) : [],
+            // Frozen split — merged lines are locked on edit, so this is sent back unchanged.
+            sources: merged ? l.sources.map((s) => ({
+              lotId: s.lotId, lotNumber: s.lotNumberSnapshot, pcs: s.pcs
+            })) : [],
+            description: l.description || '',
+            remark: l.remark || '',
+            hsnSac: l.hsnSac || '',
+            pcs: l.pcs,
+            unit: l.unit || '',
+            rate: l.rate,
+            remainingPcs: null,
+            finalPcs: null
+          };
+        })
       });
     } else if (preset?.client) {
       // Prefilled from the Pending Dispatch page: client + one good-dispatch line for the lot.
@@ -229,9 +267,180 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
     if (!getValues(`lines.${idx}.pcs`)) setValue(`lines.${idx}.pcs`, avail);
   }, [setValue, getValues, damagedMode]);
 
+  // Toggle a line between single-lot and merged (multi-lot) mode; clear the other mode's state.
+  const toggleMerge = useCallback((idx, on) => {
+    setValue(`lines.${idx}.merged`, on);
+    setValue(`lines.${idx}.lotId`, null);
+    setValue(`lines.${idx}.lotNumber`, '');
+    setValue(`lines.${idx}.lotInvoiceNumber`, '');
+    setValue(`lines.${idx}.mergeLots`, []);
+    setValue(`lines.${idx}.sources`, []);
+    setValue(`lines.${idx}.remainingPcs`, null);
+    setValue(`lines.${idx}.finalPcs`, null);
+  }, [setValue]);
+
+  // Pick/clear the lots that make up a merged line. remainingPcs caps the line's total; the
+  // description auto-fills (once) to a combined "LOT A + B" label the user can still edit.
+  const changeMergeLots = useCallback((idx, lots) => {
+    setValue(`lines.${idx}.mergeLots`, lots || []);
+    setValue(`lines.${idx}.remainingPcs`, sumRemaining(lots));
+    if (!getValues(`lines.${idx}.description`) && (lots || []).length) {
+      const first = lots[0];
+      const label = lots.map((l) => l.lotNumber).join(' + ');
+      const desc = `${first.fitStyleName || ''}${first.fabric ? ` (${first.fabric})` : ''} - LOT ${label}`.trim();
+      setValue(`lines.${idx}.description`, desc);
+    }
+  }, [setValue, getValues]);
+
+  // The current per-lot split for a line: frozen sources when editing a merged line, else the
+  // live FIFO allocation of the typed total across the selected lots.
+  const lineSources = (cur) =>
+    (editInvoice && cur.merged) ? (cur.sources || []) : computeFifoSources(cur.mergeLots, cur.pcs);
+
+  // Lot picker cell shared by mobile + desktop. `options` is the single-lot list for that layout
+  // (mobile passes the good/damaged pool, desktop the good pool). The merged multi-select always
+  // uses the client's good lots (lotsForClient).
+  const renderLotField = (idx, cur, options) => {
+    const canCombine = !damagedMode && !!client && !editInvoice;
+    const split = lineSources(cur);
+    return (
+      <>
+        {cur.merged ? (
+          <Controller
+            name={`lines.${idx}.mergeLots`}
+            control={control}
+            render={() => (
+              <Autocomplete
+                multiple
+                size="small"
+                options={lotsForClient}
+                getOptionLabel={(o) => o ? `${o.lotNumber} (Inv ${o.invoiceNumber})` : ''}
+                isOptionEqualToValue={(o, v) => o?._id === v?._id}
+                loading={lotsLoading}
+                value={cur.mergeLots || []}
+                onChange={(_, v) => changeMergeLots(idx, v)}
+                disabled={!client || !!editInvoice}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props}>
+                    <Box>
+                      <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {option.fitStyleName} · {option.fabric} · Remaining {option.remainingPcs} of {option.finalPcs} pcs
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+                renderInput={(params) => (
+                  <TextField {...params} variant="standard" placeholder="Pick lots to combine" />
+                )}
+              />
+            )}
+          />
+        ) : (
+          <Controller
+            name={`lines.${idx}.lotId`}
+            control={control}
+            render={() => (
+              <Autocomplete
+                size="small"
+                options={options}
+                getOptionLabel={(o) => o ? `${o.lotNumber} (Inv ${o.invoiceNumber})` : ''}
+                isOptionEqualToValue={(o, v) => o?._id === v?._id}
+                loading={lotsLoading}
+                value={options.find((l) => String(l._id) === String(cur.lotId)) || null}
+                onChange={(_, v) => handleLotChange(idx, v)}
+                disabled={!damagedMode && !client}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props}>
+                    <Box>
+                      <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {damagedMode
+                          ? `${option.clientName || ''} · ${option.fitStyleName} · ${option.damagedAvailable} damaged pcs`
+                          : `${option.fitStyleName} · ${option.fabric} · Remaining ${option.remainingPcs} of ${option.finalPcs} pcs`}
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+                renderInput={(params) => (
+                  <TextField {...params} variant="standard" placeholder={(damagedMode || client) ? 'Pick a lot' : 'Pick a client first'} />
+                )}
+              />
+            )}
+          />
+        )}
+
+        {cur.merged ? (
+          (cur.mergeLots?.length > 0 || split.length > 0) && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              {split.length > 0
+                ? `Split: ${split.map((s) => `${s.lotNumber || s.lotId}: ${s.pcs}`).join(' · ')}`
+                : 'Enter total pcs to split across the selected lots'}
+              {!editInvoice && cur.mergeLots?.length > 0 ? ` · ${sumRemaining(cur.mergeLots)} available` : ''}
+            </Typography>
+          )
+        ) : (
+          cur.lotNumber && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              Lot {cur.lotNumber} · Inv {cur.lotInvoiceNumber}
+              {cur.remainingPcs !== null && cur.remainingPcs !== undefined ? ` · Remaining ${cur.remainingPcs}` : ''}
+            </Typography>
+          )
+        )}
+
+        {canCombine && (
+          <Button size="small" sx={{ mt: 0.5, minWidth: 0, p: 0.25, fontSize: '0.7rem' }}
+            onClick={() => toggleMerge(idx, !cur.merged)}>
+            {cur.merged ? 'Use single lot' : 'Combine lots'}
+          </Button>
+        )}
+      </>
+    );
+  };
+
   const onSubmit = (data) => {
     if (!data.client?._id) return showSnackbar('Please select a client');
     if (!data.lines || data.lines.length === 0) return showSnackbar('Add at least one line item');
+
+    // Build the line payload. Merged lines send a `sources[]` split (no top-level lotId); the
+    // server re-validates each source against the lot's remaining pool.
+    const outLines = [];
+    for (let i = 0; i < data.lines.length; i++) {
+      const l = data.lines[i];
+      if (l.merged) {
+        const isEditMerged = !!editInvoice && Array.isArray(l.sources) && l.sources.length > 0;
+        const split = isEditMerged ? l.sources : computeFifoSources(l.mergeLots, l.pcs);
+        if (!split.length) return showSnackbar(`Line ${i + 1}: pick lots and a total to combine`);
+        if (!isEditMerged) {
+          const total = parseInt(l.pcs, 10);
+          if (!Number.isInteger(total) || total < 1) return showSnackbar(`Line ${i + 1}: enter the total pcs`);
+          const allocated = split.reduce((a, s) => a + s.pcs, 0);
+          if (allocated !== total) {
+            return showSnackbar(`Line ${i + 1}: total ${total} exceeds ${allocated} available across the selected lots`);
+          }
+        }
+        outLines.push({
+          description: l.description,
+          remark: l.remark,
+          hsnSac: l.hsnSac,
+          unit: l.unit,
+          rate: Number(l.rate),
+          isDamaged: false,
+          sources: split.map((s) => ({ lotId: s.lotId, pcs: s.pcs }))
+        });
+      } else {
+        outLines.push({
+          lotId: l.lotId || null,
+          description: l.description,
+          remark: l.remark,
+          hsnSac: l.hsnSac,
+          pcs: parseInt(l.pcs, 10),
+          unit: l.unit,
+          rate: Number(l.rate),
+          isDamaged: !!data.damagedMode
+        });
+      }
+    }
 
     const payload = {
       date: data.date?.toISOString ? data.date.toISOString() : new Date(data.date).toISOString(),
@@ -241,16 +450,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
       // placeOfSupply omitted on purpose — server derives from client's shipping address.
       // For edits, the snapshot is already frozen and not refreshed.
       roundOff: Number(data.roundOff) || 0,
-      lines: data.lines.map((l) => ({
-        lotId: l.lotId || null,
-        description: l.description,
-        remark: l.remark,
-        hsnSac: l.hsnSac,
-        pcs: parseInt(l.pcs, 10),
-        unit: l.unit,
-        rate: Number(l.rate),
-        isDamaged: !!data.damagedMode
-      }))
+      lines: outLines
     };
 
     setSubmitting(true);
@@ -405,7 +605,8 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                             onChange={(e) => {
                               field.onChange(e.target.checked);
                               // Reset line lot selections — the two pools are different lists.
-                              (getValues('lines') || []).forEach((_, i) => handleLotChange(i, null));
+                              // toggleMerge also clears single-lot fields, so it covers both modes.
+                              (getValues('lines') || []).forEach((_, i) => toggleMerge(i, false));
                             }}
                             color="warning"
                           />
@@ -446,43 +647,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                         </IconButton>
                       </Box>
 
-                      <Controller
-                        name={`lines.${idx}.lotId`}
-                        control={control}
-                        render={() => (
-                          <Autocomplete
-                            size="small"
-                            options={lotOptions}
-                            getOptionLabel={(o) => o ? `${o.lotNumber} (Inv ${o.invoiceNumber})` : ''}
-                            isOptionEqualToValue={(o, v) => o?._id === v?._id}
-                            loading={lotsLoading}
-                            value={lotOptions.find((l) => String(l._id) === String(cur.lotId)) || null}
-                            onChange={(_, v) => handleLotChange(idx, v)}
-                            disabled={!damagedMode && !client}
-                            renderOption={(props, option) => (
-                              <Box component="li" {...props}>
-                                <Box>
-                                  <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {damagedMode
-                                      ? `${option.clientName || ''} · ${option.fitStyleName} · ${option.damagedAvailable} damaged pcs`
-                                      : `${option.fitStyleName} · ${option.fabric} · Remaining ${option.remainingPcs} of ${option.finalPcs} pcs`}
-                                  </Typography>
-                                </Box>
-                              </Box>
-                            )}
-                            renderInput={(params) => (
-                              <TextField {...params} label="Lot # / Invoice #" variant="standard" placeholder={(damagedMode || client) ? 'Pick a lot' : 'Pick a client first'} />
-                            )}
-                          />
-                        )}
-                      />
-                      {cur.lotNumber && (
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                          Lot {cur.lotNumber} · Inv {cur.lotInvoiceNumber}
-                          {remaining !== null && remaining !== undefined ? ` · Remaining ${remaining}` : ''}
-                        </Typography>
-                      )}
+                      {renderLotField(idx, cur, lotOptions)}
 
                       <Controller
                         name={`lines.${idx}.description`}
@@ -525,11 +690,12 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                             render={({ field }) => (
                               <TextField
                                 {...field}
-                                label="Pcs"
+                                label={cur.merged ? 'Total Pcs' : 'Pcs'}
                                 type="number"
                                 variant="standard"
                                 size="small"
                                 fullWidth
+                                disabled={!!editInvoice && cur.merged}
                                 inputProps={{ min: 1, style: { textAlign: 'right' } }}
                                 error={overshoot}
                                 helperText={overshoot ? `Max ${remaining}` : ''}
@@ -592,41 +758,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                       <TableRow key={row.id}>
                         <TableCell>{idx + 1}</TableCell>
                         <TableCell>
-                          <Controller
-                            name={`lines.${idx}.lotId`}
-                            control={control}
-                            render={() => (
-                              <Autocomplete
-                                size="small"
-                                options={lotsForClient}
-                                getOptionLabel={(o) => o ? `${o.lotNumber} (Inv ${o.invoiceNumber})` : ''}
-                                isOptionEqualToValue={(o, v) => o?._id === v?._id}
-                                loading={lotsLoading}
-                                value={lotsForClient.find((l) => String(l._id) === String(cur.lotId)) || null}
-                                onChange={(_, v) => handleLotChange(idx, v)}
-                                disabled={!client}
-                                renderOption={(props, option) => (
-                                  <Box component="li" {...props}>
-                                    <Box>
-                                      <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
-                                      <Typography variant="caption" color="text.secondary">
-                                        {option.fitStyleName} · {option.fabric} · Remaining {option.remainingPcs} of {option.finalPcs} pcs
-                                      </Typography>
-                                    </Box>
-                                  </Box>
-                                )}
-                                renderInput={(params) => (
-                                  <TextField {...params} variant="standard" placeholder={(damagedMode || client) ? 'Pick a lot' : 'Pick a client first'} />
-                                )}
-                              />
-                            )}
-                          />
-                          {cur.lotNumber && (
-                            <Typography variant="caption" color="text.secondary">
-                              Lot {cur.lotNumber} · Inv {cur.lotInvoiceNumber}
-                              {remaining !== null && remaining !== undefined ? ` · Remaining ${remaining}` : ''}
-                            </Typography>
-                          )}
+                          {renderLotField(idx, cur, lotsForClient)}
                         </TableCell>
                         <TableCell>
                           <Controller
@@ -672,6 +804,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                                 type="number"
                                 variant="standard"
                                 size="small"
+                                disabled={!!editInvoice && cur.merged}
                                 inputProps={{ min: 1, style: { textAlign: 'right' } }}
                                 error={overshoot}
                                 helperText={overshoot ? `Max ${remaining}` : ''}

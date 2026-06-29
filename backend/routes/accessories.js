@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const {
   getTypes,
+  updateType,
+  getLowStock,
+  sendLowStockTest,
   getItems,
   getApplicableItems,
   getFinishingItems,
@@ -24,10 +27,15 @@ const {
   getStockSummary,
   getConsumption
 } = require('../controllers/accessoryController');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, restrictTo } = require('../middleware/auth');
 
 // Article types
 router.get('/types', authenticateToken, getTypes);
+router.patch('/types/:id', authenticateToken, restrictTo('admin'), updateType);
+
+// Low-stock alerts
+router.get('/low-stock', authenticateToken, getLowStock);
+router.post('/low-stock/test', authenticateToken, restrictTo('admin'), sendLowStockTest);
 
 // Masters / lookup items
 router.get('/items', authenticateToken, getItems);

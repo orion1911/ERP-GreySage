@@ -82,14 +82,15 @@ const AuthenticatedLayout = ({ isMobile, variant, setVariant }) => {
     let message = error;
     clearTimeout(snackbarTimeout);
 
-    if (typeof error === 'object') {
-      if (error.response.status === 401 || error.response.status === 403) {
+    if (typeof error === 'object' && error !== null) {
+      const status = error.response?.status;
+      if (status === 401 || status === 403) {
         severity = 'sessionError';
       }
-      else if (error.response && error.response.data && error.response.data.error) {
+      else if (error.response?.data?.error) {
         message = error.response.data.error;
       } else {
-        message = error.response.data || 'An error occurred';
+        message = error.response?.data || error.message || 'An error occurred';
       }
     }
     if (severity === 'sessionError') {

@@ -12,5 +12,11 @@
    "src": "/(.*)",
    "dest": "server.js"
   }
+ ],
+ "crons": [
+  {
+   "path": "/api/cron/low-stock-digest",
+   "schedule": "30 3 * * *"
+  }
  ]
 }

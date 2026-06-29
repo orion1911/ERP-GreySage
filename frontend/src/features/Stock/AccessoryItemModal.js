@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import {
   Box, Modal, Typography, IconButton, Grid, TextField, Button,
-  FormControl, InputLabel, Select, MenuItem
+  FormControl, InputLabel, Select, MenuItem, FormControlLabel, Switch
 } from '@mui/material';
 import { Close as CloseIcon, Save as SaveIcon, Publish as PublishIcon } from '@mui/icons-material';
 import apiService from '../../services/apiService';
@@ -22,9 +22,11 @@ function AccessoryItemModal({ open, onClose, type, clients, editItem, onSaved })
 
   const defaultValues = {
     name: '', rate: '', clientId: '', subType: '', openingStock: '', description: '', isActive: true,
+    monitorLowStock: false, reorderLevel: '',
   };
 
-  const { control, handleSubmit, reset, setValue, formState: { errors } } = useForm({ defaultValues, mode: 'onChange' });
+  const { control, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm({ defaultValues, mode: 'onChange' });
+  const monitorLowStock = watch('monitorLowStock');
 
   useEffect(() => {
     if (isEdit && editItem) {
@@ -35,6 +37,8 @@ function AccessoryItemModal({ open, onClose, type, clients, editItem, onSaved })
       setValue('openingStock', editItem.openingStock ?? '');
       setValue('description', editItem.description || '');
       setValue('isActive', editItem.isActive !== false);
+      setValue('monitorLowStock', !!editItem.monitorLowStock);
+      setValue('reorderLevel', editItem.reorderLevel ? String(editItem.reorderLevel) : '');
     } else {
       reset(defaultValues);
     }
@@ -50,6 +54,8 @@ function AccessoryItemModal({ open, onClose, type, clients, editItem, onSaved })
       subType: hasSubType ? (data.subType || null) : null,
       openingStock: Number(data.openingStock) || 0,
       description: data.description,
+      monitorLowStock: !!data.monitorLowStock,
+      reorderLevel: data.monitorLowStock ? (Number(data.reorderLevel) || 0) : 0,
     };
     if (isEdit) payload.isActive = data.isActive;
 
@@ -134,6 +140,26 @@ function AccessoryItemModal({ open, onClose, type, clients, editItem, onSaved })
                   <TextField {...field} label="Description" fullWidth margin="normal" variant="standard" />
                 )} />
             </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Controller name="monitorLowStock" control={control}
+                render={({ field }) => (
+                  <FormControlLabel sx={{ mt: 2 }}
+                    control={<Switch checked={!!field.value} onChange={e => field.onChange(e.target.checked)} />}
+                    label="Monitor low stock" />
+                )} />
+            </Grid>
+            {monitorLowStock && (
+              <Grid size={{ xs: 6, md: 6 }}>
+                <Controller name="reorderLevel" control={control}
+                  rules={{ pattern: { value: /^\d*\.?\d*$/, message: 'Numbers only' } }}
+                  render={({ field }) => (
+                    <TextField {...field} label={`Reorder level${type?.unit ? ` (${type.unit})` : ''}`}
+                      fullWidth margin="normal" variant="standard"
+                      error={!!errors.reorderLevel}
+                      helperText={errors.reorderLevel ? errors.reorderLevel.message : 'Alert at/below this (0 = use type default)'} />
+                  )} />
+              </Grid>
+            )}
             {isEdit && (
               <Grid size={{ xs: 12, md: 6 }}>
                 <Controller name="isActive" control={control}

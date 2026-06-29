@@ -1,5 +1,10 @@
 const { Client } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
+const { getOrSet, bumpVersion } = require('../services/cache');
+
+// Cache namespace + TTL for the client catalog (low write / high read).
+const CLIENTS = 'clients';
+const CLIENTS_TTL = 600; // 10 min backstop; writes bump the version for instant freshness
 
 const generateClientCodePrefix = (name) => {
   if (!name) return '';
@@ -44,18 +49,22 @@ const createClient = async (req, res) => {
     isActive: true
   });
   await client.save();
+  await bumpVersion(CLIENTS); // invalidate cached client lists
   //await logAction(req.user.userId, 'create_client', 'Client', client._id, `Created client: ${client.name}`);
   res.status(201).json(client);
 };
 
 const getClients = async (req, res) => {
   const { search, showInactive } = req.query;
-  // Default to active-only; include inactive (alongside active) when the catalog toggle is on.
-  const query = {};
-  if (showInactive !== 'true') query.isActive = true;
-  if (search) query.name = { $regex: search, $options: 'i' };
-  // Honour the user-defined display order; fall back to name for ties / legacy rows.
-  const clients = await Client.find(query).sort({ sortOrder: 1, name: 1 });
+  // Read-through cache keyed by the two query params that vary the result.
+  const clients = await getOrSet(CLIENTS, [search, showInactive], CLIENTS_TTL, async () => {
+    // Default to active-only; include inactive (alongside active) when the catalog toggle is on.
+    const query = {};
+    if (showInactive !== 'true') query.isActive = true;
+    if (search) query.name = { $regex: search, $options: 'i' };
+    // Honour the user-defined display order; fall back to name for ties / legacy rows.
+    return Client.find(query).sort({ sortOrder: 1, name: 1 });
+  });
   res.json(clients);
 };
 
@@ -69,6 +78,7 @@ const reorderClients = async (req, res) => {
     await Client.bulkWrite(order.map((id, i) => ({
       updateOne: { filter: { _id: id }, update: { $set: { sortOrder: i } } }
     })));
+    await bumpVersion(CLIENTS); // invalidate cached client lists
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -81,6 +91,7 @@ const toggleClientActive = async (req, res) => {
 
   client.isActive = !client.isActive;
   await client.save();
+  await bumpVersion(CLIENTS); // invalidate cached client lists
   //await logAction(req.user.userId, 'toggle_client_active', 'Client', client._id, `Client ${client.name} ${client.isActive ? 'enabled' : 'disabled'}`);
   res.json(client);
 };
@@ -107,6 +118,7 @@ const updateClient = async (req, res) => {
   if (billingFirms !== undefined) client.billingFirms = billingFirms;
 
   await client.save();
+  await bumpVersion(CLIENTS); // invalidate cached client lists
   //await logAction(req.user.userId, 'update_client', 'Client', client._id, `Updated client: ${client.name}`);
   res.json(client);
 };

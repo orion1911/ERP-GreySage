@@ -1,5 +1,10 @@
 const { FitStyle } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
+const { getOrSet, bumpVersion } = require('../services/cache');
+
+// Cache namespace + TTL for the fit-style catalog (low write / high read).
+const FITSTYLES = 'fitstyles';
+const FITSTYLES_TTL = 600; // 10 min backstop; writes bump the version for instant freshness
 
 const createFitStyle = async (req, res) => {
   const fitStyle = new FitStyle(req.body);
@@ -7,18 +12,22 @@ const createFitStyle = async (req, res) => {
   const lastOrdered = await FitStyle.findOne().sort({ sortOrder: -1 }).select('sortOrder');
   fitStyle.sortOrder = (lastOrdered?.sortOrder ?? -1) + 1;
   await fitStyle.save();
+  await bumpVersion(FITSTYLES); // invalidate cached fit-style lists
   //await logAction(req.user.userId, 'create_fitstyle', 'FitStyle', fitStyle._id, `Created fit style: ${fitStyle.name}`);
   res.status(201).json(fitStyle);
 };
 
 const getFitStyles = async (req, res) => {
   const { search, showInactive } = req.query;
-  // Default to active-only; include inactive when the catalog toggle is on.
-  const query = {};
-  if (showInactive !== 'true') query.isActive = true;
-  if (search) query.name = { $regex: search, $options: 'i' };
-  // Honour the user-defined display order; fall back to name for ties / legacy rows.
-  const fitStyles = await FitStyle.find(query).sort({ sortOrder: 1, name: 1 });
+  // Read-through cache keyed by the two query params that vary the result.
+  const fitStyles = await getOrSet(FITSTYLES, [search, showInactive], FITSTYLES_TTL, async () => {
+    // Default to active-only; include inactive when the catalog toggle is on.
+    const query = {};
+    if (showInactive !== 'true') query.isActive = true;
+    if (search) query.name = { $regex: search, $options: 'i' };
+    // Honour the user-defined display order; fall back to name for ties / legacy rows.
+    return FitStyle.find(query).sort({ sortOrder: 1, name: 1 });
+  });
   res.json(fitStyles);
 };
 
@@ -32,6 +41,7 @@ const reorderFitStyles = async (req, res) => {
     await FitStyle.bulkWrite(order.map((id, i) => ({
       updateOne: { filter: { _id: id }, update: { $set: { sortOrder: i } } }
     })));
+    await bumpVersion(FITSTYLES); // invalidate cached fit-style lists
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -44,6 +54,7 @@ const toggleFitStyleActive = async (req, res) => {
 
   fitStyle.isActive = !fitStyle.isActive;
   await fitStyle.save();
+  await bumpVersion(FITSTYLES); // invalidate cached fit-style lists
   //await logAction(req.user.userId, 'toggle_fitstyle_active', 'FitStyle', fitStyle._id, `FitStyle ${fitStyle.name} ${fitStyle.isActive ? 'enabled' : 'disabled'}`);
   res.json(fitStyle);
 };
@@ -58,6 +69,7 @@ const updateFitStyle = async (req, res) => {
   if (isActive !== undefined) fitStyle.isActive = isActive;
 
   await fitStyle.save();
+  await bumpVersion(FITSTYLES); // invalidate cached fit-style lists
   res.status(200).json(fitStyle);
 };
 

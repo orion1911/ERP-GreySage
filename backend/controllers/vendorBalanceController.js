@@ -10,6 +10,14 @@ const {
 } = require('../services/vendorBalanceService');
 const { logAction } = require('../utils/logger');
 const XLSX = require('xlsx');
+const { getOrSet, bumpVersion } = require('../services/cache');
+
+// Vendor ledger reads are expensive (balance = production amounts − payments). HYBRID
+// invalidation (Approach A): writes in THIS controller bump the per-type version for instant
+// freshness; production-side changes (stitching/washing/finishing) self-heal via the short TTL
+// backstop, so a balance is never stale by more than VLEDGER_TTL.
+const VLEDGER_TTL = 180; // seconds
+const vledgerNs = (vendorType) => `vledger:${vendorType}`;
 
 /**
  * Get all vendors and balances for a vendor type
@@ -22,33 +30,35 @@ const getVendorsByType = async (req, res) => {
       return res.status(400).json({ error: 'Valid vendor type required (stitching, washing, finishing)' });
     }
 
-    const VendorModel = {
-      'stitching': StitchingVendor,
-      'washing': WashingVendor,
-      'finishing': FinishingVendor
-    }[vendorType];
+    const vendorsWithBalance = await getOrSet(vledgerNs(vendorType), ['all'], VLEDGER_TTL, async () => {
+      const VendorModel = {
+        'stitching': StitchingVendor,
+        'washing': WashingVendor,
+        'finishing': FinishingVendor
+      }[vendorType];
 
-    // Include inactive vendors too — payments to deactivated vendors must still be manageable.
-    const vendors = await VendorModel.find({});
-    
-    // Get balance for each vendor
-    const vendorsWithBalance = await Promise.all(
-      vendors.map(async (vendor) => {
-        const balance = await getVendorBalance(vendor._id, vendorType);
-        return {
-          ...vendor.toObject(),
-          balance: balance ? {
-            totalDue: balance.totalDue,
-            totalPaid: balance.totalPaid,
-            remainingBalance: balance.remainingBalance
-          } : {
-            totalDue: 0,
-            totalPaid: 0,
-            remainingBalance: 0
-          }
-        };
-      })
-    );
+      // Include inactive vendors too — payments to deactivated vendors must still be manageable.
+      const vendors = await VendorModel.find({});
+
+      // Get balance for each vendor
+      return Promise.all(
+        vendors.map(async (vendor) => {
+          const balance = await getVendorBalance(vendor._id, vendorType);
+          return {
+            ...vendor.toObject(),
+            balance: balance ? {
+              totalDue: balance.totalDue,
+              totalPaid: balance.totalPaid,
+              remainingBalance: balance.remainingBalance
+            } : {
+              totalDue: 0,
+              totalPaid: 0,
+              remainingBalance: 0
+            }
+          };
+        })
+      );
+    });
 
     res.json(vendorsWithBalance);
   } catch (error) {
@@ -71,30 +81,34 @@ const getVendorLotsWithPayments = async (req, res) => {
       return res.status(400).json({ error: 'Invalid vendor type' });
     }
 
-    const result = await getVendorLotsDetails(vendorId, vendorType);
+    const responseData = await getOrSet(vledgerNs(vendorType), ['lots', vendorId], VLEDGER_TTL, async () => {
+      const result = await getVendorLotsDetails(vendorId, vendorType);
 
-    // Calculate summary
-    let totalAmount = 0;
-    let totalPayment = 0;
-    let totalBalance = 0;
+      // Calculate summary
+      let totalAmount = 0;
+      let totalPayment = 0;
+      let totalBalance = 0;
 
-    for (const lot of result.lots) {
-      totalAmount += lot.amount;
-      totalPayment += lot.totalPayment + lot.shortAdjustmentAmount;
-      totalBalance += lot.balance;
-    }
-
-    res.json({
-      lots: result.lots,
-      vendorLevelSummary: result.vendorLevelSummary,
-      summary: {
-        totalAmount,
-        totalPayment,
-        totalBalance,
-        totalQuantity: result.lots.reduce((sum, lot) => sum + lot.quantity, 0),
-        totalShortQuantity: result.lots.reduce((sum, lot) => sum + lot.quantityShort, 0)
+      for (const lot of result.lots) {
+        totalAmount += lot.amount;
+        totalPayment += lot.totalPayment + lot.shortAdjustmentAmount;
+        totalBalance += lot.balance;
       }
+
+      return {
+        lots: result.lots,
+        vendorLevelSummary: result.vendorLevelSummary,
+        summary: {
+          totalAmount,
+          totalPayment,
+          totalBalance,
+          totalQuantity: result.lots.reduce((sum, lot) => sum + lot.quantity, 0),
+          totalShortQuantity: result.lots.reduce((sum, lot) => sum + lot.quantityShort, 0)
+        }
+      };
     });
+
+    res.json(responseData);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -132,6 +146,7 @@ const addVendorPayment = async (req, res) => {
       `Recorded vendor-level payment of ${amount} for ${vendorType} vendor`
     );
 
+    await bumpVersion(vledgerNs(vendorType)); // invalidate cached vendor ledgers for this type
     res.json({ message: 'Payment recorded successfully', entry: paymentEntry });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -172,6 +187,7 @@ const addShortAdjustment = async (req, res) => {
       `Recorded vendor-level short adjustment: ${shortQuantity} qty @ ${shortRate} rate - ${vendorType} vendor`
     );
 
+    await bumpVersion(vledgerNs(vendorType)); // invalidate cached vendor ledgers for this type
     res.json({ message: 'Short adjustment recorded successfully', entry: paymentEntry });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -189,13 +205,15 @@ const getVendorPaymentEntries = async (req, res) => {
       return res.status(400).json({ error: 'vendorId and vendorType required' });
     }
 
-    const entries = await VendorPaymentEntry.find({
-      vendorId,
-      vendorType
-    })
-    .populate('createdBy', 'username')
-    .populate('lotId', 'lotNumber')
-    .sort({ paymentDate: -1, createdAt: -1 });
+    const entries = await getOrSet(vledgerNs(vendorType), ['entries', vendorId], VLEDGER_TTL, () =>
+      VendorPaymentEntry.find({
+        vendorId,
+        vendorType
+      })
+        .populate('createdBy', 'username')
+        .populate('lotId', 'lotNumber')
+        .sort({ paymentDate: -1, createdAt: -1 })
+    );
 
     res.json(entries);
   } catch (error) {
@@ -214,7 +232,7 @@ const getVendorBalanceSummary = async (req, res) => {
       return res.status(400).json({ error: 'vendorId and vendorType required' });
     }
 
-    const balance = await getVendorBalance(vendorId, vendorType);
+    const balance = await getOrSet(vledgerNs(vendorType), ['summary', vendorId], VLEDGER_TTL, () => getVendorBalance(vendorId, vendorType));
     res.json(balance);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -307,6 +325,7 @@ const updatePaymentEntry = async (req, res) => {
       req.user.userId
     );
 
+    await bumpVersion(vledgerNs(entry.vendorType)); // invalidate cached vendor ledgers for this type
     res.json({ message: 'Payment entry updated successfully', entry: updatedEntry });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -355,6 +374,7 @@ const deletePaymentEntry = async (req, res) => {
       req.user.userId
     );
 
+    await bumpVersion(vledgerNs(entry.vendorType)); // invalidate cached vendor ledgers for this type
     res.json({ message: 'Payment entry deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -603,6 +623,7 @@ const markLotPaid = async (req, res) => {
 
     const entity = vendorType.charAt(0).toUpperCase() + vendorType.slice(1); // Stitching/Washing/Finishing
     await logAction(req.user.userId, 'mark_lot_paid', entity, record._id, `Marked ${vendorType} lot ${record.isPaid ? 'paid' : 'unpaid'}`);
+    await bumpVersion(vledgerNs(vendorType)); // invalidate cached vendor ledgers for this type
     res.json({ recordId: record._id, lotId, isPaid: record.isPaid });
   } catch (error) {
     res.status(500).json({ error: error.message });

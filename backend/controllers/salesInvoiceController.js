@@ -20,6 +20,8 @@ const {
   getInvoiceHistory
 } = require('../services/invoiceService');
 const { updateClientBalance } = require('../services/clientBalanceService');
+const { bumpVersion } = require('../services/cache');
+const CLEDGER = 'cledger'; // must match clientBalanceController's client-ledger cache namespace
 const { logAction } = require('../utils/logger');
 
 const toPlainAddress = (addr) => (addr?.toObject ? addr.toObject() : (addr || {}));
@@ -335,6 +337,7 @@ const createInvoice = async (req, res) => {
   const affectedLotIds = collectLotIds(builtLines);
   await Promise.all(affectedLotIds.map((id) => recalcLotInvoiced(id)));
   await updateClientBalance(clientId);
+  await bumpVersion(CLEDGER); // invalidate cached client ledgers (invoice changes totalInvoiced)
 
   await recordInvoiceHistory(invoice._id, 'create', null, invoice.toObject(), req.user.userId);
   await logAction(req.user.userId, 'create_invoice', 'Invoice', invoice._id, `Created invoice ${invoiceNumber} for ${client.name}`);
@@ -385,6 +388,7 @@ const updateInvoice = async (req, res) => {
   const allAffected = new Set([...prevLotIds, ...nextLotIds]);
   await Promise.all([...allAffected].map((lid) => recalcLotInvoiced(lid)));
   await updateClientBalance(existing.clientId);
+  await bumpVersion(CLEDGER); // invalidate cached client ledgers (invoice changes totalInvoiced)
 
   await recordInvoiceHistory(existing._id, 'update', before, existing.toObject(), req.user.userId);
   await logAction(req.user.userId, 'update_invoice', 'Invoice', existing._id, `Updated invoice ${existing.invoiceNumber}`);
@@ -412,6 +416,7 @@ const cancelInvoice = async (req, res) => {
   const affectedLotIds = collectLotIds(invoice.lines);
   await Promise.all(affectedLotIds.map((lid) => recalcLotInvoiced(lid)));
   await updateClientBalance(invoice.clientId);
+  await bumpVersion(CLEDGER); // invalidate cached client ledgers (invoice changes totalInvoiced)
 
   await recordInvoiceHistory(invoice._id, 'cancel', before, invoice.toObject(), req.user.userId);
   await logAction(req.user.userId, 'cancel_invoice', 'Invoice', invoice._id, `Cancelled invoice ${invoice.invoiceNumber}`);
@@ -434,6 +439,7 @@ const deleteInvoice = async (req, res) => {
   await Invoice.findByIdAndDelete(id);
   await Promise.all(affectedLotIds.map((lid) => recalcLotInvoiced(lid)));
   await updateClientBalance(clientId);
+  await bumpVersion(CLEDGER); // invalidate cached client ledgers (invoice changes totalInvoiced)
 
   await recordInvoiceHistory(id, 'delete', before, null, req.user.userId);
   await logAction(req.user.userId, 'delete_invoice', 'Invoice', id, `Deleted invoice ${invoice.invoiceNumber}`);

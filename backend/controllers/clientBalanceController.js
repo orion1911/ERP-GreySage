@@ -10,27 +10,36 @@ const {
   getClientPaymentHistory
 } = require('../services/clientBalanceService');
 const { logAction } = require('../utils/logger');
+const { getOrSet, bumpVersion } = require('../services/cache');
+
+// Client ledger reads are expensive (balance = opening + invoiced − paid − adjustments).
+// HYBRID invalidation (Approach A): writes here AND sales-invoice writes bump the shared
+// version for instant freshness; anything else self-heals within the short TTL backstop.
+const CLEDGER = 'cledger';
+const CLEDGER_TTL = 180; // seconds
 
 /**
  * GET /api/client-balances/clients-with-balance — list of active clients + their balance.
  */
 const getClientsWithBalance = async (req, res) => {
-  const clients = await Client.find({ isActive: true }).sort({ name: 1 });
-  const withBalance = await Promise.all(
-    clients.map(async (c) => {
-      const balance = await getClientBalance(c._id);
-      return {
-        ...c.toObject(),
-        balance: balance ? {
-          openingBalance: balance.openingBalance,
-          totalInvoiced: balance.totalInvoiced,
-          totalPaid: balance.totalPaid,
-          totalAdjustment: balance.totalAdjustment,
-          remainingBalance: balance.remainingBalance
-        } : { openingBalance: 0, totalInvoiced: 0, totalPaid: 0, totalAdjustment: 0, remainingBalance: 0 }
-      };
-    })
-  );
+  const withBalance = await getOrSet(CLEDGER, ['all'], CLEDGER_TTL, async () => {
+    const clients = await Client.find({ isActive: true }).sort({ name: 1 });
+    return Promise.all(
+      clients.map(async (c) => {
+        const balance = await getClientBalance(c._id);
+        return {
+          ...c.toObject(),
+          balance: balance ? {
+            openingBalance: balance.openingBalance,
+            totalInvoiced: balance.totalInvoiced,
+            totalPaid: balance.totalPaid,
+            totalAdjustment: balance.totalAdjustment,
+            remainingBalance: balance.remainingBalance
+          } : { openingBalance: 0, totalInvoiced: 0, totalPaid: 0, totalAdjustment: 0, remainingBalance: 0 }
+        };
+      })
+    );
+  });
   res.json(withBalance);
 };
 
@@ -40,7 +49,7 @@ const getClientsWithBalance = async (req, res) => {
 const getClientLedger = async (req, res) => {
   const { clientId } = req.query;
   if (!clientId) return res.status(400).json({ error: 'clientId required' });
-  const result = await getClientInvoicesWithPayments(clientId);
+  const result = await getOrSet(CLEDGER, ['ledger', clientId], CLEDGER_TTL, () => getClientInvoicesWithPayments(clientId));
   res.json(result);
 };
 
@@ -50,7 +59,7 @@ const getClientLedger = async (req, res) => {
 const getClientBalanceSummary = async (req, res) => {
   const { clientId } = req.query;
   if (!clientId) return res.status(400).json({ error: 'clientId required' });
-  const balance = await getClientBalance(clientId);
+  const balance = await getOrSet(CLEDGER, ['summary', clientId], CLEDGER_TTL, () => getClientBalance(clientId));
   res.json(balance);
 };
 
@@ -67,6 +76,7 @@ const setOpeningBalance = async (req, res) => {
   await balance.save();
   const updated = await updateClientBalance(clientId);
   await logAction(req.user.userId, 'set_opening_balance', 'ClientBalance', clientId, `Set opening balance to ${openingBalance}`);
+  await bumpVersion(CLEDGER); // invalidate cached client ledgers
   res.json(updated);
 };
 
@@ -88,6 +98,7 @@ const addClientPayment = async (req, res) => {
   });
   await recordPaymentEntryHistory(entry._id, clientId, 'payment', 'create', null, entry.toObject(), req.user.userId);
   await logAction(req.user.userId, 'add_client_payment', 'ClientPayment', clientId, `Recorded payment of ${amount} from client`);
+  await bumpVersion(CLEDGER); // invalidate cached client ledgers
   res.json({ message: 'Payment recorded', entry });
 };
 
@@ -109,6 +120,7 @@ const addClientAdjustment = async (req, res) => {
   });
   await recordPaymentEntryHistory(entry._id, clientId, 'adjustment', 'create', null, entry.toObject(), req.user.userId);
   await logAction(req.user.userId, 'add_client_adjustment', 'ClientPayment', clientId, `Recorded adjustment of ${amount}`);
+  await bumpVersion(CLEDGER); // invalidate cached client ledgers
   res.json({ message: 'Adjustment recorded', entry });
 };
 
@@ -118,10 +130,12 @@ const addClientAdjustment = async (req, res) => {
 const getClientPaymentEntries = async (req, res) => {
   const { clientId } = req.query;
   if (!clientId) return res.status(400).json({ error: 'clientId required' });
-  const entries = await ClientPaymentEntry.find({ clientId })
-    .populate('createdBy', 'username')
-    .populate('invoiceId', 'invoiceNumber')
-    .sort({ paymentDate: -1, createdAt: -1 });
+  const entries = await getOrSet(CLEDGER, ['entries', clientId], CLEDGER_TTL, () =>
+    ClientPaymentEntry.find({ clientId })
+      .populate('createdBy', 'username')
+      .populate('invoiceId', 'invoiceNumber')
+      .sort({ paymentDate: -1, createdAt: -1 })
+  );
   res.json(entries);
 };
 
@@ -168,6 +182,7 @@ const updatePaymentEntry = async (req, res) => {
   };
   await recordPaymentEntryHistory(entry._id, entry.clientId, entry.paymentType, 'update', before, after, req.user.userId);
 
+  await bumpVersion(CLEDGER); // invalidate cached client ledgers
   res.json({ message: 'Payment entry updated', entry });
 };
 
@@ -192,6 +207,7 @@ const deletePaymentEntry = async (req, res) => {
   await ClientPaymentEntry.findByIdAndDelete(entryId);
   await updateClientBalance(clientId);
   await recordPaymentEntryHistory(entryId, clientId, entry.paymentType, 'delete', before, null, req.user.userId);
+  await bumpVersion(CLEDGER); // invalidate cached client ledgers
   res.json({ message: 'Payment entry deleted' });
 };
 

@@ -1,6 +1,14 @@
 const mongoose = require('mongoose');
 const { Lot, Client, FitStyle, Stitching, Washing, Finishing, VendorBalance, Invoice, AuditLog, StitchingVendor, WashingVendor } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
+const { getOrSet } = require('../services/cache');
+
+// Dashboard aggregations are expensive and depend on many write paths (lots, stitching,
+// washing, finishing, invoices), so precise invalidation isn't practical. They use a SHORT
+// TTL instead — slightly stale dashboard numbers are acceptable. (Correctness-critical reads
+// like ledgers use version bumps, not TTL.) One shared namespace; we never bump it.
+const DASH = 'dashboard';
+const DASH_TTL = 180; // seconds
 
 // Helper function to get date range filter
 const getDateRangeFilter = (query) => {
@@ -197,6 +205,7 @@ const getMonthlyTrendData = async (fromDate, toDate, category, clientId) => {
 // Lot Status Summary (replaces Order Status Summary)
 const getOrderStatusSummary = async (req, res) => {
   try {
+    const payload = await getOrSet(DASH, ['orderStatusSummary', req.query.fromDate, req.query.toDate, req.query.clientId], DASH_TTL, async () => {
     const dateFilter = getDateRangeFilter(req.query);
     const { fromDate, toDate } = req.query;
     const clientId = req.query.clientId;
@@ -629,11 +638,13 @@ const getOrderStatusSummary = async (req, res) => {
       labels: sinceInceptionTrend.labels
     };
 
-    res.json({
+    return {
       overall: overallData,
       byClient: clientData,
       sinceInception: sinceInceptionData
+    };
     });
+    res.json(payload);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error fetching lot status summary' });
@@ -642,6 +653,7 @@ const getOrderStatusSummary = async (req, res) => {
 
 const getAllClientCompletedQuantities = async (req, res) => {
   try {
+    const payload = await getOrSet(DASH, ['clientCompletedQty', req.query.fromDate, req.query.toDate, req.query.interval || 'monthly'], DASH_TTL, async () => {
     const dateFilter = getDateRangeFilter(req.query);
     const { fromDate, toDate, interval = 'monthly' } = req.query;
 
@@ -756,13 +768,15 @@ const getAllClientCompletedQuantities = async (req, res) => {
       ? `${intervalLabel} from ${new Date(fromDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} - ${new Date(toDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
       : `${intervalLabel} Range`;
 
-    res.json({
+    return {
       totalQuantity,
       trend,
       interval: intervalText,
       series: barChartSeries,
       labels,
+    };
     });
+    res.json(payload);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error fetching client monthly quantities' });
@@ -772,6 +786,7 @@ const getAllClientCompletedQuantities = async (req, res) => {
 // Lots by Status (replaces Orders by Status)
 const getOrdersByStatus = async (req, res) => {
   try {
+    const payload = await getOrSet(DASH, ['ordersByStatus', req.query.fromDate, req.query.toDate], DASH_TTL, async () => {
     const dateFilter = getDateRangeFilter(req.query);
     const lotsByStatus = await Lot.aggregate([
       { $match: dateFilter },
@@ -791,7 +806,7 @@ const getOrdersByStatus = async (req, res) => {
       if (idx >= 0 && idx < 6) data[idx] = item.count;
     });
 
-    res.json({
+    return {
       labels,
       datasets: [{
         label: 'Number of Lots',
@@ -800,7 +815,9 @@ const getOrdersByStatus = async (req, res) => {
         borderColor: ['#CC4B67', '#2A8CBF', '#CCA33D', '#3A9999', '#7A52CC', '#1F8077'],
         borderWidth: 1
       }]
+    };
     });
+    res.json(payload);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error fetching lot status data' });
@@ -810,6 +827,7 @@ const getOrdersByStatus = async (req, res) => {
 // Production Stages
 const getProductionStages = async (req, res) => {
   try {
+    const payload = await getOrSet(DASH, ['productionStages', req.query.fromDate, req.query.toDate], DASH_TTL, async () => {
     const dateFilter = getDateRangeFilter(req.query);
 
     const stitchingData = await Stitching.aggregate([
@@ -855,7 +873,7 @@ const getProductionStages = async (req, res) => {
     ]);
     const finishingCount = finishingData[0]?.totalQuantity || 0;
 
-    res.json({
+    return {
       labels: ['Stitching', 'Washing', 'Finishing'],
       datasets: [{
         label: 'Lots in Stage',
@@ -864,7 +882,9 @@ const getProductionStages = async (req, res) => {
         borderColor: ['#CC4B67', '#2A8CBF', '#CCA33D'],
         borderWidth: 1
       }]
+    };
     });
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching production stages data' });
   }
@@ -873,6 +893,7 @@ const getProductionStages = async (req, res) => {
 // Financial Summary: Invoice Status
 const getInvoiceStatus = async (req, res) => {
   try {
+    const payload = await getOrSet(DASH, ['invoiceStatus', req.query.fromDate, req.query.toDate, req.user.role, req.user.role === 'user' ? String(req.user._id) : 'all'], DASH_TTL, async () => {
     const dateFilter = getDateRangeFilter(req.query);
     const userFilter = req.user.role === 'user' ? { userId: req.user._id } : {};
     const invoiceStatus = await Invoice.aggregate([
@@ -892,7 +913,7 @@ const getInvoiceStatus = async (req, res) => {
       if (index !== -1) data[index] = item.count;
     });
 
-    res.json({
+    return {
       labels,
       datasets: [{
         label: 'Invoice Status',
@@ -901,7 +922,9 @@ const getInvoiceStatus = async (req, res) => {
         borderColor: ['#CC4B67', '#2A8CBF', '#CCA33D'],
         borderWidth: 1
       }]
+    };
     });
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching invoice status data' });
   }
@@ -910,6 +933,7 @@ const getInvoiceStatus = async (req, res) => {
 // Vendor Performance: Quantity Shortfalls
 const getVendorPerformance = async (req, res) => {
   try {
+    const payload = await getOrSet(DASH, ['vendorPerformance', req.query.fromDate, req.query.toDate], DASH_TTL, async () => {
     const dateFilter = getDateRangeFilter(req.query);
 
     const stitchingShortfall = await Stitching.aggregate([
@@ -928,7 +952,7 @@ const getVendorPerformance = async (req, res) => {
       { $group: { _id: null, avgShortfall: { $avg: '$quantityShort' } } }
     ]);
 
-    res.json({
+    return {
       labels: ['Stitching Vendors', 'Washing Vendors', 'Finishing Vendors'],
       datasets: [{
         label: 'Average Quantity Shortfall',
@@ -941,7 +965,9 @@ const getVendorPerformance = async (req, res) => {
         borderColor: ['#CC4B67', '#2A8CBF', '#CCA33D'],
         borderWidth: 1
       }]
+    };
     });
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching vendor performance data' });
   }
@@ -976,6 +1002,7 @@ const getAuditLog = async (req, res) => {
 // Top Fit Styles (from Lot.fitStyleId + Stitching for quantities)
 const getTopFitStyles = async (req, res) => {
   try {
+    const payload = await getOrSet(DASH, ['topFitStyles', req.query.fromDate, req.query.toDate], DASH_TTL, async () => {
     const dateFilter = getDateRangeFilter(req.query);
     const topFitStyles = await Lot.aggregate([
       { $match: dateFilter },
@@ -1013,7 +1040,7 @@ const getTopFitStyles = async (req, res) => {
       { $limit: 5 }
     ]);
 
-    res.json({
+    return {
       labels: topFitStyles.map(item => item.name),
       datasets: [{
         label: 'Quantity Ordered',
@@ -1022,7 +1049,9 @@ const getTopFitStyles = async (req, res) => {
         borderColor: ['#2A8CBF', '#CC4B67', '#CCA33D', '#3A9999', '#7A52CC'],
         borderWidth: 1
       }]
+    };
     });
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching top fit styles data' });
   }
@@ -1031,6 +1060,7 @@ const getTopFitStyles = async (req, res) => {
 // Production Dashboard (mirrors DashboardExcel logic using MongoDB data)
 const getProductionDashboard = async (req, res) => {
   try {
+    const payload = await getOrSet(DASH, ['productionDashboard', req.query.fromDate, req.query.toDate], DASH_TTL, async () => {
     const startTime = Date.now();
     const { fromDate, toDate } = req.query;
 
@@ -1315,7 +1345,7 @@ const getProductionDashboard = async (req, res) => {
 
     const processingTime = (Date.now() - startTime) / 1000;
 
-    res.json({
+    return {
       total_pcs: totalPcs,
       total_making: totalMaking,
       total_in_washing: totalInWashing,
@@ -1331,7 +1361,9 @@ const getProductionDashboard = async (req, res) => {
       stitching_breakdown: stitching_rows,
       processing_time: processingTime,
       timestamp: new Date().toISOString(),
+    };
     });
+    res.json(payload);
   } catch (error) {
     console.error('Error in production dashboard:', error);
     res.status(500).json({ error: 'Error fetching production dashboard data' });

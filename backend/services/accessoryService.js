@@ -136,6 +136,8 @@ const getAccessoryStock = async (accessoryTypeId, clientId) => {
       subType: item.subType,
       isActive: item.isActive,
       openingStock: openingQty,
+      monitorLowStock: !!item.monitorLowStock,
+      reorderLevel: item.reorderLevel || 0,
       client: item.clientId ? { _id: item.clientId._id, name: item.clientId.name, clientCode: item.clientId.clientCode } : null,
       purchasedQty,
       consumedQty,
@@ -350,6 +352,65 @@ const getPaymentHistory = async (entryId) => {
     .sort({ createdAt: -1 });
 };
 
+// Low-stock items for the alert digest. Reuses the per-item available math from
+// getStockSummary, then applies the monitoring rule:
+//   effectiveLevel = item.reorderLevel>0 ? item.reorderLevel : (type.reorderLevel||0)
+//   low = type.monitorLowStock && item.monitorLowStock && effectiveLevel>0 && available<=effectiveLevel
+// Returns one row per low item: { itemId, name, typeName, unit, availableQty, effectiveLevel, clientName }.
+const getLowStockItems = async () => {
+  const types = await AccessoryType.find().lean();
+  const typeById = new Map(types.map(t => [String(t._id), t]));
+
+  // Only consider items whose type is monitored AND that are themselves monitored.
+  // Type defaults to monitored (schema default true); only an explicit false excludes it.
+  // Items are opt-in (default false), so nothing fires until an item is explicitly flagged.
+  const monitoredTypeIds = types.filter(t => t.monitorLowStock !== false).map(t => t._id);
+  if (!monitoredTypeIds.length) return [];
+
+  const items = await AccessoryItem.find({
+    accessoryTypeId: { $in: monitoredTypeIds },
+    monitorLowStock: true
+  }).populate('clientId', 'name').lean();
+  if (!items.length) return [];
+
+  const itemIds = items.map(i => i._id);
+  const purchaseAgg = await AccessoryPurchase.aggregate([
+    { $unwind: '$lines' },
+    { $match: { 'lines.accessoryItemId': { $in: itemIds } } },
+    { $group: { _id: '$lines.accessoryItemId', qty: { $sum: '$lines.qty' } } }
+  ]);
+  const purchasedByItem = new Map(purchaseAgg.map(r => [String(r._id), r.qty]));
+  const consumeAgg = await AccessoryConsumption.aggregate([
+    { $match: { accessoryItemId: { $in: itemIds } } },
+    { $group: { _id: '$accessoryItemId', qty: { $sum: '$qty' } } }
+  ]);
+  const consumedByItem = new Map(consumeAgg.map(r => [String(r._id), r.qty]));
+
+  const low = [];
+  for (const item of items) {
+    const type = typeById.get(String(item.accessoryTypeId));
+    if (!type) continue;
+    const effectiveLevel = item.reorderLevel > 0 ? item.reorderLevel : (type.reorderLevel || 0);
+    if (effectiveLevel <= 0) continue; // no threshold set anywhere → not monitored
+    const purchased = purchasedByItem.get(String(item._id)) || 0;
+    const consumed = consumedByItem.get(String(item._id)) || 0;
+    const availableQty = (item.openingStock || 0) + purchased - consumed;
+    if (availableQty <= effectiveLevel) {
+      low.push({
+        itemId: item._id,
+        name: item.name,
+        typeName: type.name,
+        unit: type.unit || 'pcs',
+        availableQty,
+        effectiveLevel,
+        clientName: item.clientId ? item.clientId.name : null
+      });
+    }
+  }
+  low.sort((a, b) => a.typeName.localeCompare(b.typeName) || a.name.localeCompare(b.name));
+  return low;
+};
+
 module.exports = {
   DEFAULT_ACCESSORY_TYPES,
   seedAccessoryTypes,
@@ -357,6 +418,7 @@ module.exports = {
   getAccessoryBalance,
   getAccessoryStock,
   getStockSummary,
+  getLowStockItems,
   getApplicableItems,
   replaceConsumption,
   FINISHING_CONSUMABLE_KEYS,

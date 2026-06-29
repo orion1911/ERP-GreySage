@@ -8,7 +8,27 @@ const axiosInstance = axios.create({
   // Send the httpOnly refresh-token cookie on every request to the API origin.
   // Without this the browser strips third-party cookies even with SameSite=None.
   withCredentials: true,
+  // Fail instead of hanging forever. On a restored browser tab (stale sockets) or a
+  // cold serverless/M0 backend a request could otherwise stay pending indefinitely,
+  // leaving the UI stuck on skeletons with no error to trigger logout/redirect.
+  // Generous so heavy reports/exports still complete; bump if an export needs longer.
+  timeout: 30000,
 });
+
+// Centralized, deterministic logout. Used when the session is genuinely dead (refresh
+// failed) so recovery never depends on a component catching the error or on a delayed
+// snackbar. Clears credentials and hard-redirects to /login exactly once (guarded
+// against redirect loops on the login page itself).
+let loggingOut = false;
+const forceLogout = () => {
+  if (loggingOut) return;
+  loggingOut = true;
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  if (!window.location.pathname.startsWith('/login')) {
+    window.location.href = '/login';
+  }
+};
 
 // ─── Request: attach access token ──────────────────────────────────────────
 axiosInstance.interceptors.request.use(
@@ -63,17 +83,22 @@ axiosInstance.interceptors.response.use(
     const { response, config } = error;
     if (!response || response.status !== 401 || !config) return Promise.reject(error);
     if (isAuthEndpoint(config.url)) return Promise.reject(error);
-    if (config._retried) return Promise.reject(error); // already tried once — give up
+    if (config._retried) {
+      // A retry with a freshly-refreshed token still 401'd → the session is dead.
+      forceLogout();
+      return Promise.reject(error);
+    }
 
     try {
       const newToken = await performRefresh();
-      if (!newToken) return Promise.reject(error);
+      if (!newToken) { forceLogout(); return Promise.reject(error); }
       config._retried = true;
       config.headers = { ...config.headers, Authorization: `Bearer ${newToken}` };
       return axiosInstance(config);
     } catch (refreshErr) {
-      // Refresh failed → genuine session expiry. Let the 401 propagate so the
-      // app-level showSnackbar treats it as a sessionError and redirects to /login.
+      // Refresh failed → genuine session expiry. Clear credentials and redirect now,
+      // deterministically, instead of relying on a component's catch + a delayed snackbar.
+      forceLogout();
       return Promise.reject(error);
     }
   }

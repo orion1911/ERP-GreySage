@@ -9,6 +9,7 @@ const {
   Lot
 } = require('../mongodb_schema');
 const accessoryService = require('../services/accessoryService');
+const { runLowStockDigest } = require('./cronController');
 const { logAction } = require('../utils/logger');
 
 // ─── ARTICLE TYPES ────────────────────────────────────────────────────────────
@@ -17,6 +18,20 @@ const getTypes = async (req, res) => {
   await accessoryService.seedAccessoryTypes();
   const types = await AccessoryType.find().sort({ sortOrder: 1 }).lean();
   res.json(types);
+};
+
+// PATCH /types/:id — currently the low-stock alert settings (monitor on/off + default
+// reorder level) for an article type. The type is otherwise seed-managed.
+const updateType = async (req, res) => {
+  const { id } = req.params;
+  const { monitorLowStock, reorderLevel } = req.body;
+  const type = await AccessoryType.findById(id);
+  if (!type) return res.status(404).json({ error: 'Accessory type not found' });
+  if (monitorLowStock !== undefined) type.monitorLowStock = !!monitorLowStock;
+  if (reorderLevel !== undefined) type.reorderLevel = Math.max(0, Number(reorderLevel) || 0);
+  await type.save();
+  await logAction(req.user.userId, 'update_accessory_type', 'AccessoryType', type._id, `Updated low-stock settings for "${type.name}"`);
+  res.json(type);
 };
 
 // ─── MASTERS / ITEMS ──────────────────────────────────────────────────────────
@@ -61,7 +76,7 @@ const getFinishingItems = async (req, res) => {
 };
 
 const createItem = async (req, res) => {
-  const { accessoryTypeId, name, rate, clientId, subType, description, openingStock } = req.body;
+  const { accessoryTypeId, name, rate, clientId, subType, description, openingStock, monitorLowStock, reorderLevel } = req.body;
   if (!accessoryTypeId || !name) {
     return res.status(400).json({ error: 'accessoryTypeId and name are required' });
   }
@@ -79,6 +94,8 @@ const createItem = async (req, res) => {
     clientId: clientId || null,
     subType: subType || null,
     openingStock: Number(openingStock) || 0,
+    monitorLowStock: !!monitorLowStock,
+    reorderLevel: Math.max(0, Number(reorderLevel) || 0),
     description
   });
   await item.save();
@@ -89,7 +106,7 @@ const createItem = async (req, res) => {
 
 const updateItem = async (req, res) => {
   const { id } = req.params;
-  const { name, rate, clientId, subType, description, isActive, openingStock } = req.body;
+  const { name, rate, clientId, subType, description, isActive, openingStock, monitorLowStock, reorderLevel } = req.body;
   const item = await AccessoryItem.findById(id);
   if (!item) return res.status(404).json({ error: 'Accessory item not found' });
 
@@ -98,6 +115,8 @@ const updateItem = async (req, res) => {
   if (clientId !== undefined) item.clientId = clientId || null;
   if (subType !== undefined) item.subType = subType || null;
   if (openingStock !== undefined) item.openingStock = Number(openingStock) || 0;
+  if (monitorLowStock !== undefined) item.monitorLowStock = !!monitorLowStock;
+  if (reorderLevel !== undefined) item.reorderLevel = Math.max(0, Number(reorderLevel) || 0);
   if (description !== undefined) item.description = description;
   if (isActive !== undefined) item.isActive = isActive;
   await item.save();
@@ -376,8 +395,31 @@ const getConsumption = async (req, res) => {
   res.json(rows);
 };
 
+// ─── LOW-STOCK ALERTS ───────────────────────────────────────────────────────────
+
+// GET /low-stock — current low items (drives the in-app highlight/filter).
+const getLowStock = async (req, res) => {
+  const items = await accessoryService.getLowStockItems();
+  res.json(items);
+};
+
+// POST /low-stock/test — admin-only: run the digest now to the configured recipients,
+// bypassing the enabled flag so delivery can be verified before turning it on.
+const sendLowStockTest = async (req, res) => {
+  try {
+    const result = await runLowStockDigest({ force: true });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('low-stock test send failed:', err.message);
+    res.status(500).json({ success: false, error: err.message || 'Failed to send test digest' });
+  }
+};
+
 module.exports = {
   getTypes,
+  updateType,
+  getLowStock,
+  sendLowStockTest,
   getItems,
   getApplicableItems,
   getFinishingItems,

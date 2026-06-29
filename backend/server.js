@@ -25,6 +25,7 @@ const balancesRoutes = require('./routes/balances');
 const reportRoutes = require('./routes/reports');
 const auditLogRoutes = require('./routes/auditLogs');
 const emailRoutes = require('./routes/contact');
+const cronRoutes = require('./routes/cron');
 
 // Middleware
 const errorHandler = require('./middleware/error');
@@ -136,6 +137,7 @@ app.use('/api', balancesRoutes);
 app.use('/api', reportRoutes);
 app.use('/api', auditLogRoutes);
 app.use('/api', emailRoutes);
+app.use('/api/cron', cronRoutes); // machine-triggered (Vercel Cron); guarded by CRON_SECRET, not JWT
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((req, res) => res.status(404).json({ success: false, error: 'Route not found' }));

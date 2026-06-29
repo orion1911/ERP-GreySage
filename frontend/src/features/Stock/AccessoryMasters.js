@@ -22,6 +22,32 @@ function AccessoryMasters({ type, clients, clientFilter = '', onStockChange }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState(null);
 
+  // Per-type low-stock alert settings (monitor on/off + default reorder level for items
+  // of this type that have no level of their own).
+  const [typeMonitor, setTypeMonitor] = useState(type.monitorLowStock !== false);
+  const [typeReorder, setTypeReorder] = useState(type.reorderLevel ? String(type.reorderLevel) : '');
+  const [savingType, setSavingType] = useState(false);
+
+  useEffect(() => {
+    setTypeMonitor(type.monitorLowStock !== false);
+    setTypeReorder(type.reorderLevel ? String(type.reorderLevel) : '');
+  }, [type._id, type.monitorLowStock, type.reorderLevel]);
+
+  const saveTypeSettings = () => {
+    setSavingType(true);
+    apiService.accessories.updateType(type._id, {
+      monitorLowStock: typeMonitor,
+      reorderLevel: typeMonitor ? (Number(typeReorder) || 0) : 0,
+    })
+      .then(() => showSnackbar('Low-stock settings saved', 'success'))
+      .catch(err => showSnackbar(err))
+      .finally(() => setSavingType(false));
+  };
+
+  // Effective threshold + low flag for a stock row (mirrors the backend rule).
+  const effLevel = (item) => (item.reorderLevel > 0 ? item.reorderLevel : (Number(typeReorder) || 0));
+  const isLow = (item) => typeMonitor && item.monitorLowStock && effLevel(item) > 0 && item.availableQty <= effLevel(item);
+
   // showSnackbar omitted from deps on purpose — its identity changes every layout render,
   // so depending on it would refetch on each setSnackbar and loop on a 401.
   const load = useCallback(() => {
@@ -79,6 +105,25 @@ function AccessoryMasters({ type, clients, clientFilter = '', onStockChange }) {
             </Button>
           </Grid>
         </Grid>
+        <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px dashed', borderColor: 'divider' }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} flexWrap="wrap">
+            <FormControlLabel
+              control={<Switch size="small" checked={typeMonitor} onChange={e => setTypeMonitor(e.target.checked)} />}
+              label={<Typography variant="caption">Monitor low stock for {type.name}</Typography>}
+            />
+            {typeMonitor && (
+              <TextField
+                label={`Default reorder level${type?.unit ? ` (${type.unit})` : ''}`}
+                value={typeReorder} onChange={e => setTypeReorder(e.target.value.replace(/[^\d.]/g, ''))}
+                variant="standard" size="small" sx={{ width: 200 }}
+                helperText="Used when an item has no level"
+              />
+            )}
+            <Button size="small" variant="outlined" onClick={saveTypeSettings} disabled={savingType}>
+              {savingType ? 'Saving…' : 'Save alert settings'}
+            </Button>
+          </Stack>
+        </Box>
       </Paper>
 
       {loading ? (
@@ -110,6 +155,7 @@ function AccessoryMasters({ type, clients, clientFilter = '', onStockChange }) {
                   <Typography variant="caption" color={item.availableQty < 0 ? 'error.main' : 'text.primary'}>
                     Avail: <b>{fmtQty(item.availableQty)}</b>
                   </Typography>
+                  {isLow(item) && <Chip size="small" color="warning" label="LOW" sx={{ height: 18, fontSize: 10 }} />}
                 </Stack>
               </CardContent>
             </Card>
@@ -149,6 +195,7 @@ function AccessoryMasters({ type, clients, clientFilter = '', onStockChange }) {
                   <TableCell align="right">{fmtQty(item.consumedQty)}</TableCell>
                   <TableCell align="right" sx={{ color: item.availableQty < 0 ? 'error.main' : 'inherit', fontWeight: 'bold' }}>
                     {fmtQty(item.availableQty)}
+                    {isLow(item) && <Chip size="small" color="warning" label="LOW" sx={{ ml: 0.5, height: 18, fontSize: 10 }} />}
                   </TableCell>
                   <TableCell align="center">
                     {item.isActive ? <Chip size="small" color="success" label="Active" /> : <Chip size="small" label="Inactive" />}

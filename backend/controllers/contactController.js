@@ -1,7 +1,6 @@
-const sgMail = require('@sendgrid/mail');
-// require('dotenv').config();
-
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// Marketing "contact us" form → emails the configured inbox. Routed through the shared
+// emailService (Brevo SMTP), so there's one email path for the whole app.
+const { sendEmail: sendMail } = require('../services/emailService');
 
 // HTML email template as a string
 const generateEmailTemplate = ({ email, message }) => `
@@ -41,20 +40,17 @@ const sendEmail = async (req, res) => {
     return res.status(400).json({ error: 'Email and message are required' });
   }
 
-  const msg = {
-    to: process.env.FROM_EMAIL, // Send to your verified email
-    from: process.env.FROM_EMAIL, // Must match verified sender
-    replyTo: email, // Allows replying to the sender’s email
-    subject: 'G R E Y S A G E  -  New Potential Client',
-    text: `Email: ${email}\nMessage: ${message}`, // Plain text fallback
-    html: generateEmailTemplate({ email, message }), // HTML template
-  };
-
   try {
-    await sgMail.send(msg);
+    await sendMail({
+      to: process.env.FROM_EMAIL,   // deliver to your verified inbox
+      replyTo: email,               // reply goes straight to the prospect
+      subject: 'G R E Y S A G E  -  New Potential Client',
+      text: `Email: ${email}\nMessage: ${message}`,
+      html: generateEmailTemplate({ email, message }),
+    });
     res.status(200).json({ message: 'Email sent successfully!' });
   } catch (error) {
-    console.error('Error sending email:', error.response?.body || error);
+    console.error('Error sending email:', error.message);
     res.status(500).json({ error: 'Failed to send email' });
   }
 };

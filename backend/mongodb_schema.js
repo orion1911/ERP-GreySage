@@ -340,6 +340,14 @@ const CompanySettingsSchema = new mongoose.Schema({
   },
   defaultInvoicePrefix: { type: String, trim: true, default: 'INV' },
   defaultDocumentType: { type: String, enum: ['BILL_OF_SUPPLY', 'TAX_INVOICE'], default: 'BILL_OF_SUPPLY' },
+  // Notification preferences. lowStock drives the daily low-stock email digest (Vercel Cron).
+  notifications: {
+    lowStock: {
+      enabled: { type: Boolean, default: false },     // master on/off for the digest
+      emails: { type: [String], default: [] },        // recipient addresses (need not be app users)
+      sendHour: { type: Number, default: 9 }          // intended local send hour; actual fire time is fixed in vercel.json (UTC)
+    }
+  },
   updatedAt: { type: Date, default: Date.now }
 });
 
@@ -514,6 +522,8 @@ const AccessoryTypeSchema = new mongoose.Schema({
   unit: { type: String, trim: true, default: 'pcs' },           // pcs | mtr
   consumptionStage: { type: String, enum: ['stitching', 'finishing'], default: 'finishing' },
   sortOrder: { type: Number, default: 0 },
+  monitorLowStock: { type: Boolean, default: true },        // per-type kill-switch for low-stock alerts (e.g. turn off Pocketing)
+  reorderLevel: { type: Number, default: 0, min: 0 },       // default threshold for items of this type when the item has none
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
 });
@@ -528,6 +538,8 @@ const AccessoryItemSchema = new mongoose.Schema({
   clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', default: null },
   subType: { type: String, enum: ['label', 'tag', 'button', 'rivet', null], default: null }, // paired streams (label/tag, button/rivet)
   openingStock: { type: Number, default: 0, min: 0 }, // go-live on-hand qty; counts toward available
+  monitorLowStock: { type: Boolean, default: false },       // opt-in: only flagged items are checked for low-stock alerts
+  reorderLevel: { type: Number, default: 0, min: 0 },       // alert when availableQty <= this (0 = fall back to the type's reorderLevel)
   description: { type: String, trim: true },
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }

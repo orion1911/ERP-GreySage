@@ -3,9 +3,9 @@ import { useOutletContext } from 'react-router-dom';
 import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import {
   Box, Typography, Grid, TextField, Button, Paper, Divider, MenuItem,
-  IconButton, Stack, Chip
+  IconButton, Stack, Chip, FormControlLabel, Switch
 } from '@mui/material';
-import { Save as SaveIcon, Add as AddIcon, Delete as DeleteIcon, Numbers as NumbersIcon } from '@mui/icons-material';
+import { Save as SaveIcon, Add as AddIcon, Delete as DeleteIcon, Numbers as NumbersIcon, NotificationsActive as NotificationsIcon, Send as SendIcon } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 
 const sectionPaperSx = { p: { xs: 2, md: 3 }, mb: 2 };
@@ -28,6 +28,13 @@ function CompanySettings() {
   const [counterInfo, setCounterInfo] = useState(null);
   const [counterDraft, setCounterDraft] = useState(''); // user-entered "last issued" sequence
   const [counterSaving, setCounterSaving] = useState(false);
+
+  // Low-stock email digest config (lives on CompanySettings.notifications.lowStock)
+  const [notif, setNotif] = useState({ enabled: false, emails: [], sendHour: 9 });
+  const [emailDraft, setEmailDraft] = useState('');
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [testSending, setTestSending] = useState(false);
+
   const { control, handleSubmit, reset } = useForm({
     defaultValues: {
       name: '', addressLines: [{ value: '' }],
@@ -57,6 +64,12 @@ function CompanySettings() {
           defaultInvoicePrefix: s.defaultInvoicePrefix || 'INV',
           defaultDocumentType: s.defaultDocumentType || 'BILL_OF_SUPPLY'
         });
+        const ls = (s.notifications && s.notifications.lowStock) || {};
+        setNotif({
+          enabled: !!ls.enabled,
+          emails: Array.isArray(ls.emails) ? ls.emails : [],
+          sendHour: Number.isFinite(ls.sendHour) ? ls.sendHour : 9,
+        });
       })
       .catch((e) => showSnackbar(e))
       .finally(() => setLoading(false));
@@ -84,6 +97,38 @@ function CompanySettings() {
       })
       .catch((e) => showSnackbar(e))
       .finally(() => setCounterSaving(false));
+  };
+
+  const addEmail = () => {
+    const e = emailDraft.trim().toLowerCase();
+    if (!e) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return showSnackbar('Enter a valid email address');
+    if (notif.emails.includes(e)) { setEmailDraft(''); return; }
+    setNotif((n) => ({ ...n, emails: [...n.emails, e] }));
+    setEmailDraft('');
+  };
+
+  const removeEmail = (e) => setNotif((n) => ({ ...n, emails: n.emails.filter((x) => x !== e) }));
+
+  const saveNotifications = () => {
+    setNotifSaving(true);
+    apiService.companySettings.updateSettings({ notifications: { lowStock: notif } })
+      .then(() => showSnackbar('Notification settings saved', 'success'))
+      .catch((e) => showSnackbar(e))
+      .finally(() => setNotifSaving(false));
+  };
+
+  const sendTestDigest = () => {
+    setTestSending(true);
+    apiService.accessories.sendLowStockTest()
+      .then((r) => {
+        if (r.sent) showSnackbar(`Test digest sent (${r.low} low item${r.low === 1 ? '' : 's'})`, 'success');
+        else if (r.reason === 'nothing low') showSnackbar('Nothing is low right now — no email sent', 'info');
+        else if (r.reason === 'no recipients') showSnackbar('Add at least one recipient and save first', 'warning');
+        else showSnackbar(`Not sent (${r.reason || 'unknown'})`, 'warning');
+      })
+      .catch((e) => showSnackbar(e))
+      .finally(() => setTestSending(false));
   };
 
   const onSubmit = (data) => {
@@ -282,6 +327,66 @@ function CompanySettings() {
             </Button>
           </Grid>
         </Grid>
+      </Paper>
+
+      <Paper sx={{ ...sectionPaperSx, mt: 3 }}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+          <NotificationsIcon fontSize="small" />
+          <Typography variant="h6">Low-Stock Email Alerts</Typography>
+        </Stack>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          A once-a-day email lists every monitored accessory item at or below its reorder level. Turn an item on (and set a reorder level) in <b>Stock Management</b>. The email is only sent when something is actually low.
+        </Typography>
+
+        <FormControlLabel
+          control={<Switch checked={notif.enabled} onChange={(e) => setNotif((n) => ({ ...n, enabled: e.target.checked }))} />}
+          label="Enable daily low-stock email"
+        />
+
+        <Grid container spacing={2} sx={{ mt: 0.5 }} alignItems="flex-end">
+          <Grid size={{ xs: 12, md: 8 }}>
+            <Stack direction="row" spacing={1} alignItems="flex-end">
+              <TextField
+                label="Add recipient email" value={emailDraft}
+                onChange={(e) => setEmailDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
+                fullWidth variant="standard" type="email"
+              />
+              <Button size="small" startIcon={<AddIcon />} onClick={addEmail}>Add</Button>
+            </Stack>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
+              {notif.emails.length === 0 && (
+                <Typography variant="caption" color="text.secondary">No recipients yet.</Typography>
+              )}
+              {notif.emails.map((e) => (
+                <Chip key={e} label={e} onDelete={() => removeEmail(e)} size="small" />
+              ))}
+            </Stack>
+          </Grid>
+          <Grid size={{ xs: 6, md: 2 }}>
+            <TextField
+              label="Send hour (local)" type="number"
+              value={notif.sendHour}
+              onChange={(e) => setNotif((n) => ({ ...n, sendHour: e.target.value }))}
+              fullWidth variant="standard" inputProps={{ min: 0, max: 23 }}
+              helperText="Informational"
+            />
+          </Grid>
+        </Grid>
+
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 2 }}>
+          <Button variant="contained" startIcon={<SaveIcon />} onClick={saveNotifications}
+            disabled={notifSaving} fullWidth={isMobile}>
+            {notifSaving ? 'Saving…' : 'Save Notification Settings'}
+          </Button>
+          <Button variant="outlined" startIcon={<SendIcon />} onClick={sendTestDigest}
+            disabled={testSending} fullWidth={isMobile}>
+            {testSending ? 'Sending…' : 'Send test digest now'}
+          </Button>
+        </Stack>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+          The test uses saved recipients — save before testing. It still only sends if at least one item is currently low.
+        </Typography>
       </Paper>
     </Box>
   );

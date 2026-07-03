@@ -35,6 +35,57 @@ const getFinalPcsForLot = async (lotId) => {
 };
 
 /**
+ * Batched equivalent of getFinalPcsForLot for a SET of lots — 3 aggregations total instead
+ * of the 1–3 sequential queries per lot the single-lot version costs. Returns a Map keyed by
+ * String(lotId) → finalPcs. Replicates the SAME Finishing → Washing → Stitching fallback:
+ * presence of ANY doc in a stage (not a non-zero sum) is what stops the fallback, so a lot
+ * with a Washing doc whose washDetails are empty resolves to 0 and does NOT fall through to
+ * Stitching — exactly as the per-lot version does.
+ */
+const getFinalPcsForLots = async (lotIds = []) => {
+  const result = new Map();
+  if (!lotIds.length) return result;
+  const ids = lotIds.map((id) => new mongoose.Types.ObjectId(id));
+
+  // Finishing: flat quantity/quantityShort per doc → sum(quantity - short) grouped by lot.
+  const finishingAgg = await Finishing.aggregate([
+    { $match: { lotId: { $in: ids } } },
+    { $group: { _id: '$lotId', total: { $sum: { $subtract: ['$quantity', { $ifNull: ['$quantityShort', 0] }] } } } }
+  ]);
+  // Washing: quantities live in a washDetails[] array → reduce the array per doc, sum per lot.
+  // Grouping by lotId (not $unwind) means a lot with a Washing doc but empty washDetails still
+  // appears with total 0, preserving the fallback-stops-on-presence semantics above.
+  const washingAgg = await Washing.aggregate([
+    { $match: { lotId: { $in: ids } } },
+    { $group: {
+        _id: '$lotId',
+        total: { $sum: { $reduce: {
+          input: { $ifNull: ['$washDetails', []] },
+          initialValue: 0,
+          in: { $add: ['$$value', { $subtract: ['$$this.quantity', { $ifNull: ['$$this.quantityShort', 0] }] }] }
+        } } }
+    } }
+  ]);
+  // Stitching: same flat shape as Finishing.
+  const stitchingAgg = await Stitching.aggregate([
+    { $match: { lotId: { $in: ids } } },
+    { $group: { _id: '$lotId', total: { $sum: { $subtract: ['$quantity', { $ifNull: ['$quantityShort', 0] }] } } } }
+  ]);
+
+  const fin = new Map(finishingAgg.map((r) => [String(r._id), r.total]));
+  const wash = new Map(washingAgg.map((r) => [String(r._id), r.total]));
+  const stitch = new Map(stitchingAgg.map((r) => [String(r._id), r.total]));
+
+  for (const id of lotIds) {
+    const key = String(id);
+    if (fin.has(key)) result.set(key, fin.get(key));
+    else if (wash.has(key)) result.set(key, wash.get(key));
+    else result.set(key, stitch.get(key) || 0);
+  }
+  return result;
+};
+
+/**
  * Sum of pcs across non-cancelled invoice lines referencing this lot, filtered by line type.
  * lineType: 'good' (isDamaged != true) | 'damaged' (isDamaged == true) | 'all'.
  * Excludes a given invoiceId (used during update to ignore the current invoice).
@@ -177,9 +228,13 @@ const getLotsAvailableForDispatch = async ({ clientId, search, limit = 50 } = {}
     .sort({ createdAt: -1 })
     .limit(limit * 3); // overfetch; we filter remaining > 0 below
 
+  // One batched read for all fetched lots (3 aggregations) instead of 1–3 sequential
+  // queries per lot. The loop below is now pure in-memory — no awaits.
+  const finalPcsByLot = await getFinalPcsForLots(lots.map((l) => l._id));
+
   const results = [];
   for (const lot of lots) {
-    const finalPcs = await getFinalPcsForLot(lot._id);
+    const finalPcs = finalPcsByLot.get(String(lot._id)) || 0;
     const damagedPcs = lot.damagedPcs || 0;
     const invoicedPcs = lot.invoicedPcs || 0;
     // Good remaining excludes damaged pcs (those are sold combined to a third party).
@@ -445,6 +500,7 @@ const getInvoiceHistory = async (invoiceId) => {
 
 module.exports = {
   getFinalPcsForLot,
+  getFinalPcsForLots,
   sumInvoicedPcsForLot,
   sumGoodInvoicedForLot,
   sumDamagedSoldForLot,

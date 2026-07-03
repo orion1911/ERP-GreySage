@@ -180,6 +180,9 @@ const LotSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 LotSchema.index({ lotNumber: 1, invoiceNumber: 1 });
+// Drives getLotsAvailableForDispatch / getPendingDispatch: filter by clientId, sort by
+// createdAt desc. Without this, that query is a collection scan + in-memory sort.
+LotSchema.index({ clientId: 1, createdAt: -1 });
 
 // Stitching Schema: Stage #2 - Stitching/Making by vendors
 const StitchingSchema = new mongoose.Schema({

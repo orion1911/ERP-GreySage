@@ -14,11 +14,27 @@ const { Redis } = require('@upstash/redis');
 let redis = null;
 let initFailed = false;
 
-// Lazily build the singleton. Returns null (cache disabled) if env vars are
-// missing or the client can't be constructed — callers then hit the source.
+// Whether caching is active in this environment. We share ONE Upstash instance across
+// environments, so local dev must NOT read/write the same cache as production. Enabled in
+// production only (Vercel sets NODE_ENV=production; local nodemon does not — the same signal
+// server.js uses). Override with CACHE_ENABLED=true to test caching locally, or
+// CACHE_ENABLED=false to force it off anywhere.
+const cacheEnabled = () => {
+  if (process.env.CACHE_ENABLED === 'true') return true;
+  if (process.env.CACHE_ENABLED === 'false') return false;
+  return process.env.NODE_ENV === 'production';
+};
+
+// Lazily build the singleton. Returns null (cache disabled) when this environment opts out,
+// the env vars are missing, or the client can't be constructed — callers then hit the source.
 const getClient = () => {
   if (redis) return redis;
   if (initFailed) return null;
+  if (!cacheEnabled()) {
+    // Local/dev (or explicitly disabled): skip the shared Upstash cache, read from source.
+    initFailed = true;
+    return null;
+  }
   if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
     // No credentials configured (e.g. local dev without Upstash) — disable quietly.
     initFailed = true;

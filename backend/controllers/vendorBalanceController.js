@@ -10,13 +10,13 @@ const {
 } = require('../services/vendorBalanceService');
 const { logAction } = require('../utils/logger');
 const XLSX = require('xlsx');
-const { getOrSet, bumpVersion } = require('../services/cache');
+const { getOrSet, bumpVersion, TTL } = require('../services/cache');
 
 // Vendor ledger reads are expensive (balance = production amounts − payments). HYBRID
 // invalidation (Approach A): writes in THIS controller bump the per-type version for instant
 // freshness; production-side changes (stitching/washing/finishing) self-heal via the short TTL
 // backstop, so a balance is never stale by more than VLEDGER_TTL.
-const VLEDGER_TTL = 180; // seconds
+const VLEDGER_TTL = TTL.ledger; // env CACHE_TTL_LEDGER; write paths bump the version for instant freshness
 const vledgerNs = (vendorType) => `vledger:${vendorType}`;
 
 /**

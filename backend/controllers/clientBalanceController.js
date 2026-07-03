@@ -10,13 +10,13 @@ const {
   getClientPaymentHistory
 } = require('../services/clientBalanceService');
 const { logAction } = require('../utils/logger');
-const { getOrSet, bumpVersion } = require('../services/cache');
+const { getOrSet, bumpVersion, TTL } = require('../services/cache');
 
 // Client ledger reads are expensive (balance = opening + invoiced − paid − adjustments).
 // HYBRID invalidation (Approach A): writes here AND sales-invoice writes bump the shared
 // version for instant freshness; anything else self-heals within the short TTL backstop.
 const CLEDGER = 'cledger';
-const CLEDGER_TTL = 180; // seconds
+const CLEDGER_TTL = TTL.ledger; // env CACHE_TTL_LEDGER; write paths bump the version for instant freshness
 
 /**
  * GET /api/client-balances/clients-with-balance — list of active clients + their balance.

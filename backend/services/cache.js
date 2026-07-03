@@ -14,6 +14,21 @@ const { Redis } = require('@upstash/redis');
 let redis = null;
 let initFailed = false;
 
+// Cache TTLs (seconds), grouped by data volatility and overridable via env. Read once at load.
+//   masters   — client/fit-style/vendor catalogs: rarely change, bumped on edit → long TTL.
+//   ledger    — client/vendor balance ledgers: write paths bump; TTL is the backstop for
+//               production-driven balance changes that don't bump.
+//   dashboard — expensive aggregations, no bump: short-ish TTL, accepts slight staleness.
+const ttlFromEnv = (v, def) => {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n > 0 ? n : def;
+};
+const TTL = {
+  masters: ttlFromEnv(process.env.CACHE_TTL_MASTERS, 3600),   // 1 hr
+  ledger: ttlFromEnv(process.env.CACHE_TTL_LEDGER, 600),      // 10 min
+  dashboard: ttlFromEnv(process.env.CACHE_TTL_DASHBOARD, 600), // 10 min
+};
+
 // Whether caching is active in this environment. We share ONE Upstash instance across
 // environments, so local dev must NOT read/write the same cache as production. Enabled in
 // production only (Vercel sets NODE_ENV=production; local nodemon does not — the same signal
@@ -107,4 +122,4 @@ const bumpVersion = async (resource) => {
   }
 };
 
-module.exports = { getOrSet, bumpVersion, keyFor };
+module.exports = { getOrSet, bumpVersion, keyFor, TTL };

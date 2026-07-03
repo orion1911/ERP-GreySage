@@ -1,10 +1,10 @@
 const { FitStyle } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
-const { getOrSet, bumpVersion } = require('../services/cache');
+const { getOrSet, bumpVersion, TTL } = require('../services/cache');
 
 // Cache namespace + TTL for the fit-style catalog (low write / high read).
 const FITSTYLES = 'fitstyles';
-const FITSTYLES_TTL = 600; // 10 min backstop; writes bump the version for instant freshness
+const FITSTYLES_TTL = TTL.masters; // env CACHE_TTL_MASTERS; writes bump the version for instant freshness
 
 const createFitStyle = async (req, res) => {
   const fitStyle = new FitStyle(req.body);

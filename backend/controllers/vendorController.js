@@ -1,9 +1,9 @@
 const { FabricVendor, StitchingVendor, WashingVendor, FinishingVendor } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
-const { getOrSet, bumpVersion } = require('../services/cache');
+const { getOrSet, bumpVersion, TTL } = require('../services/cache');
 
 // Each vendor type is its own cache namespace (keyed by vendorType, e.g. 'FabricVendor').
-const VENDORS_TTL = 600; // 10 min backstop; writes bump the version for instant freshness
+const VENDORS_TTL = TTL.masters; // env CACHE_TTL_MASTERS; writes bump the version for instant freshness
 
 const createVendor = async (req, res, Model, vendorType) => {
   

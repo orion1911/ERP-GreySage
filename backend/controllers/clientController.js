@@ -1,10 +1,10 @@
 const { Client } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
-const { getOrSet, bumpVersion } = require('../services/cache');
+const { getOrSet, bumpVersion, TTL } = require('../services/cache');
 
 // Cache namespace + TTL for the client catalog (low write / high read).
 const CLIENTS = 'clients';
-const CLIENTS_TTL = 600; // 10 min backstop; writes bump the version for instant freshness
+const CLIENTS_TTL = TTL.masters; // env CACHE_TTL_MASTERS; writes bump the version for instant freshness
 
 const generateClientCodePrefix = (name) => {
   if (!name) return '';

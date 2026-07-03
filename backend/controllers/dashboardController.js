@@ -1,14 +1,14 @@
 const mongoose = require('mongoose');
 const { Lot, Client, FitStyle, Stitching, Washing, Finishing, VendorBalance, Invoice, AuditLog, StitchingVendor, WashingVendor } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
-const { getOrSet } = require('../services/cache');
+const { getOrSet, TTL } = require('../services/cache');
 
 // Dashboard aggregations are expensive and depend on many write paths (lots, stitching,
 // washing, finishing, invoices), so precise invalidation isn't practical. They use a SHORT
 // TTL instead — slightly stale dashboard numbers are acceptable. (Correctness-critical reads
 // like ledgers use version bumps, not TTL.) One shared namespace; we never bump it.
 const DASH = 'dashboard';
-const DASH_TTL = 180; // seconds
+const DASH_TTL = TTL.dashboard; // env CACHE_TTL_DASHBOARD (default 600s / 10 min)
 
 // Helper function to get date range filter
 const getDateRangeFilter = (query) => {

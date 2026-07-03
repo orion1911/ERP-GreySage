@@ -1010,6 +1010,34 @@ const apiService = {
       } catch (error) { throw error; }
     },
 
+    // Finishing vendor extras + returns
+    getFinishingVendorExtras: async () => {
+      try {
+        const response = await axiosInstance.get('api/accessories/finishing-vendor-extras');
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    createVendorReturn: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/accessories/vendor-returns', payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getVendorReturns: async (vendorId = '', itemId = '') => {
+      try {
+        const response = await axiosInstance.get('api/accessories/vendor-returns', {
+          params: { vendorId, itemId },
+        });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    deleteVendorReturn: async (id) => {
+      try {
+        const response = await axiosInstance.delete(`api/accessories/vendor-returns/${id}`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+
     // Masters / items
     getItems: async ({ typeId, search = '', clientId = '', showInactive = false } = {}) => {
       try {

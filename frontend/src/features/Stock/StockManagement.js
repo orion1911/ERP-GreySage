@@ -17,6 +17,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import apiService from '../../services/apiService';
 import AccessoryMasters from './AccessoryMasters';
 import AccessoryLedger from './AccessoryLedger';
+import FinishingVendorExtras from './FinishingVendorExtras';
 
 const fmtQty = (n) => Number(n || 0).toLocaleString('en-IN');
 
@@ -43,6 +44,7 @@ function StockManagement() {
   const [summary, setSummary] = useState([]);
   const [selectedTypeId, setSelectedTypeId] = useState('');
   const [view, setView] = useState('ledger'); // 'ledger' | 'masters'
+  const [topView, setTopView] = useState('stock'); // 'stock' | 'extras'
   const [clients, setClients] = useState([]);
   const [clientFilter, setClientFilter] = useState(''); // '' = all, 'general', or a client _id
   const [loading, setLoading] = useState(true);
@@ -86,7 +88,22 @@ function StockManagement() {
 
   return (
     <Box sx={{ pb: { xs: 10, md: 4 } }}>
-      <Typography variant="h4" sx={{ mb: 2 }}>Stock Management</Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant="h4">Stock Management</Typography>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={topView}
+          onChange={(e, v) => v && setTopView(v)}
+          color="primary"
+        >
+          <ToggleButton value="stock">Stock</ToggleButton>
+          <ToggleButton value="extras">Finishing Vendor Extras</ToggleButton>
+        </ToggleButtonGroup>
+      </Stack>
+
+      {topView === 'extras' ? <FinishingVendorExtras /> : (
+      <>
 
       {/* ── Stock stats: available qty per article type ── */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 1.5, flexWrap: 'wrap' }}>
@@ -219,6 +236,8 @@ function StockManagement() {
               : <AccessoryLedger type={selectedType} onStockChange={loadSummary} />}
           </motion.div>
         </AnimatePresence>
+      )}
+      </>
       )}
     </Box>
   );

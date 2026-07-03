@@ -5,6 +5,10 @@ const {
   updateType,
   getLowStock,
   sendLowStockTest,
+  getFinishingVendorExtras,
+  createVendorReturn,
+  getVendorReturns,
+  deleteVendorReturn,
   getItems,
   getApplicableItems,
   getFinishingItems,
@@ -36,6 +40,12 @@ router.patch('/types/:id', authenticateToken, restrictTo('admin'), updateType);
 // Low-stock alerts
 router.get('/low-stock', authenticateToken, getLowStock);
 router.post('/low-stock/test', authenticateToken, restrictTo('admin'), sendLowStockTest);
+
+// Finishing vendor extras dashboard + returns
+router.get('/finishing-vendor-extras', authenticateToken, getFinishingVendorExtras);
+router.post('/vendor-returns', authenticateToken, createVendorReturn);
+router.get('/vendor-returns', authenticateToken, getVendorReturns);
+router.delete('/vendor-returns/:id', authenticateToken, deleteVendorReturn);
 
 // Masters / lookup items
 router.get('/items', authenticateToken, getItems);

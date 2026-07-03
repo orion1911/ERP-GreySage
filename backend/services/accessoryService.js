@@ -12,7 +12,10 @@ const {
   AccessoryPayment,
   AccessoryPaymentHistory,
   AccessoryBalance,
-  AccessoryConsumption
+  AccessoryConsumption,
+  AccessoryVendorReturn,
+  Finishing,
+  Lot
 } = require('../mongodb_schema');
 
 // The canonical seed of article types. `key` drives behaviour (consumption stage),
@@ -124,10 +127,19 @@ const getAccessoryStock = async (accessoryTypeId, clientId) => {
   ]);
   const consumedByItem = new Map(consumeAgg.map(r => [String(r._id), r.qty]));
 
+  // Finishing-vendor returns add stock back: net consumed = gross consumed − returned, so
+  // availableQty = opening + purchased − consumed + returned (and available = in − out holds).
+  const returnAgg = await AccessoryVendorReturn.aggregate([
+    { $match: { accessoryTypeId: typeObjId } },
+    { $group: { _id: '$accessoryItemId', qty: { $sum: '$qty' } } }
+  ]);
+  const returnedByItem = new Map(returnAgg.map(r => [String(r._id), r.qty]));
+
   const rows = items.map(item => {
     const purchased = purchasedByItem.get(String(item._id));
     const purchasedQty = purchased ? purchased.qty : 0;
-    const consumedQty = consumedByItem.get(String(item._id)) || 0;
+    const returnedQty = returnedByItem.get(String(item._id)) || 0;
+    const consumedQty = (consumedByItem.get(String(item._id)) || 0) - returnedQty; // net of returns
     const openingQty = item.openingStock || 0;
     return {
       _id: item._id,
@@ -171,6 +183,7 @@ const getStockSummary = async (clientId) => {
 
   let purchasedByItem = new Map();
   let consumedByItem = new Map();
+  let returnedByItem = new Map();
   if (itemIds.length) {
     const purchaseAgg = await AccessoryPurchase.aggregate([
       { $unwind: '$lines' },
@@ -183,12 +196,18 @@ const getStockSummary = async (clientId) => {
       { $group: { _id: '$accessoryItemId', qty: { $sum: '$qty' } } }
     ]);
     consumedByItem = new Map(consumeAgg.map(r => [String(r._id), r.qty]));
+    // Returns add stock back — netted into consumed below so available = in − out.
+    const returnAgg = await AccessoryVendorReturn.aggregate([
+      { $match: { accessoryItemId: { $in: itemIds } } },
+      { $group: { _id: '$accessoryItemId', qty: { $sum: '$qty' } } }
+    ]);
+    returnedByItem = new Map(returnAgg.map(r => [String(r._id), r.qty]));
   }
 
   const byType = new Map();
   for (const it of items) {
     const purchased = purchasedByItem.get(String(it._id)) || 0;
-    const consumed = consumedByItem.get(String(it._id)) || 0;
+    const consumed = (consumedByItem.get(String(it._id)) || 0) - (returnedByItem.get(String(it._id)) || 0); // net of returns
     const avail = (it.openingStock || 0) + purchased - consumed;
     const k = String(it.accessoryTypeId);
     if (!byType.has(k)) byType.set(k, { available: 0, rivet: 0, purchased: 0, consumed: 0 });
@@ -411,6 +430,163 @@ const getLowStockItems = async () => {
   return low;
 };
 
+// ─── Finishing Vendor Extras ─────────────────────────────────────────────────
+// Per finishing vendor + accessory item, how much extra buffer stock the vendor still holds:
+//   sent       = Σ finishing-stage AccessoryConsumption.qty on that vendor's lots
+//   needed     = Σ (Finishing.quantity × ratio)   ratio: rivet ×4, else ×1
+//   grossExtra = sent − needed
+//   returned   = Σ AccessoryVendorReturn.qty (that vendor + item)
+//   netHeld    = grossExtra − returned            ← headline
+// All-time cumulative; under-sent future lots make (sent−needed) negative → self-reconciles.
+const RIVET_RATIO = 4;
+const ratioForSubType = (subType) => (subType === 'rivet' ? RIVET_RATIO : 1);
+const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+const getFinishingVendorExtras = async () => {
+  const [finishings, cons, returns] = await Promise.all([
+    Finishing.find({}, 'lotId vendorId quantity').populate('vendorId', 'name').lean(),
+    AccessoryConsumption.find({ stage: 'finishing' }).lean(),
+    AccessoryVendorReturn.find({}).populate('vendorId', 'name').lean(),
+  ]);
+  if (!cons.length && !returns.length) return [];
+
+  // lot → finishing vendor(s). One vendor per lot is the norm; a multi-vendor lot splits its
+  // (lot-level) consumption across vendors proportionally to each vendor's finished qty.
+  const lotVendors = new Map();
+  for (const f of finishings) {
+    const key = String(f.lotId);
+    if (!lotVendors.has(key)) lotVendors.set(key, []);
+    lotVendors.get(key).push({
+      vendorId: f.vendorId ? String(f.vendorId._id) : 'unassigned',
+      vendorName: f.vendorId ? f.vendorId.name : 'Unassigned',
+      finishedQty: Number(f.quantity) || 0,
+    });
+  }
+
+  // Batch item / type / lot metadata across BOTH consumption and returns (no N+1).
+  const itemIds = [...new Set([...cons, ...returns].map(r => String(r.accessoryItemId)))];
+  const items = await AccessoryItem.find({ _id: { $in: itemIds } }, '_id subType accessoryTypeId name').lean();
+  const itemMap = new Map(items.map(i => [String(i._id), i]));
+  const typeIds = [...new Set(items.map(i => String(i.accessoryTypeId)))];
+  const types = await AccessoryType.find({ _id: { $in: typeIds } }, '_id name unit').lean();
+  const typeMap = new Map(types.map(t => [String(t._id), t]));
+  const lotIds = [...new Set(cons.map(c => String(c.lotId)))];
+  const lots = lotIds.length ? await Lot.find({ _id: { $in: lotIds } }, '_id lotNumber').lean() : [];
+  const lotNumMap = new Map(lots.map(l => [String(l._id), l.lotNumber]));
+
+  const vendorMap = new Map(); // vendorId → { vendorId, vendorName, items: Map(itemId → agg) }
+  const ensureVendor = (vid, vname) => {
+    if (!vendorMap.has(vid)) vendorMap.set(vid, { vendorId: vid, vendorName: vname || 'Vendor', items: new Map() });
+    const v = vendorMap.get(vid);
+    if ((!v.vendorName || v.vendorName === 'Vendor') && vname) v.vendorName = vname;
+    return v;
+  };
+  const metaFor = (itemId, fallbackName, fallbackTypeId) => {
+    const item = itemMap.get(String(itemId)) || { _id: itemId, name: fallbackName || 'Unknown item', accessoryTypeId: fallbackTypeId };
+    const type = typeMap.get(String(item.accessoryTypeId)) || null;
+    return { item, type };
+  };
+  const ensureItem = (v, item, type) => {
+    const iid = String(item._id);
+    if (!v.items.has(iid)) v.items.set(iid, {
+      itemId: iid, name: item.name, typeName: type ? type.name : '', unit: type ? (type.unit || 'pcs') : 'pcs',
+      sent: 0, needed: 0, grossExtra: 0, returned: 0, netHeld: 0, lots: [], returnRows: [],
+    });
+    return v.items.get(iid);
+  };
+
+  // sent / needed from finishing-stage consumption
+  for (const c of cons) {
+    const { item, type } = metaFor(c.accessoryItemId, c.nameSnapshot, c.accessoryTypeId);
+    const ratio = ratioForSubType(item.subType);
+    const sentQty = Number(c.qty) || 0;
+    const lotKey = String(c.lotId);
+    const vlist = lotVendors.get(lotKey);
+    let splits;
+    if (!vlist || !vlist.length) {
+      splits = [{ vendorId: 'unassigned', vendorName: 'Unassigned', finishedQty: 0, share: 1 }];
+    } else {
+      const tot = vlist.reduce((s, x) => s + x.finishedQty, 0);
+      splits = vlist.map(x => ({ ...x, share: tot > 0 ? x.finishedQty / tot : 1 / vlist.length }));
+    }
+    for (const s of splits) {
+      const v = ensureVendor(s.vendorId, s.vendorName);
+      const agg = ensureItem(v, item, type);
+      const sent = sentQty * s.share;
+      const needed = (s.finishedQty || 0) * ratio;
+      agg.sent += sent;
+      agg.needed += needed;
+      agg.lots.push({ lotNumber: lotNumMap.get(lotKey) || lotKey, date: c.date, sent: round2(sent), needed: round2(needed), extra: round2(sent - needed) });
+    }
+  }
+
+  // returned
+  for (const r of returns) {
+    const vid = r.vendorId ? String(r.vendorId._id) : 'unassigned';
+    const vname = r.vendorId ? r.vendorId.name : 'Unassigned';
+    const { item, type } = metaFor(r.accessoryItemId, r.nameSnapshot, r.accessoryTypeId);
+    const v = ensureVendor(vid, vname);
+    const agg = ensureItem(v, item, type);
+    agg.returned += Number(r.qty) || 0;
+    agg.returnRows.push({ _id: String(r._id), qty: Number(r.qty) || 0, date: r.date, notes: r.notes || '' });
+  }
+
+  // finalize
+  const result = [];
+  for (const v of vendorMap.values()) {
+    const itemsOut = [];
+    let totalNetHeld = 0;
+    for (const agg of v.items.values()) {
+      agg.grossExtra = round2(agg.sent - agg.needed);
+      agg.netHeld = round2(agg.grossExtra - agg.returned);
+      agg.sent = round2(agg.sent);
+      agg.needed = round2(agg.needed);
+      agg.lots.sort((a, b) => new Date(b.date) - new Date(a.date));
+      agg.returnRows.sort((a, b) => new Date(b.date) - new Date(a.date));
+      totalNetHeld += agg.netHeld;
+      itemsOut.push(agg);
+    }
+    itemsOut.sort((a, b) => (a.typeName || '').localeCompare(b.typeName || '') || a.name.localeCompare(b.name));
+    result.push({ vendorId: v.vendorId, vendorName: v.vendorName, totalNetHeld: round2(totalNetHeld), items: itemsOut });
+  }
+  result.sort((a, b) => (a.vendorName || '').localeCompare(b.vendorName || ''));
+  return result;
+};
+
+// Record accessories a finishing vendor handed back. Resolves type/name from the item so the
+// row is self-describing (mirrors replaceFinishingConsumption). Stock rises automatically on the
+// next read (returns are netted into consumed by getAccessoryStock/getStockSummary).
+const recordVendorReturn = async ({ vendorId, accessoryItemId, qty, date, notes, userId }) => {
+  if (!vendorId) throw new Error('vendorId required');
+  const item = await AccessoryItem.findById(accessoryItemId).lean();
+  if (!item) throw new Error('Accessory item not found');
+  const n = Number(qty);
+  if (!(n > 0)) throw new Error('Return qty must be greater than 0');
+  return AccessoryVendorReturn.create({
+    vendorId,
+    accessoryTypeId: item.accessoryTypeId,
+    accessoryItemId: item._id,
+    nameSnapshot: item.name,
+    qty: n,
+    date: date ? new Date(date) : new Date(),
+    notes: notes || '',
+    createdBy: userId,
+  });
+};
+
+const listVendorReturns = async ({ vendorId, accessoryItemId } = {}) => {
+  const q = {};
+  if (vendorId) q.vendorId = vendorId;
+  if (accessoryItemId) q.accessoryItemId = accessoryItemId;
+  return AccessoryVendorReturn.find(q)
+    .populate('vendorId', 'name')
+    .populate('createdBy', 'username')
+    .sort({ date: -1, createdAt: -1 })
+    .lean();
+};
+
+const deleteVendorReturn = async (id) => AccessoryVendorReturn.findByIdAndDelete(id);
+
 module.exports = {
   DEFAULT_ACCESSORY_TYPES,
   seedAccessoryTypes,
@@ -424,6 +600,10 @@ module.exports = {
   FINISHING_CONSUMABLE_KEYS,
   getFinishingConsumableGroups,
   replaceFinishingConsumption,
+  getFinishingVendorExtras,
+  recordVendorReturn,
+  listVendorReturns,
+  deleteVendorReturn,
   recordPaymentHistory,
   getPaymentHistory
 };

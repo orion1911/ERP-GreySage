@@ -648,6 +648,25 @@ AccessoryConsumptionSchema.index({ accessoryItemId: 1 });
 AccessoryConsumptionSchema.index({ lotId: 1, stage: 1 });
 AccessoryConsumptionSchema.index({ accessoryTypeId: 1 });
 
+// AccessoryVendorReturn: accessories a FINISHING vendor physically hands back from the extra
+// buffer sent with lots. A return does two things: (1) draws down the vendor's "extra held"
+// balance on the Finishing Vendor Extras dashboard, and (2) puts the accessories back into
+// available stock — getAccessoryStock/getStockSummary add Σreturns back (available = opening
+// + purchased − consumed + returned), mirroring how sending them out reduced stock.
+const AccessoryVendorReturnSchema = new mongoose.Schema({
+  vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'FinishingVendor', required: true },
+  accessoryTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccessoryType', required: true },
+  accessoryItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccessoryItem', required: true },
+  nameSnapshot: { type: String, trim: true },
+  qty: { type: Number, required: true, min: 0 },
+  date: { type: Date, default: Date.now },
+  notes: { type: String },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdAt: { type: Date, default: Date.now }
+});
+AccessoryVendorReturnSchema.index({ vendorId: 1, accessoryItemId: 1 });
+AccessoryVendorReturnSchema.index({ accessoryItemId: 1 });
+
 // Balance Schema: Order-based financials
 const BalanceSchema = new mongoose.Schema({
   period: { type: String, required: true },
@@ -678,7 +697,7 @@ const ReportSchema = new mongoose.Schema({
 const AuditLogSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   action: { type: String, required: true },
-  entity: { type: String, enum: ['User', 'Client', 'FitStyle', 'Order', 'Stitching', 'Washing', 'Finishing', 'VendorBalance', 'Invoice', 'Balance', 'Report', 'ClientBalance', 'ClientPayment', 'CompanySettings', 'AccessoryType', 'AccessoryItem', 'AccessoryPurchase', 'AccessoryPayment'], required: true },
+  entity: { type: String, enum: ['User', 'Client', 'FitStyle', 'Order', 'Stitching', 'Washing', 'Finishing', 'VendorBalance', 'Invoice', 'Balance', 'Report', 'ClientBalance', 'ClientPayment', 'CompanySettings', 'AccessoryType', 'AccessoryItem', 'AccessoryPurchase', 'AccessoryPayment', 'AccessoryReturn'], required: true },
   entityId: { type: mongoose.Schema.Types.ObjectId, required: true },
   details: { type: String },
   createdAt: { type: Date, default: Date.now }
@@ -714,6 +733,7 @@ module.exports = {
   AccessoryPaymentHistory: mongoose.model('AccessoryPaymentHistory', AccessoryPaymentHistorySchema),
   AccessoryBalance: mongoose.model('AccessoryBalance', AccessoryBalanceSchema),
   AccessoryConsumption: mongoose.model('AccessoryConsumption', AccessoryConsumptionSchema),
+  AccessoryVendorReturn: mongoose.model('AccessoryVendorReturn', AccessoryVendorReturnSchema),
   Balance: mongoose.model('Balance', BalanceSchema),
   Report: mongoose.model('Report', ReportSchema),
   AuditLog: mongoose.model('AuditLog', AuditLogSchema)

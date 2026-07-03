@@ -415,11 +415,53 @@ const sendLowStockTest = async (req, res) => {
   }
 };
 
+// ─── FINISHING VENDOR EXTRAS ─────────────────────────────────────────────────
+
+// GET /finishing-vendor-extras — per finishing vendor, the net extra accessories held.
+const getFinishingVendorExtras = async (req, res) => {
+  const data = await accessoryService.getFinishingVendorExtras();
+  res.json(data);
+};
+
+// POST /vendor-returns — record accessories a finishing vendor returned (adds back to stock).
+const createVendorReturn = async (req, res) => {
+  const { vendorId, accessoryItemId, qty, date, notes } = req.body;
+  if (!vendorId || !accessoryItemId || !(Number(qty) > 0)) {
+    return res.status(400).json({ error: 'vendorId, accessoryItemId and a positive qty are required' });
+  }
+  const entry = await accessoryService.recordVendorReturn({
+    vendorId, accessoryItemId, qty, date, notes, userId: req.user.userId,
+  });
+  await logAction(req.user.userId, 'create_vendor_return', 'AccessoryReturn', entry._id, `Finishing vendor returned ${entry.qty} of "${entry.nameSnapshot}"`);
+  res.status(201).json(entry);
+};
+
+// GET /vendor-returns?vendorId=&itemId= — return history.
+const getVendorReturns = async (req, res) => {
+  const rows = await accessoryService.listVendorReturns({
+    vendorId: req.query.vendorId || undefined,
+    accessoryItemId: req.query.itemId || undefined,
+  });
+  res.json(rows);
+};
+
+// DELETE /vendor-returns/:id — reverse a mistaken return.
+const deleteVendorReturn = async (req, res) => {
+  const entry = await accessoryService.deleteVendorReturn(req.params.id);
+  if (!entry) return res.status(404).json({ error: 'Return entry not found' });
+  await logAction(req.user.userId, 'delete_vendor_return', 'AccessoryReturn', entry._id, `Reversed return of ${entry.qty} "${entry.nameSnapshot}"`);
+  res.json({ message: 'Return reversed' });
+};
+
 module.exports = {
   getTypes,
   updateType,
   getLowStock,
   sendLowStockTest,
+  getFinishingVendorExtras,
+  createVendorReturn,
+  getVendorReturns,
+  deleteVendorReturn,
   getItems,
   getApplicableItems,
   getFinishingItems,

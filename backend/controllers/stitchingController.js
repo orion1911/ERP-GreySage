@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const { Stitching, Lot, Finishing, Washing, Counter, Client, FitStyle, AccessoryType, AccessoryItem } = require('../mongodb_schema');
-const { updateVendorBalance } = require('../services/vendorBalanceService');
+const { updateVendorBalance, bumpVendorLedgers } = require('../services/vendorBalanceService');
 const accessoryService = require('../services/accessoryService');
 const { logAction } = require('../utils/logger');
 
@@ -234,6 +234,7 @@ const createStitching = async (req, res) => {
     }
   }
 
+  await bumpVendorLedgers(['stitching']); // new stitching work changes the stitching vendor's balance
   const populatedStitching = await Stitching.findById(stitching._id)
     .populate({ path: 'lotId', populate: [{ path: 'clientId' }, { path: 'fitStyleId' }] })
     .populate({ path: 'vendorId' });
@@ -327,6 +328,8 @@ const updateStitching = async (req, res) => {
   // Cascade any (new) stitching shortage to downstream washing + finishing quantities.
   await cascadeShortageFromStitching(stitching.lotId._id);
 
+  // Stitching edit can change its own vendor's balance AND cascade qty into washing/finishing.
+  await bumpVendorLedgers(['stitching', 'washing', 'finishing']);
   const populatedStitching = await Stitching.findById(id)
     .populate({ path: 'lotId', populate: [{ path: 'clientId' }, { path: 'fitStyleId' }] })
     .populate({ path: 'vendorId' });

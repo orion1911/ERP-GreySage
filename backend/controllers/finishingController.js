@@ -2,7 +2,7 @@
 const mongoose = require('mongoose');
 const { Finishing, Lot, Washing } = require('../mongodb_schema');
 const accessoryService = require('../services/accessoryService');
-// const { updateVendorBalance } = require('../services/vendorBalanceService');
+const { bumpVendorLedgers } = require('../services/vendorBalanceService');
 
 const createFinishing = async (req, res) => {
   const { invoiceNumber, vendorId, quantity, quantityShort, rate, date, finishOutDate, description, accessoryConsumption } = req.body;
@@ -63,6 +63,7 @@ const createFinishing = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
+    await bumpVendorLedgers(['finishing']); // new finishing work changes the finishing vendor's balance
     const populated = await Finishing.findById(finishing._id).populate('vendorId lotId');
     res.status(201).json(populated);
   } catch (err) {
@@ -110,6 +111,7 @@ const updateFinishing = async (req, res) => {
       await accessoryService.replaceFinishingConsumption(lotRef, accessoryConsumption, req.user?.userId);
     }
 
+    await bumpVendorLedgers(['finishing']); // finishing edit changes the finishing vendor's balance
     const populated = await Finishing.findById(id).populate('lotId vendorId');
     res.json(populated);
   } catch (err) {

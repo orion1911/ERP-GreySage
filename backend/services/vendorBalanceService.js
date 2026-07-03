@@ -1,5 +1,16 @@
 const mongoose = require('mongoose');
 const { VendorBalance, VendorPaymentEntry, VendorPaymentEntryHistory, Stitching, Washing, Finishing, Lot, Client, FitStyle } = require('../mongodb_schema');
+const { bumpVersion } = require('./cache');
+
+// Invalidate cached vendor ledgers for the given vendor types. Production writes (stitching/
+// washing/finishing records) change what a vendor is owed, so the ledger caches must be bumped
+// even though those controllers don't touch payments. The `vledger:${type}` namespace MUST match
+// vendorBalanceController's vledgerNs. Cascades run downstream (stitching → washing → finishing),
+// so callers pass the affected set. Fail-open: bump failures just fall back to the TTL backstop.
+const VENDOR_LEDGER_TYPES = ['stitching', 'washing', 'finishing'];
+const bumpVendorLedgers = async (types = VENDOR_LEDGER_TYPES) => {
+  await Promise.all(types.map((t) => bumpVersion(`vledger:${t}`)));
+};
 
 /**
  * Get all lots for a vendor with their amounts and payments
@@ -414,6 +425,7 @@ const getVendorPaymentHistory = async (vendorId, vendorType) => {
 };
 
 module.exports = {
+  bumpVendorLedgers,
   getVendorLotsDetails,
   recordVendorPayment,
   recordShortAdjustment,

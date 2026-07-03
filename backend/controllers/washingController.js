@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const { Washing, Lot, Stitching, Finishing } = require('../mongodb_schema');
-const { updateVendorBalance } = require('../services/vendorBalanceService');
+const { updateVendorBalance, bumpVendorLedgers } = require('../services/vendorBalanceService');
 // const { logAction } = require('../utils/logger');
 
 // Keep an existing Finishing record's quantity in sync with the washing available qty
@@ -89,6 +89,7 @@ const createWashing = async (req, res) => {
     await session.commitTransaction();
     transactionCommitted = true;
 
+    await bumpVendorLedgers(['washing']); // new washing work changes the washing vendor's balance
     // Populate the washing record for response
     const populatedWashing = await Washing.findById(washing._id).populate('vendorId lotId').session(null);
 
@@ -147,6 +148,8 @@ const updateWashing = async (req, res) => {
     // Cascade any (new) washing shortage to an existing Finishing record's quantity.
     await recomputeFinishingFromWashing(washing.lotId._id || washing.lotId);
 
+    // Washing edit changes its own vendor's balance AND can cascade qty into finishing.
+    await bumpVendorLedgers(['washing', 'finishing']);
     const populatedWashing = await Washing.findById(id).populate('lotId vendorId');
     res.json(populatedWashing);
   } catch (error) {

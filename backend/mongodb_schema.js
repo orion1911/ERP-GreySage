@@ -237,6 +237,11 @@ const FinishingSchema = new mongoose.Schema({
   quantity: { type: Number, required: true, min: 1 },
   quantityShort: { type: Number, default: 0, min: 0 },
   quantityShortDesc: { type: String },
+  // How many pcs the entered finishing accessories cover. Defaults to `quantity` when null (normal,
+  // fully-accessorized lots). Set lower when accessories cover only part of the lot — e.g. a lot
+  // partly finished before accessory tracking began, or a partial after-tracking finish. Drives the
+  // Finishing Vendor Extras "needed = basis × ratio" so it isn't overstated vs the full lot qty.
+  accessoryBasisPcs: { type: Number, min: 0 },
   rate: { type: Number, required: true, min: 0 },
   isPaid: { type: Boolean, default: false }, // vendor settled this lot's work (row disabled in vendor payments)
   paidAt: { type: Date },
@@ -639,6 +644,11 @@ const AccessoryConsumptionSchema = new mongoose.Schema({
   lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot', required: true },
   stage: { type: String, enum: ['stitching', 'finishing'], required: true },
   qty: { type: Number, required: true, min: 0 },
+  // How many pcs this specific line covers (its client's share of the lot). Drives the Finishing
+  // Vendor Extras "needed = basisPcs × ratio". Null ⇒ fall back to Finishing.accessoryBasisPcs, then
+  // the finishing quantity. Lets a lot split across clients (e.g. AD 135 / BW 535) size each item's
+  // need to its client's pieces instead of the whole lot.
+  basisPcs: { type: Number, min: 0 },
   clientLinked: { type: Boolean, default: false }, // true if drawn from a client-mapped item
   date: { type: Date, default: Date.now },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

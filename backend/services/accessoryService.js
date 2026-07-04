@@ -280,9 +280,13 @@ const getFinishingConsumableGroups = async (clientId) => {
     if (t.key === 'button') {
       const rivetItems = items.filter(i => i.subType === 'rivet');
       const rivetDef = rivetItems.length ? defaultOf(rivetItems) : null;
-      // Single Button slot; rivets auto-derived at 4× against the default rivet item.
+      const cid = (i) => (i.clientId ? String(i.clientId._id || i.clientId) : null);
+      // Single Button slot; rivets auto-derived at 4× buttons. `rivet` is the default item; `rivetItems`
+      // lists every rivet item with its client so the modal can route each button line's rivets to that
+      // line's client rivet item (client-inscribed), falling back to the general/default rivet.
       pushGroup('button', 'Button', items.filter(i => i.subType !== 'rivet'), {
         rivet: rivetDef ? { itemId: String(rivetDef._id), name: rivetDef.name, multiplier: 4 } : null,
+        rivetItems: rivetItems.map(r => ({ itemId: String(r._id), name: r.name, clientId: cid(r) })),
       });
     } else if (t.key === 'label-tag') {
       pushGroup('label', 'Label', items.filter(i => i.subType !== 'tag')); // null/label → label slot
@@ -295,8 +299,9 @@ const getFinishingConsumableGroups = async (clientId) => {
 };
 
 // Replace the finishing-stage consumption for a lot with a fresh allocation set. Each
-// allocation is { accessoryItemId, qty }; the item's type/name/client are resolved here
-// so the consumption rows are self-describing. Session-aware for the create transaction.
+// allocation is { accessoryItemId, qty, basisPcs? }; the item's type/name/client are resolved here
+// so the consumption rows are self-describing. basisPcs = pcs this line covers (its client's share).
+// Session-aware for the create transaction.
 const replaceFinishingConsumption = async (lotId, allocations, userId, session = null) => {
   const opts = session ? { session } : {};
   await AccessoryConsumption.deleteMany({ lotId, stage: 'finishing' }, opts);
@@ -311,6 +316,7 @@ const replaceFinishingConsumption = async (lotId, allocations, userId, session =
   for (const a of valid) {
     const item = itemMap.get(String(a.accessoryItemId));
     if (!item) continue;
+    const basis = Number(a.basisPcs);
     rows.push({
       accessoryTypeId: item.accessoryTypeId,
       accessoryItemId: item._id,
@@ -318,6 +324,7 @@ const replaceFinishingConsumption = async (lotId, allocations, userId, session =
       lotId,
       stage: 'finishing',
       qty: Number(a.qty),
+      basisPcs: (Number.isFinite(basis) && basis >= 0) ? basis : undefined,
       clientLinked: !!item.clientId,
       createdBy: userId,
       date: new Date(),
@@ -433,7 +440,9 @@ const getLowStockItems = async () => {
 // ─── Finishing Vendor Extras ─────────────────────────────────────────────────
 // Per finishing vendor + accessory item, how much extra buffer stock the vendor still holds:
 //   sent       = Σ finishing-stage AccessoryConsumption.qty on that vendor's lots
-//   needed     = Σ (Finishing.quantity × ratio)   ratio: rivet ×4, else ×1
+//   needed     = Σ (basis × ratio)   basis = Finishing.accessoryBasisPcs ?? quantity; ratio: rivet ×4, else ×1
+//              basis lets lots whose accessories cover only part of the lot (pre-tracking or partial
+//              finish) compute needed against the covered pcs instead of the full finishing quantity.
 //   grossExtra = sent − needed
 //   returned   = Σ AccessoryVendorReturn.qty (that vendor + item)
 //   netHeld    = grossExtra − returned            ← headline
@@ -444,7 +453,7 @@ const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 const getFinishingVendorExtras = async () => {
   const [finishings, cons, returns] = await Promise.all([
-    Finishing.find({}, 'lotId vendorId quantity').populate('vendorId', 'name').lean(),
+    Finishing.find({}, 'lotId vendorId quantity accessoryBasisPcs').populate('vendorId', 'name').lean(),
     AccessoryConsumption.find({ stage: 'finishing' }).lean(),
     AccessoryVendorReturn.find({}).populate('vendorId', 'name').lean(),
   ]);
@@ -460,6 +469,8 @@ const getFinishingVendorExtras = async () => {
       vendorId: f.vendorId ? String(f.vendorId._id) : 'unassigned',
       vendorName: f.vendorId ? f.vendorId.name : 'Unassigned',
       finishedQty: Number(f.quantity) || 0,
+      // pcs the accessories cover (needed basis); falls back to full finished qty when unset.
+      basisPcs: (f.accessoryBasisPcs != null ? Number(f.accessoryBasisPcs) : (Number(f.quantity) || 0)),
     });
   }
 
@@ -504,16 +515,19 @@ const getFinishingVendorExtras = async () => {
     const vlist = lotVendors.get(lotKey);
     let splits;
     if (!vlist || !vlist.length) {
-      splits = [{ vendorId: 'unassigned', vendorName: 'Unassigned', finishedQty: 0, share: 1 }];
+      splits = [{ vendorId: 'unassigned', vendorName: 'Unassigned', finishedQty: 0, basisPcs: 0, share: 1 }];
     } else {
       const tot = vlist.reduce((s, x) => s + x.finishedQty, 0);
       splits = vlist.map(x => ({ ...x, share: tot > 0 ? x.finishedQty / tot : 1 / vlist.length }));
     }
+    // Per-line basis (pcs THIS line covers, e.g. its client's share of the lot); falls back to the
+    // lot-level basis (Finishing.accessoryBasisPcs ?? quantity) for rows saved before per-line basis.
+    const rowBasis = Number.isFinite(Number(c.basisPcs)) ? Number(c.basisPcs) : null;
     for (const s of splits) {
       const v = ensureVendor(s.vendorId, s.vendorName);
       const agg = ensureItem(v, item, type);
       const sent = sentQty * s.share;
-      const needed = (s.finishedQty || 0) * ratio;
+      const needed = (rowBasis != null ? rowBasis * s.share : (s.basisPcs || 0)) * ratio;
       agg.sent += sent;
       agg.needed += needed;
       agg.lots.push({ lotNumber: lotNumMap.get(lotKey) || lotKey, date: c.date, sent: round2(sent), needed: round2(needed), extra: round2(sent - needed) });

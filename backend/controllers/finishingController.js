@@ -4,8 +4,17 @@ const { Finishing, Lot, Washing } = require('../mongodb_schema');
 const accessoryService = require('../services/accessoryService');
 const { bumpVendorLedgers } = require('../services/vendorBalanceService');
 
+// Accessory basis = how many pcs the entered accessories cover. Clamp to [0, quantity]; an
+// invalid/blank value means "the whole lot" (= quantity). Stored so Finishing Vendor Extras can
+// compute needed = basis × ratio instead of always using the full finishing quantity.
+const parseBasis = (v, qty) => {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n < 0) return qty;
+  return Math.min(n, qty);
+};
+
 const createFinishing = async (req, res) => {
-  const { invoiceNumber, vendorId, quantity, quantityShort, rate, date, finishOutDate, description, accessoryConsumption } = req.body;
+  const { invoiceNumber, vendorId, quantity, quantityShort, rate, date, finishOutDate, description, accessoryConsumption, accessoryBasisPcs } = req.body;
 
   if (!invoiceNumber || !vendorId || !quantity || !rate) {
     return res.status(400).json({ error: 'Required fields missing' });
@@ -42,6 +51,7 @@ const createFinishing = async (req, res) => {
       vendorId,
       quantity,
       quantityShort: quantityShort || 0,
+      accessoryBasisPcs: accessoryBasisPcs !== undefined ? parseBasis(accessoryBasisPcs, quantity) : undefined,
       rate,
       description,
       createdAt: new Date(),
@@ -76,7 +86,7 @@ const createFinishing = async (req, res) => {
 
 const updateFinishing = async (req, res) => {
   const { id } = req.params;
-  const { vendorId, quantityShort, quantityShortDesc, rate, date, finishOutDate, description, quantity, accessoryConsumption } = req.body;
+  const { vendorId, quantityShort, quantityShortDesc, rate, date, finishOutDate, description, quantity, accessoryConsumption, accessoryBasisPcs } = req.body;
 
   const finishing = await Finishing.findById(id);
   if (!finishing) return res.status(404).json({ error: 'Finishing record not found' });
@@ -101,6 +111,8 @@ const updateFinishing = async (req, res) => {
   if (quantity !== undefined) finishing.quantity = quantity;
   if (quantityShort !== undefined) finishing.quantityShort = quantityShort;
   if (quantityShortDesc) finishing.quantityShortDesc = quantityShortDesc;
+  // Basis clamps against the (possibly just-updated) quantity.
+  if (accessoryBasisPcs !== undefined) finishing.accessoryBasisPcs = parseBasis(accessoryBasisPcs, finishing.quantity);
 
   try {
     await finishing.save();

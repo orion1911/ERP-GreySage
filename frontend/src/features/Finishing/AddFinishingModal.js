@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useForm, Controller, useWatch } from 'react-hook-form';
-import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Divider, Chip, Tooltip } from '@mui/material';
+import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Divider, Chip, Tooltip, CircularProgress } from '@mui/material';
 import { Close as CloseIcon, Save as SaveIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -44,6 +44,7 @@ function AddFinishingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lot
   // Pre-filled to the finishing quantity; the user adjusts upward for extras sent.
   const [groups, setGroups] = useState([]);
   const [consumption, setConsumption] = useState({});
+  const [accLoading, setAccLoading] = useState(false); // accessory section fetch in-flight
   const touchedRef = useRef(new Set()); // group keys the user manually edited
   const basisTouchedRef = useRef(false); // whether the user overrode the accessory basis
   const watchedQuantity = useWatch({ control, name: 'quantity' });
@@ -155,17 +156,23 @@ function AddFinishingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lot
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lotId, isEditMode]);
 
-  // Load the consumption slots for the lot (resolved server-side from invoiceNumber),
-  // then seed each slot — from existing consumption (edit) or pre-filled to qty (create).
+  // Load the consumption slots for the lot (resolved server-side from invoiceNumber), then seed each
+  // slot — from existing consumption (edit) or pre-filled to qty (create). The items + existing
+  // consumption are fetched IN PARALLEL (edit mode used to chain them, doubling the wait on a cold
+  // serverless), and `accLoading` drives a placeholder so the section shows a spinner, not blank.
   useEffect(() => {
-    if (!open || !invoiceNumber) { setGroups([]); setConsumption({}); return; }
+    if (!open || !invoiceNumber) { setGroups([]); setConsumption({}); setAccLoading(false); return; }
     let active = true;
-    apiService.accessories.getFinishingItems(invoiceNumber)
-      .then(async (gs) => {
+    setAccLoading(true);
+    const itemsP = apiService.accessories.getFinishingItems(invoiceNumber);
+    const consP = (isEditMode && editRecord?.lotId?._id)
+      ? apiService.accessories.getConsumption(editRecord.lotId._id, 'finishing').catch(() => [])
+      : Promise.resolve([]);
+    Promise.all([itemsP, consP])
+      .then(([gs, rows]) => {
         if (!active) return;
         let initial = {};
         if (isEditMode && editRecord?.lotId?._id) {
-          const rows = await apiService.accessories.getConsumption(editRecord.lotId._id, 'finishing').catch(() => []);
           for (const g of gs) {
             const ids = new Set(g.items.map(i => String(i._id)));
             const matched = (rows || []).filter(r => ids.has(String(r.accessoryItemId)))
@@ -201,7 +208,8 @@ function AddFinishingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lot
         setGroups(gs);
         setConsumption(initial);
       })
-      .catch(() => { if (active) { setGroups([]); setConsumption({}); } });
+      .catch(() => { if (active) { setGroups([]); setConsumption({}); } })
+      .finally(() => { if (active) setAccLoading(false); });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, invoiceNumber, isEditMode, editRecord]);
@@ -591,7 +599,17 @@ function AddFinishingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lot
               </Grid></>)}
 
             {/* ── Accessory consumption (Button / Label / Tag / Polybag) ── */}
-            {groups.length > 0 && (
+            {accLoading && (
+              <Grid size={{ xs: 12 }}>
+                <Divider sx={{ mt: 1 }}>
+                  <Chip size="small" label="ACCESSORY CONSUMPTION" />
+                </Divider>
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                  <CircularProgress size={24} />
+                </Box>
+              </Grid>
+            )}
+            {!accLoading && groups.length > 0 && (
               <>
                 <Grid size={{ xs: 12 }}>
                   <Divider sx={{ mt: 1 }}>

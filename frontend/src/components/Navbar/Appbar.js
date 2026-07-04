@@ -10,13 +10,10 @@ function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }
   const navigate = useNavigate();
   const [isVisible, setIsVisible] = useState(true);
 
-  const handleLogout = async () => {
-    // Tell the server first so the refresh-token row is removed from this user's
-    // DB record and the httpOnly cookie is cleared. If the call fails we still
-    // log the user out locally — authService.logout() never throws.
-    await authService.logout();
+  const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    authService.logout();
     navigate('/login');
   };
 

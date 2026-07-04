@@ -2,14 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
   Box, Typography, Button, IconButton, Stack, TextField, MenuItem,
-  Table, TableHead, TableRow, TableCell, TableBody, TableContainer, TablePagination,
+  Table, TableHead, TableRow, TableCell, TableBody, TableContainer, TablePagination, TableSortLabel,
   Dialog, DialogTitle, DialogContent, DialogActions, Tooltip, Chip,
   Card, CardContent, Grid, Menu, useTheme, Divider, Paper
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, PictureAsPdf as PdfIcon,
   Cancel as CancelIcon, Visibility as ViewIcon,
-  MoreVert as MoreVertIcon, Search as SearchIcon
+  MoreVert as MoreVertIcon, Search as SearchIcon,
+  ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon
 } from '@mui/icons-material';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
@@ -20,6 +21,53 @@ const fmtINR = (n) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2,
 const fmtDate = (d) => d ? dayjs(d).format('DD/MM/YYYY') : '';
 
 const statusColor = (s) => s === 'issued' ? 'success' : s === 'cancelled' ? 'error' : 'default';
+
+// Columns the list can be sorted by (shared: desktop header labels + mobile sort dropdown).
+const SORT_COLUMNS = [
+  { key: 'date', label: 'Date' },
+  { key: 'invoice', label: 'Invoice #' },
+  { key: 'client', label: 'Client' },
+  { key: 'totalQty', label: 'Total Qty' }
+];
+
+// Unique lot numbers involved in an invoice, in first-seen order. Covers both single-lot lines
+// (lotNumberSnapshot) and merged/combined lines (each source carries its own lotNumberSnapshot).
+const lotsForInvoice = (inv) => {
+  const out = [];
+  const seen = new Set();
+  const add = (n) => { if (n && !seen.has(n)) { seen.add(n); out.push(n); } };
+  for (const line of (inv.lines || [])) {
+    if (Array.isArray(line.sources) && line.sources.length > 0) {
+      line.sources.forEach((s) => add(s.lotNumberSnapshot));
+    } else {
+      add(line.lotNumberSnapshot);
+    }
+  }
+  return out;
+};
+
+// Table cell: show up to two lot #s inline; if more, a "+N" chip whose tooltip lists them all.
+const LotsCell = ({ lots, center }) => {
+  if (!lots.length) return <Typography variant="body2" color="text.secondary">—</Typography>;
+  const shown = lots.slice(0, 2);
+  const extra = lots.length - shown.length;
+  // Match the surrounding cell's font (inherit) rather than the small-chip default, so lot #s
+  // read at the same size as the other columns.
+  const chipSx = { height: 22, '& .MuiChip-label': { px: 0.6, fontSize: 'inherit' } };
+  return (
+    <Stack direction="row" spacing={0.5} alignItems="center" useFlexGap flexWrap="wrap"
+      justifyContent={center ? 'center' : 'flex-start'}>
+      {shown.map((l) => (
+        <Chip key={l} size="small" variant="outlined" label={l} sx={chipSx} />
+      ))}
+      {extra > 0 && (
+        <Tooltip title={<span>All lots: {lots.join(', ')}</span>}>
+          <Chip size="small" color="primary" variant="filled" label={`+${extra}`} sx={{ ...chipSx, cursor: 'default' }} />
+        </Tooltip>
+      )}
+    </Stack>
+  );
+};
 
 function InvoiceManagement() {
   const { showSnackbar, isMobile } = useOutletContext();
@@ -37,6 +85,10 @@ function InvoiceManagement() {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [menuInvoiceId, setMenuInvoiceId] = useState(null);
+  const [total, setTotal] = useState(0);
+  const [appliedSearch, setAppliedSearch] = useState(''); // committed search term (on Enter / Search click)
+  const [sortBy, setSortBy] = useState('date');           // default: date (calendar day, time ignored) desc, then invoice # desc
+  const [sortDir, setSortDir] = useState('desc');
 
   const load = () => {
     setLoading(true);
@@ -44,9 +96,13 @@ function InvoiceManagement() {
       .listInvoices({
         clientId: filters.clientId || undefined,
         status: filters.status || undefined,
-        search: filters.search || undefined
+        search: appliedSearch || undefined,
+        page,
+        limit: rowsPerPage,
+        sortBy,
+        sortDir
       })
-      .then(setInvoices)
+      .then((res) => { setInvoices(res.rows || []); setTotal(res.total || 0); })
       .catch((e) => showSnackbar(e))
       .finally(() => setLoading(false));
   };
@@ -56,10 +112,30 @@ function InvoiceManagement() {
     apiService.companySettings.getSettings().then(setSettings).catch(() => {});
   }, []);
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [filters.clientId, filters.status]);
+  // Server-side: reload whenever a filter, the committed search, sort, or the page/size changes.
+  useEffect(() => { load(); /* eslint-disable-next-line */ },
+    [filters.clientId, filters.status, appliedSearch, page, rowsPerPage, sortBy, sortDir]);
 
-  const handleSearch = (e) => {
-    if (e.key === 'Enter') load();
+  // Commit the typed search term (also resets to the first page).
+  const applySearch = () => { setPage(0); setAppliedSearch(filters.search.trim()); };
+  const handleSearch = (e) => { if (e.key === 'Enter') applySearch(); };
+  // Typing in the search box; if it's cleared, immediately drop the committed search (no extra
+  // click needed) so the list returns to unfiltered.
+  const handleSearchChange = (v) => {
+    setFilters((f) => ({ ...f, search: v }));
+    if (v.trim() === '' && appliedSearch !== '') { setPage(0); setAppliedSearch(''); }
+  };
+
+  // Toggle direction when re-clicking the active column; otherwise activate it with a sensible
+  // default (desc for date/qty, asc for text). Always jump back to the first page.
+  const handleSort = (col) => {
+    setPage(0);
+    if (sortBy === col) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(col);
+      setSortDir(col === 'date' || col === 'totalQty' ? 'desc' : 'asc');
+    }
   };
 
   const handleNew = () => { setEditInvoice(null); setModalOpen(true); };
@@ -99,7 +175,7 @@ function InvoiceManagement() {
   };
   const handleMenuClose = () => { setMenuAnchorEl(null); setMenuInvoiceId(null); };
 
-  const pagedInvoices = invoices.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
+  const pagedInvoices = invoices; // server already returns just this page
 
   // ── Filter row ──────────────────────────────────────────────────────────
   // Desktop: horizontal Stack. Mobile: 6/6 grid for Client+Status, then 6/6
@@ -110,7 +186,7 @@ function InvoiceManagement() {
       <Grid size={{ xs: 6 }}>
         <TextField
           select label="Client" value={filters.clientId}
-          onChange={(e) => setFilters({ ...filters, clientId: e.target.value })}
+          onChange={(e) => { setPage(0); setFilters({ ...filters, clientId: e.target.value }); }}
           fullWidth variant="standard"
         >
           <MenuItem value="">All clients</MenuItem>
@@ -122,7 +198,7 @@ function InvoiceManagement() {
       <Grid size={{ xs: 6 }}>
         <TextField
           select label="Status" value={filters.status}
-          onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+          onChange={(e) => { setPage(0); setFilters({ ...filters, status: e.target.value }); }}
           fullWidth variant="standard"
         >
           <MenuItem value="">All</MenuItem>
@@ -131,11 +207,31 @@ function InvoiceManagement() {
           <MenuItem value="draft">Draft</MenuItem>
         </TextField>
       </Grid>
+      <Grid size={{ xs: 8 }}>
+        <TextField
+          select label="Sort by" value={sortBy}
+          onChange={(e) => { setPage(0); setSortBy(e.target.value); }}
+          fullWidth variant="standard"
+        >
+          {SORT_COLUMNS.map((c) => (
+            <MenuItem key={c.key} value={c.key}>{c.label}</MenuItem>
+          ))}
+        </TextField>
+      </Grid>
+      <Grid size={{ xs: 4 }} sx={{ display: 'flex', alignItems: 'flex-end' }}>
+        <Button
+          fullWidth variant="outlined" size="small"
+          startIcon={sortDir === 'asc' ? <ArrowUpwardIcon /> : <ArrowDownwardIcon />}
+          onClick={() => { setPage(0); setSortDir((d) => (d === 'asc' ? 'desc' : 'asc')); }}
+        >
+          {sortDir === 'asc' ? 'Asc' : 'Desc'}
+        </Button>
+      </Grid>
       <Grid size={{ xs: 6 }}>
         <TextField
           label="Search"
           value={filters.search}
-          onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+          onChange={(e) => handleSearchChange(e.target.value)}
           onKeyDown={handleSearch}
           fullWidth variant="standard"
           placeholder="invoice #, client, lot #"
@@ -143,7 +239,7 @@ function InvoiceManagement() {
       </Grid>
       <Grid size={{ xs: 6 }}>
         <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between' }}>
-          <Button variant="contained" startIcon={<SearchIcon />} onClick={load} disabled={loading} sx={{ whiteSpace: 'nowrap', float: 'left' }}>
+          <Button variant="contained" startIcon={<SearchIcon />} onClick={applySearch} disabled={loading} sx={{ whiteSpace: 'nowrap', float: 'left' }}>
             Search
           </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleNew} sx={{ whiteSpace: 'nowrap' }}>
@@ -160,7 +256,7 @@ function InvoiceManagement() {
     >
       <TextField
         select label="Client" value={filters.clientId}
-        onChange={(e) => setFilters({ ...filters, clientId: e.target.value })}
+        onChange={(e) => { setPage(0); setFilters({ ...filters, clientId: e.target.value }); }}
         sx={{ minWidth: 220 }} variant="standard"
       >
         <MenuItem value="">All clients</MenuItem>
@@ -170,7 +266,7 @@ function InvoiceManagement() {
       </TextField>
       <TextField
         select label="Status" value={filters.status}
-        onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+        onChange={(e) => { setPage(0); setFilters({ ...filters, status: e.target.value }); }}
         sx={{ minWidth: 160 }} variant="standard"
       >
         <MenuItem value="">All</MenuItem>
@@ -181,11 +277,11 @@ function InvoiceManagement() {
       <TextField
         label="Search (invoice #, client, lot #)"
         value={filters.search}
-        onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+        onChange={(e) => handleSearchChange(e.target.value)}
         onKeyDown={handleSearch}
         sx={{ flexGrow: 1 }} variant="standard"
       />
-      <Button variant="contained" startIcon={<SearchIcon />} onClick={load} disabled={loading} sx={{ whiteSpace: 'nowrap' }}>
+      <Button variant="contained" startIcon={<SearchIcon />} onClick={applySearch} disabled={loading} sx={{ whiteSpace: 'nowrap' }}>
         Search
       </Button>
       <Button variant="contained" startIcon={<AddIcon />} onClick={handleNew} sx={{ whiteSpace: 'nowrap' }}>
@@ -271,17 +367,24 @@ function InvoiceManagement() {
                 <Typography variant="body2" fontWeight="bold">{fmtINR(inv.total)}</Typography>
               </Grid>
             </Grid>
+
+            {lotsForInvoice(inv).length > 0 && (
+              <Box sx={{ mt: 0.75 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Lot(s)</Typography>
+                <LotsCell lots={lotsForInvoice(inv)} />
+              </Box>
+            )}
           </CardContent>
         </Card>
       ))}
       {pagedInvoices.length > 0 && (
         <TablePagination
           component="div"
-          count={invoices.length}
+          count={total}
           page={page}
           onPageChange={(_, p) => setPage(p)}
           rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={(e) => setRowsPerPage(parseInt(e.target.value, 10))}
+          onRowsPerPageChange={(e) => { setPage(0); setRowsPerPage(parseInt(e.target.value, 10)); }}
           rowsPerPageOptions={[10, 25, 50, 100]}
         />
       )}
@@ -294,10 +397,19 @@ function InvoiceManagement() {
       <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell>Date</TableCell>
-            <TableCell>Invoice #</TableCell>
-            <TableCell>Client</TableCell>
-            <TableCell align="right">Total Qty</TableCell>
+            <TableCell sortDirection={sortBy === 'date' ? sortDir : false}>
+              <TableSortLabel active={sortBy === 'date'} direction={sortBy === 'date' ? sortDir : 'asc'} onClick={() => handleSort('date')}>Date</TableSortLabel>
+            </TableCell>
+            <TableCell sortDirection={sortBy === 'invoice' ? sortDir : false}>
+              <TableSortLabel active={sortBy === 'invoice'} direction={sortBy === 'invoice' ? sortDir : 'asc'} onClick={() => handleSort('invoice')}>Invoice #</TableSortLabel>
+            </TableCell>
+            <TableCell sortDirection={sortBy === 'client' ? sortDir : false}>
+              <TableSortLabel active={sortBy === 'client'} direction={sortBy === 'client' ? sortDir : 'asc'} onClick={() => handleSort('client')}>Client</TableSortLabel>
+            </TableCell>
+            <TableCell align="center" sx={{ width: 150 }}>Lot(s)</TableCell>
+            <TableCell align="right" sx={{ width: 120 }} sortDirection={sortBy === 'totalQty' ? sortDir : false}>
+              <TableSortLabel active={sortBy === 'totalQty'} direction={sortBy === 'totalQty' ? sortDir : 'asc'} onClick={() => handleSort('totalQty')}>Total Qty</TableSortLabel>
+            </TableCell>
             <TableCell align="right">Total (₹)</TableCell>
             <TableCell align="center">Status</TableCell>
             <TableCell align="center">Actions</TableCell>
@@ -305,14 +417,15 @@ function InvoiceManagement() {
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableRow><TableCell colSpan={7} align="center">Loading…</TableCell></TableRow>
+            <TableRow><TableCell colSpan={8} align="center">Loading…</TableCell></TableRow>
           ) : pagedInvoices.length === 0 ? (
-            <TableRow><TableCell colSpan={7} align="center">No invoices</TableCell></TableRow>
+            <TableRow><TableCell colSpan={8} align="center">No invoices</TableCell></TableRow>
           ) : pagedInvoices.map((inv) => (
             <TableRow key={inv._id} hover>
               <TableCell>{fmtDate(inv.date)}</TableCell>
               <TableCell><b>{inv.invoiceNumber}</b></TableCell>
               <TableCell>{inv.clientSnapshot?.name || inv.clientId?.name}</TableCell>
+              <TableCell align="left"><LotsCell lots={lotsForInvoice(inv)} left /></TableCell>
               <TableCell align="right">{inv.totalQty}</TableCell>
               <TableCell align="right">₹{fmtINR(inv.total)}</TableCell>
               <TableCell align="center">
@@ -338,11 +451,11 @@ function InvoiceManagement() {
       </Table>
       <TablePagination
         component="div"
-        count={invoices.length}
+        count={total}
         page={page}
         onPageChange={(_, p) => setPage(p)}
         rowsPerPage={rowsPerPage}
-        onRowsPerPageChange={(e) => setRowsPerPage(parseInt(e.target.value, 10))}
+        onRowsPerPageChange={(e) => { setPage(0); setRowsPerPage(parseInt(e.target.value, 10)); }}
         rowsPerPageOptions={[10, 25, 50, 100]}
       />
     </TableContainer>

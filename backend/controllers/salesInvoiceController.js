@@ -447,32 +447,77 @@ const deleteInvoice = async (req, res) => {
   res.json({ message: 'Invoice deleted' });
 };
 
+// Timezone the invoice DATE is grouped in. `date` is the user-selected invoice date (may carry a
+// stray time-of-day), so the default sort groups by CALENDAR DAY (time ignored) then invoice #.
+// India-only app → group in IST so the grouped day matches what users pick/see.
+const LIST_TZ = 'Asia/Kolkata';
+
 /**
- * GET /api/sales-invoices?clientId=&from=&to=&status=&search=
+ * Build the $sort spec for the invoices aggregation. `_day` is a 'YYYY-MM-DD' string (date with
+ * the time truncated, in IST) so day-level grouping is exact and lexical order == chronological.
+ * `createdAt` stands in for invoice # (issued by a monotonic per-FY counter → createdAt order ==
+ * issue order, with no "/10 before /2" lexical artifacts). Non-day sorts tie-break by day+invoice.
+ */
+const buildInvoiceSort = (sortBy, sortDir) => {
+  const dir = sortDir === 'asc' ? 1 : -1;
+  switch (sortBy) {
+    case 'invoice': return { createdAt: dir };
+    case 'client': return { 'clientSnapshot.name': dir, _day: -1, createdAt: -1 };
+    case 'totalQty': return { totalQty: dir, _day: -1, createdAt: -1 };
+    case 'date':
+    default: return { _day: dir, createdAt: dir }; // default: date (day, time ignored), then invoice #
+  }
+};
+
+/**
+ * GET /api/sales-invoices?clientId=&from=&to=&status=&search=&page=&limit=&sortBy=&sortDir=
+ * Server-side filtered, sorted, and paged. Returns { rows, total }.
+ * Uses an aggregation (not find) so the default can sort by calendar day ignoring the time.
  */
 const listInvoices = async (req, res) => {
-  const { clientId, from, to, status, search } = req.query;
-  const query = {};
-  if (clientId) query.clientId = clientId;
-  if (status) query.status = status;
+  const { clientId, from, to, status, search, sortBy = 'date', sortDir = 'desc' } = req.query;
+  const page = Math.max(0, parseInt(req.query.page, 10) || 0);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 25));
+
+  const match = {};
+  // Aggregation $match does NOT cast like find(): convert the clientId string to an ObjectId.
+  if (clientId) match.clientId = new mongoose.Types.ObjectId(clientId);
+  if (status) match.status = status;
   if (from || to) {
-    query.date = {};
-    if (from) query.date.$gte = new Date(from);
-    if (to) query.date.$lte = new Date(to);
+    match.date = {};
+    if (from) match.date.$gte = new Date(from);
+    if (to) match.date.$lte = new Date(to);
   }
   if (search && search.trim()) {
-    const re = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    query.$or = [
+    const re = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); // 'i' = case-insensitive
+    match.$or = [
       { invoiceNumber: re },
       { 'clientSnapshot.name': re },
-      { 'lines.lotNumberSnapshot': re }
+      { 'lines.lotNumberSnapshot': re },        // single-lot lines
+      { 'lines.sources.lotNumberSnapshot': re } // merged/combined lines carry lot #s on sources
     ];
   }
-  const invoices = await Invoice.find(query)
-    .populate('clientId', 'name clientCode')
-    .sort({ date: -1, createdAt: -1 })
-    .limit(500);
-  res.json(invoices);
+
+  const pipeline = [
+    { $match: match },
+    { $addFields: { _day: { $dateToString: { format: '%Y-%m-%d', date: '$date', timezone: LIST_TZ } } } },
+    { $sort: buildInvoiceSort(sortBy, sortDir) },
+    { $skip: page * limit },
+    { $limit: limit },
+    // Re-attach a lean clientId (name/clientCode) so the frontend's clientSnapshot fallback still works.
+    { $lookup: {
+        from: Client.collection.name, localField: 'clientId', foreignField: '_id',
+        pipeline: [{ $project: { name: 1, clientCode: 1 } }], as: '_clientArr'
+    } },
+    { $addFields: { clientId: { $ifNull: [{ $arrayElemAt: ['$_clientArr', 0] }, '$clientId'] } } },
+    { $project: { _clientArr: 0, _day: 0 } }
+  ];
+
+  const [rows, total] = await Promise.all([
+    Invoice.aggregate(pipeline),
+    Invoice.countDocuments(match)
+  ]);
+  res.json({ rows, total });
 };
 
 /**

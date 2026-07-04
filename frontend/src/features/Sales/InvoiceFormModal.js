@@ -5,11 +5,11 @@ import {
   Box, Modal, Typography, TextField, Button, IconButton, Grid,
   Autocomplete, MenuItem, Table, TableHead, TableRow, TableCell, TableBody,
   Stack, Divider, CircularProgress, Card, CardContent, useTheme,
-  FormControlLabel, Switch
+  FormControlLabel, Switch, Chip
 } from '@mui/material';
 import {
   Close as CloseIcon, Save as SaveIcon, Publish as PublishIcon,
-  Add as AddIcon, Delete as DeleteIcon
+  Add as AddIcon, Delete as DeleteIcon, WarningAmber as WarningAmberIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -55,7 +55,8 @@ const emptyLine = {
   unit: '',
   rate: '',
   remainingPcs: null,
-  finalPcs: null
+  finalPcs: null,
+  notFinished: false  // selected lot has no Finishing record yet — warn, don't block
 };
 
 function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
@@ -252,6 +253,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
       setValue(`lines.${idx}.lotInvoiceNumber`, '');
       setValue(`lines.${idx}.remainingPcs`, null);
       setValue(`lines.${idx}.finalPcs`, null);
+      setValue(`lines.${idx}.notFinished`, false);
       return;
     }
     // In damaged mode the available qty is the lot's damaged pool, not the good remaining.
@@ -262,6 +264,8 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
     setValue(`lines.${idx}.lotInvoiceNumber`, lotOption.invoiceNumber);
     setValue(`lines.${idx}.remainingPcs`, avail);
     setValue(`lines.${idx}.finalPcs`, finalRef);
+    // Only meaningful for good dispatch; damaged-pool rows don't carry the flag.
+    setValue(`lines.${idx}.notFinished`, !damagedMode && !!lotOption.notFinished);
     const desc = `${lotOption.fitStyleName || ''}${lotOption.fabric ? ` (${lotOption.fabric})` : ''} - LOT ${lotOption.lotNumber}${damagedMode ? ' (DAMAGED)' : ''}`.trim();
     if (!getValues(`lines.${idx}.description`)) setValue(`lines.${idx}.description`, desc);
     if (!getValues(`lines.${idx}.pcs`)) setValue(`lines.${idx}.pcs`, avail);
@@ -277,6 +281,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
     setValue(`lines.${idx}.sources`, []);
     setValue(`lines.${idx}.remainingPcs`, null);
     setValue(`lines.${idx}.finalPcs`, null);
+    setValue(`lines.${idx}.notFinished`, false);
   }, [setValue]);
 
   // Pick/clear the lots that make up a merged line. remainingPcs caps the line's total; the
@@ -284,6 +289,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
   const changeMergeLots = useCallback((idx, lots) => {
     setValue(`lines.${idx}.mergeLots`, lots || []);
     setValue(`lines.${idx}.remainingPcs`, sumRemaining(lots));
+    setValue(`lines.${idx}.notFinished`, (lots || []).some((l) => l.notFinished));
     if (!getValues(`lines.${idx}.description`) && (lots || []).length) {
       const first = lots[0];
       const label = lots.map((l) => l.lotNumber).join(' + ');
@@ -323,7 +329,13 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                 renderOption={(props, option) => (
                   <Box component="li" {...props}>
                     <Box>
-                      <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
+                        {option.notFinished && (
+                          <Chip size="small" color="warning" variant="outlined" icon={<WarningAmberIcon />}
+                            label="Not finished" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' }, '& .MuiChip-icon': { fontSize: 14, ml: 0.5 } }} />
+                        )}
+                      </Stack>
                       <Typography variant="caption" color="text.secondary">
                         {option.fitStyleName} · {option.fabric} · Remaining {option.remainingPcs} of {option.finalPcs} pcs
                       </Typography>
@@ -353,7 +365,13 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                 renderOption={(props, option) => (
                   <Box component="li" {...props}>
                     <Box>
-                      <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
+                        {!damagedMode && option.notFinished && (
+                          <Chip size="small" color="warning" variant="outlined" icon={<WarningAmberIcon />}
+                            label="Not finished" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' }, '& .MuiChip-icon': { fontSize: 14, ml: 0.5 } }} />
+                        )}
+                      </Stack>
                       <Typography variant="caption" color="text.secondary">
                         {damagedMode
                           ? `${option.clientName || ''} · ${option.fitStyleName} · ${option.damagedAvailable} damaged pcs`
@@ -386,6 +404,13 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
               {cur.remainingPcs !== null && cur.remainingPcs !== undefined ? ` · Remaining ${cur.remainingPcs}` : ''}
             </Typography>
           )
+        )}
+
+        {!damagedMode && cur.notFinished && (
+          <Typography variant="caption" color="warning.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+            <WarningAmberIcon sx={{ fontSize: 14 }} />
+            {cur.merged ? 'One or more lots are not yet in finishing' : 'Lot not yet in finishing'} — dispatch allowed, verify pcs
+          </Typography>
         )}
 
         {canCombine && (

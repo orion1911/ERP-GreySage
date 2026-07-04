@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
-  Box, Paper, Button, IconButton, Tooltip, Typography, Stack, Chip, Switch, FormControlLabel,
+  Box, Paper, Button, IconButton, Tooltip, Typography, Stack, Chip,
   Table, TableHead, TableBody, TableRow, TableCell, Collapse, CircularProgress,
   Accordion, AccordionSummary, AccordionDetails,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, TextField
@@ -20,11 +20,10 @@ const today = () => dayjs().format('YYYY-MM-DD');
 // zero = reconciled, negative = vendor was under-supplied (drew down more than sent).
 const netColor = (n) => (n > 0 ? 'warning.main' : n < 0 ? 'info.main' : 'text.disabled');
 
-function FinishingVendorExtras() {
+function FinishingVendorExtras({ hideZero = true }) {
   const { showSnackbar } = useOutletContext();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [hideZero, setHideZero] = useState(true);
   const [openItems, setOpenItems] = useState(() => new Set()); // itemKey `${vendorId}:${itemId}`
   const [dialog, setDialog] = useState(null);   // { vendorId, vendorName, itemId, name, grossExtra }
   const [form, setForm] = useState({ qty: '', date: today(), notes: '' });
@@ -96,13 +95,7 @@ function FinishingVendorExtras() {
 
   return (
     <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="subtitle1" fontWeight="bold">Finishing Vendor Extras</Typography>
-        <FormControlLabel
-          control={<Switch size="small" checked={hideZero} onChange={(e) => setHideZero(e.target.checked)} />}
-          label="Hide zero net-held"
-        />
-      </Stack>
+      {/* Title + "Hide zero net-held" switch live in the Stock Management tab header (parent). */}
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
         Net held = extra sent (sent − needed, all lots) − returned. Positive = vendor still holds surplus buffer.
       </Typography>

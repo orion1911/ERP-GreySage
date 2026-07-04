@@ -314,6 +314,7 @@ function AppTheme({ children, variant = 'purple', setVariant, setDarkMode: setDa
             }),
             head: ({ theme }) => ({
               fontWeight: 'bold',
+              textTransform: 'uppercase', // App-wide convention: all table headers are uppercase.
               color: theme.palette.text.primary,
               borderBottom: `1px solid ${theme.palette.divider}`,
               padding: theme.spacing(1),

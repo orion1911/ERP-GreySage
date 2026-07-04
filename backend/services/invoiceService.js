@@ -230,7 +230,14 @@ const getLotsAvailableForDispatch = async ({ clientId, search, limit = 50 } = {}
 
   // One batched read for all fetched lots (3 aggregations) instead of 1–3 sequential
   // queries per lot. The loop below is now pure in-memory — no awaits.
-  const finalPcsByLot = await getFinalPcsForLots(lots.map((l) => l._id));
+  const lotIds = lots.map((l) => l._id);
+  const finalPcsByLot = await getFinalPcsForLots(lotIds);
+  // Which of these lots have reached finishing (i.e. have a Finishing record — presence only,
+  // finish-out date is NOT required). Drives a warn-don't-block flag: a lot can be dispatched
+  // straight off stitching/washing, but the UI flags that it isn't finished yet.
+  const finishedLotIds = new Set(
+    (await Finishing.distinct('lotId', { lotId: { $in: lotIds } })).map(String)
+  );
 
   const results = [];
   for (const lot of lots) {
@@ -256,7 +263,8 @@ const getLotsAvailableForDispatch = async ({ clientId, search, limit = 50 } = {}
       finalPcs,
       damagedPcs,
       invoicedPcs,
-      remainingPcs
+      remainingPcs,
+      notFinished: !finishedLotIds.has(String(lot._id)) // no Finishing record yet → warn, don't block
     });
     if (results.length >= limit) break;
   }

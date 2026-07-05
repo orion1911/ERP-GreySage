@@ -15,7 +15,8 @@ const {
   AccessoryConsumption,
   AccessoryVendorReturn,
   Finishing,
-  Lot
+  Lot,
+  Client
 } = require('../mongodb_schema');
 
 // The canonical seed of article types. `key` drives behaviour (consumption stage),
@@ -476,7 +477,7 @@ const getFinishingVendorExtras = async () => {
 
   // Batch item / type / lot metadata across BOTH consumption and returns (no N+1).
   const itemIds = [...new Set([...cons, ...returns].map(r => String(r.accessoryItemId)))];
-  const items = await AccessoryItem.find({ _id: { $in: itemIds } }, '_id subType accessoryTypeId name').lean();
+  const items = await AccessoryItem.find({ _id: { $in: itemIds } }, '_id subType accessoryTypeId name clientId').lean();
   const itemMap = new Map(items.map(i => [String(i._id), i]));
   const typeIds = [...new Set(items.map(i => String(i.accessoryTypeId)))];
   const types = await AccessoryType.find({ _id: { $in: typeIds } }, '_id name unit').lean();
@@ -484,6 +485,10 @@ const getFinishingVendorExtras = async () => {
   const lotIds = [...new Set(cons.map(c => String(c.lotId)))];
   const lots = lotIds.length ? await Lot.find({ _id: { $in: lotIds } }, '_id lotNumber').lean() : [];
   const lotNumMap = new Map(lots.map(l => [String(l._id), l.lotNumber]));
+  // Client per item (clientId null = general/common). Used to group items by client, general last.
+  const clientIds = [...new Set(items.map(i => (i.clientId ? String(i.clientId) : null)).filter(Boolean))];
+  const clients = clientIds.length ? await Client.find({ _id: { $in: clientIds } }, '_id name clientCode').lean() : [];
+  const clientMap = new Map(clients.map(c => [String(c._id), c]));
 
   const vendorMap = new Map(); // vendorId → { vendorId, vendorName, items: Map(itemId → agg) }
   const ensureVendor = (vid, vname) => {
@@ -499,10 +504,16 @@ const getFinishingVendorExtras = async () => {
   };
   const ensureItem = (v, item, type) => {
     const iid = String(item._id);
-    if (!v.items.has(iid)) v.items.set(iid, {
-      itemId: iid, name: item.name, typeName: type ? type.name : '', unit: type ? (type.unit || 'pcs') : 'pcs',
-      sent: 0, needed: 0, grossExtra: 0, returned: 0, netHeld: 0, lots: [], returnRows: [],
-    });
+    if (!v.items.has(iid)) {
+      const cli = item.clientId ? clientMap.get(String(item.clientId)) : null;
+      v.items.set(iid, {
+        itemId: iid, name: item.name, typeName: type ? type.name : '', unit: type ? (type.unit || 'pcs') : 'pcs',
+        clientId: item.clientId ? String(item.clientId) : null,
+        clientName: cli ? cli.name : null,
+        clientCode: cli ? cli.clientCode : null,
+        sent: 0, needed: 0, grossExtra: 0, returned: 0, netHeld: 0, lots: [], returnRows: [],
+      });
+    }
     return v.items.get(iid);
   };
 
@@ -560,7 +571,16 @@ const getFinishingVendorExtras = async () => {
       totalNetHeld += agg.netHeld;
       itemsOut.push(agg);
     }
-    itemsOut.sort((a, b) => (a.typeName || '').localeCompare(b.typeName || '') || a.name.localeCompare(b.name));
+    // Client-inscribed items first (grouped by client code/name), general (no client) last;
+    // then by accessory type and name within each group.
+    itemsOut.sort((a, b) => {
+      const ag = a.clientId ? 0 : 1;
+      const bg = b.clientId ? 0 : 1;
+      if (ag !== bg) return ag - bg;
+      const byClient = (a.clientCode || a.clientName || '').localeCompare(b.clientCode || b.clientName || '');
+      if (byClient) return byClient;
+      return (a.typeName || '').localeCompare(b.typeName || '') || a.name.localeCompare(b.name);
+    });
     result.push({ vendorId: v.vendorId, vendorName: v.vendorName, totalNetHeld: round2(totalNetHeld), items: itemsOut });
   }
   result.sort((a, b) => (a.vendorName || '').localeCompare(b.vendorName || ''));

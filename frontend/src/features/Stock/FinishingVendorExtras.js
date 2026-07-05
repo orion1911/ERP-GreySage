@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
-  Box, Paper, Button, IconButton, Tooltip, Typography, Stack, Chip,
+  Box, Paper, Button, IconButton, Tooltip, Typography, Stack, Chip, Grid,
   Table, TableHead, TableBody, TableRow, TableCell, Collapse, CircularProgress,
-  Accordion, AccordionSummary, AccordionDetails,
+  Accordion, AccordionSummary, AccordionDetails, useMediaQuery, useTheme,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, TextField
 } from '@mui/material';
 import {
@@ -20,11 +20,26 @@ const today = () => dayjs().format('YYYY-MM-DD');
 // zero = reconciled, negative = vendor was under-supplied (drew down more than sent).
 const netColor = (n) => (n > 0 ? 'warning.main' : n < 0 ? 'info.main' : 'text.disabled');
 
+// One labelled figure inside a mobile item card (2 per row).
+const Metric = ({ label, value, color }) => (
+  <Grid size={{ xs: 6 }}>
+    <Box sx={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+      px: 1, py: 0.5, borderRadius: 1, bgcolor: 'action.hover',
+    }}>
+      <Typography variant="caption" color="text.secondary">{label}</Typography>
+      <Typography variant="body2" fontWeight={600} sx={{ color: color || 'text.primary' }}>{fmtQty(value)}</Typography>
+    </Box>
+  </Grid>
+);
+
 function FinishingVendorExtras({ hideZero = true, readOnly = false, showSnackbar: propShowSnackbar, loadData }) {
   // Works both inside the authenticated Stock page (context provides showSnackbar) and on the
   // standalone public board (no Outlet → context is null; caller passes showSnackbar + loadData).
   const outletCtx = useOutletContext() || {};
   const showSnackbar = propShowSnackbar || outletCtx.showSnackbar || (() => {});
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openItems, setOpenItems] = useState(() => new Set()); // itemKey `${vendorId}:${itemId}`
@@ -89,6 +104,75 @@ function FinishingVendorExtras({ hideZero = true, readOnly = false, showSnackbar
     }
   };
 
+  // Expandable per-item detail (per-lot sent-vs-needed + returns history). Shared by the
+  // desktop table row and the mobile card so both stay in sync.
+  const renderExpanded = (item) => (
+    <Box sx={{ py: 1.5, px: { xs: 1, sm: 2 }, display: 'flex', gap: { xs: 2, sm: 4 }, flexWrap: 'wrap' }}>
+      {/* Per-lot breakdown */}
+      <Box sx={{ flex: '1 1 320px', minWidth: 0 }}>
+        <Typography variant="overline" color="text.secondary">Per-lot (sent vs needed)</Typography>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Lot</TableCell>
+              <TableCell align="right">Sent</TableCell>
+              <TableCell align="right">Needed</TableCell>
+              <TableCell align="right">Extra</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {item.lots.map((l, idx) => (
+              <TableRow key={idx}>
+                <TableCell>{l.lotNumber}</TableCell>
+                <TableCell align="right">{fmtQty(l.sent)}</TableCell>
+                <TableCell align="right">{fmtQty(l.needed)}</TableCell>
+                <TableCell align="right" sx={{ color: netColor(l.extra) }}>{fmtQty(l.extra)}</TableCell>
+              </TableRow>
+            ))}
+            {item.lots.length === 0 && (
+              <TableRow><TableCell colSpan={4}><Typography variant="caption" color="text.secondary">No lots</Typography></TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </Box>
+      {/* Returns history */}
+      <Box sx={{ flex: '1 1 280px', minWidth: 0 }}>
+        <Typography variant="overline" color="text.secondary">Returns</Typography>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Date</TableCell>
+              <TableCell align="right">Qty</TableCell>
+              <TableCell>Notes</TableCell>
+              <TableCell align="center" sx={{ width: 40 }} />
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {item.returnRows.map((r) => (
+              <TableRow key={r._id}>
+                <TableCell>{dayjs(r.date).format('DD MMM YY')}</TableCell>
+                <TableCell align="right">{fmtQty(r.qty)}</TableCell>
+                <TableCell><Typography variant="caption">{r.notes}</Typography></TableCell>
+                <TableCell align="center">
+                  {!readOnly && (
+                    <Tooltip title="Reverse return">
+                      <IconButton size="small" color="error" onClick={() => setConfirmDel(r._id)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+            {item.returnRows.length === 0 && (
+              <TableRow><TableCell colSpan={4}><Typography variant="caption" color="text.secondary">No returns yet</Typography></TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </Box>
+    </Box>
+  );
+
   if (loading) {
     return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}><CircularProgress /></Box>;
   }
@@ -111,7 +195,7 @@ function FinishingVendorExtras({ hideZero = true, readOnly = false, showSnackbar
       )}
 
       {vendors.map((vendor) => (
-        <Accordion key={vendor.vendorId} defaultExpanded={vendors.length <= 3} disableGutters>
+        <Accordion key={vendor.vendorId} defaultExpanded={!isMobile && vendors.length <= 3} disableGutters>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Stack direction="row" spacing={2} alignItems="center" sx={{ width: '100%', pr: 2 }} justifyContent="space-between">
               <Typography fontWeight={600}>{vendor.vendorName}</Typography>
@@ -123,129 +207,120 @@ function FinishingVendorExtras({ hideZero = true, readOnly = false, showSnackbar
             </Stack>
           </AccordionSummary>
           <AccordionDetails sx={{ p: 0 }}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ width: 40 }} />
-                  <TableCell>Item</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell align="right">Sent</TableCell>
-                  <TableCell align="right">Needed</TableCell>
-                  <TableCell align="right">Gross extra</TableCell>
-                  <TableCell align="right">Returned</TableCell>
-                  <TableCell align="right">Net held</TableCell>
-                  {!readOnly && <TableCell align="center" sx={{ width: 60 }}>Return</TableCell>}
-                </TableRow>
-              </TableHead>
-              <TableBody>
+            {isMobile ? (
+              // ── Mobile: one card per item — no wide table, no horizontal scroll ──
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, p: 1 }}>
                 {vendor.items.map((item) => {
                   const key = `${vendor.vendorId}:${item.itemId}`;
                   const open = openItems.has(key);
                   const canReturn = vendor.vendorId !== 'unassigned';
                   return (
-                    <React.Fragment key={key}>
-                      <TableRow hover>
-                        <TableCell>
-                          <IconButton size="small" onClick={() => toggleItem(key)}>
-                            {open ? <DownIcon fontSize="small" /> : <RightIcon fontSize="small" />}
-                          </IconButton>
-                        </TableCell>
-                        <TableCell>{item.name}</TableCell>
-                        <TableCell><Typography variant="caption" color="text.secondary">{item.typeName}</Typography></TableCell>
-                        <TableCell align="right">{fmtQty(item.sent)}</TableCell>
-                        <TableCell align="right">{fmtQty(item.needed)}</TableCell>
-                        <TableCell align="right">{fmtQty(item.grossExtra)}</TableCell>
-                        <TableCell align="right">{fmtQty(item.returned)}</TableCell>
-                        <TableCell align="right" sx={{ color: netColor(item.netHeld), fontWeight: 700 }}>
-                          {fmtQty(item.netHeld)} <Typography component="span" variant="caption" color="text.secondary">{item.unit}</Typography>
-                        </TableCell>
+                    <Paper key={key} variant="outlined" sx={{ p: 1.25 }}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography fontWeight={600} sx={{ lineHeight: 1.25 }}>{item.name}</Typography>
+                          <Typography variant="caption" color="text.secondary">{item.typeName}</Typography>
+                        </Box>
+                        <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
+                          <Typography variant="h6" sx={{ color: netColor(item.netHeld), fontWeight: 800, lineHeight: 1.1 }}>
+                            {fmtQty(item.netHeld)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">{item.unit} net held</Typography>
+                        </Box>
+                      </Stack>
+                      <Grid container spacing={0.75} sx={{ mt: 1 }}>
+                        <Metric label="Sent" value={item.sent} />
+                        <Metric label="Needed" value={item.needed} />
+                        <Metric label="Gross extra" value={item.grossExtra} color={netColor(item.grossExtra)} />
+                        <Metric label="Returned" value={item.returned} />
+                      </Grid>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.5 }}>
+                        <Button
+                          size="small"
+                          onClick={() => toggleItem(key)}
+                          startIcon={open ? <DownIcon fontSize="small" /> : <RightIcon fontSize="small" />}
+                        >
+                          {open ? 'Hide details' : 'Details'}
+                        </Button>
                         {!readOnly && (
-                          <TableCell align="center">
-                            <Tooltip title={canReturn ? 'Record return' : 'No vendor to return to'}>
-                              <span>
-                                <IconButton size="small" color="primary" disabled={!canReturn} onClick={() => openReturn(vendor, item)}>
-                                  <ReturnIcon fontSize="small" />
-                                </IconButton>
-                              </span>
-                            </Tooltip>
-                          </TableCell>
+                          <Tooltip title={canReturn ? 'Record return' : 'No vendor to return to'}>
+                            <span>
+                              <IconButton size="small" color="primary" disabled={!canReturn} onClick={() => openReturn(vendor, item)}>
+                                <ReturnIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
                         )}
-                      </TableRow>
-                      <TableRow>
-                        <TableCell colSpan={readOnly ? 8 : 9} sx={{ py: 0, borderBottom: open ? undefined : 'none' }}>
-                          <Collapse in={open} timeout="auto" unmountOnExit>
-                            <Box sx={{ py: 1.5, px: 2, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                              {/* Per-lot breakdown */}
-                              <Box sx={{ flex: '1 1 340px' }}>
-                                <Typography variant="overline" color="text.secondary">Per-lot (sent vs needed)</Typography>
-                                <Table size="small">
-                                  <TableHead>
-                                    <TableRow>
-                                      <TableCell>Lot</TableCell>
-                                      <TableCell align="right">Sent</TableCell>
-                                      <TableCell align="right">Needed</TableCell>
-                                      <TableCell align="right">Extra</TableCell>
-                                    </TableRow>
-                                  </TableHead>
-                                  <TableBody>
-                                    {item.lots.map((l, idx) => (
-                                      <TableRow key={idx}>
-                                        <TableCell>{l.lotNumber}</TableCell>
-                                        <TableCell align="right">{fmtQty(l.sent)}</TableCell>
-                                        <TableCell align="right">{fmtQty(l.needed)}</TableCell>
-                                        <TableCell align="right" sx={{ color: netColor(l.extra) }}>{fmtQty(l.extra)}</TableCell>
-                                      </TableRow>
-                                    ))}
-                                    {item.lots.length === 0 && (
-                                      <TableRow><TableCell colSpan={4}><Typography variant="caption" color="text.secondary">No lots</Typography></TableCell></TableRow>
-                                    )}
-                                  </TableBody>
-                                </Table>
-                              </Box>
-                              {/* Returns history */}
-                              <Box sx={{ flex: '1 1 300px' }}>
-                                <Typography variant="overline" color="text.secondary">Returns</Typography>
-                                <Table size="small">
-                                  <TableHead>
-                                    <TableRow>
-                                      <TableCell>Date</TableCell>
-                                      <TableCell align="right">Qty</TableCell>
-                                      <TableCell>Notes</TableCell>
-                                      <TableCell align="center" sx={{ width: 40 }} />
-                                    </TableRow>
-                                  </TableHead>
-                                  <TableBody>
-                                    {item.returnRows.map((r) => (
-                                      <TableRow key={r._id}>
-                                        <TableCell>{dayjs(r.date).format('DD MMM YY')}</TableCell>
-                                        <TableCell align="right">{fmtQty(r.qty)}</TableCell>
-                                        <TableCell><Typography variant="caption">{r.notes}</Typography></TableCell>
-                                        <TableCell align="center">
-                                          {!readOnly && (
-                                            <Tooltip title="Reverse return">
-                                              <IconButton size="small" color="error" onClick={() => setConfirmDel(r._id)}>
-                                                <DeleteIcon fontSize="small" />
-                                              </IconButton>
-                                            </Tooltip>
-                                          )}
-                                        </TableCell>
-                                      </TableRow>
-                                    ))}
-                                    {item.returnRows.length === 0 && (
-                                      <TableRow><TableCell colSpan={4}><Typography variant="caption" color="text.secondary">No returns yet</Typography></TableCell></TableRow>
-                                    )}
-                                  </TableBody>
-                                </Table>
-                              </Box>
-                            </Box>
-                          </Collapse>
-                        </TableCell>
-                      </TableRow>
-                    </React.Fragment>
+                      </Stack>
+                      <Collapse in={open} timeout="auto" unmountOnExit>
+                        {renderExpanded(item)}
+                      </Collapse>
+                    </Paper>
                   );
                 })}
-              </TableBody>
-            </Table>
+              </Box>
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ width: 40 }} />
+                    <TableCell>Item</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell align="right">Sent</TableCell>
+                    <TableCell align="right">Needed</TableCell>
+                    <TableCell align="right">Gross extra</TableCell>
+                    <TableCell align="right">Returned</TableCell>
+                    <TableCell align="right">Net held</TableCell>
+                    {!readOnly && <TableCell align="center" sx={{ width: 60 }}>Return</TableCell>}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {vendor.items.map((item) => {
+                    const key = `${vendor.vendorId}:${item.itemId}`;
+                    const open = openItems.has(key);
+                    const canReturn = vendor.vendorId !== 'unassigned';
+                    return (
+                      <React.Fragment key={key}>
+                        <TableRow hover>
+                          <TableCell>
+                            <IconButton size="small" onClick={() => toggleItem(key)}>
+                              {open ? <DownIcon fontSize="small" /> : <RightIcon fontSize="small" />}
+                            </IconButton>
+                          </TableCell>
+                          <TableCell>{item.name}</TableCell>
+                          <TableCell><Typography variant="caption" color="text.secondary">{item.typeName}</Typography></TableCell>
+                          <TableCell align="right">{fmtQty(item.sent)}</TableCell>
+                          <TableCell align="right">{fmtQty(item.needed)}</TableCell>
+                          <TableCell align="right">{fmtQty(item.grossExtra)}</TableCell>
+                          <TableCell align="right">{fmtQty(item.returned)}</TableCell>
+                          <TableCell align="right" sx={{ color: netColor(item.netHeld), fontWeight: 700 }}>
+                            {fmtQty(item.netHeld)} <Typography component="span" variant="caption" color="text.secondary">{item.unit}</Typography>
+                          </TableCell>
+                          {!readOnly && (
+                            <TableCell align="center">
+                              <Tooltip title={canReturn ? 'Record return' : 'No vendor to return to'}>
+                                <span>
+                                  <IconButton size="small" color="primary" disabled={!canReturn} onClick={() => openReturn(vendor, item)}>
+                                    <ReturnIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                        <TableRow>
+                          <TableCell colSpan={readOnly ? 8 : 9} sx={{ py: 0, borderBottom: open ? undefined : 'none' }}>
+                            <Collapse in={open} timeout="auto" unmountOnExit>
+                              {renderExpanded(item)}
+                            </Collapse>
+                          </TableCell>
+                        </TableRow>
+                      </React.Fragment>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
           </AccordionDetails>
         </Accordion>
       ))}

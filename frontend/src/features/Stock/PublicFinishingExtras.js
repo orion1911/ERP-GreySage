@@ -33,8 +33,8 @@ export default function PublicFinishingExtras() {
     <Box sx={{ height: '100vh', overflowY: 'auto', boxSizing: 'border-box', bgcolor: 'background.default', py: { xs: 2, md: 4 } }}>
       <Container maxWidth="lg">
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2, mb: 2 }}>
-          <Box>
-            <Typography variant="h4">Finishing Vendor Extras</Typography>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h4" sx={{ fontSize: { xs: '1.4rem', sm: '2.125rem' } }}>Finishing Vendor Extras</Typography>
             <Typography variant="body2" color="text.secondary">Accessory status — read-only</Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center">

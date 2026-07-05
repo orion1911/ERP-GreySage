@@ -29,6 +29,7 @@ import { VendorPaymentManagement } from './features/VendorPayments';
 import { InvoiceManagement, DispatchManagement } from './features/Sales';
 import { ClientPaymentManagement } from './features/ClientPayments';
 import { StockManagement } from './features/Stock';
+import PublicFinishingExtras from './features/Stock/PublicFinishingExtras';
 import NotFound from './components/NotFound';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -199,6 +200,8 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login isMobile={isMobile} variant={variant} setVariant={setVariant} />} />
             <Route path="/register" element={<Register isMobile={isMobile} variant={variant} setVariant={setVariant} />} />
+            {/* Public, no-login read-only status board for finishing vendors. */}
+            <Route path="/finishing-extras" element={<PublicFinishingExtras />} />
             <Route element={<AuthenticatedLayout isMobile={isMobile} variant={variant} setVariant={setVariant} />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/dashboardxl" element={<DashboardExcel />} />

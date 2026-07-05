@@ -336,13 +336,20 @@ const getPendingDispatch = async ({ search, status, page = 0, limit = 25 } = {})
   }
 
   const lots = await Lot.find(query)
+    .select('lotId lotNumber invoiceNumber clientId fitStyleId fabric waistSize date damagedPcs invoicedPcs damagedSoldPcs createdAt')
     .populate('clientId', 'name clientCode')
     .populate('fitStyleId', 'name')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
+
+  // Batch the production lookup: one set of 3 aggregations for ALL lots instead of
+  // 1–3 sequential queries per lot (the old per-lot getFinalPcsForLot loop blew past
+  // the request timeout in prod once the lot count grew).
+  const finalPcsByLot = await getFinalPcsForLots(lots.map((l) => l._id));
 
   const rows = [];
   for (const lot of lots) {
-    const finalPcs = await getFinalPcsForLot(lot._id);
+    const finalPcs = finalPcsByLot.get(String(lot._id)) || 0;
     if (finalPcs <= 0) continue; // nothing produced yet → not dispatch-relevant
     const damagedPcs = lot.damagedPcs || 0;
     const invoicedPcs = lot.invoicedPcs || 0;

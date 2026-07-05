@@ -78,7 +78,7 @@ function WashingVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSucc
             <CloseIcon />
           </IconButton>
         </Box>
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(onSubmit)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 12 }}>
               <Controller

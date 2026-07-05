@@ -1088,7 +1088,7 @@ const VendorPaymentManagement = () => {
                         </IconButton>
                     </Box>
 
-                    <form onSubmit={handlePaymentSubmit(submitPayment)}>
+                    <form onSubmit={handlePaymentSubmit(submitPayment)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }}>
                         <Grid container spacing={2}>
                             <Grid size={{ xs: 12, md: 12 }}>
                                 <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -1230,7 +1230,7 @@ const VendorPaymentManagement = () => {
                         </IconButton>
                     </Box>
 
-                    <form onSubmit={handleShortSubmit(submitShortAdjustment)}>
+                    <form onSubmit={handleShortSubmit(submitShortAdjustment)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }}>
                         <Grid container spacing={2}>
                             <Grid size={{ xs: 12 }}>
                                 <Controller

@@ -56,8 +56,11 @@ axiosInstance.interceptors.request.use(
 //   - /api/logout  → no point retrying a logout
 let refreshPromise = null;
 
+// NB: requests are issued with a relative url (e.g. 'api/refresh' — baseURL supplies the origin),
+// so match WITHOUT a leading slash. Matching '/api/refresh' here silently failed, which broke the
+// "refresh itself 401'd → session is dead → forceLogout" path (stale token, no redirect on F5).
 const isAuthEndpoint = (url = '') =>
-  url.includes('/api/login') || url.includes('/api/refresh') || url.includes('/api/logout');
+  url.includes('api/login') || url.includes('api/refresh') || url.includes('api/logout');
 
 const performRefresh = () => {
   if (refreshPromise) return refreshPromise;
@@ -77,9 +80,27 @@ const performRefresh = () => {
   return refreshPromise;
 };
 
+// Turn a transport failure (no HTTP response — request timed out, or the server
+// was unreachable) into a human-readable message. Rewriting error.message here
+// means every surface that shows it (the app-wide snackbar, dashboards, etc.)
+// stops leaking raw axios strings like "timeout of 30000ms exceeded".
+const friendlyTransportMessage = (error) => {
+  if (error.response) return null; // there IS a response → let normal handling show the server error
+  if (error.code === 'ECONNABORTED' || /timeout/i.test(error.message || '')) {
+    return 'The server took too long to respond. Please try again in a moment.';
+  }
+  if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+    return 'Unable to reach the server. Please check your connection and try again.';
+  }
+  return null;
+};
+
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
+    const friendly = friendlyTransportMessage(error);
+    if (friendly) error.message = friendly;
+
     const { response, config } = error;
     if (!response || response.status !== 401 || !config) return Promise.reject(error);
     if (isAuthEndpoint(config.url)) return Promise.reject(error);

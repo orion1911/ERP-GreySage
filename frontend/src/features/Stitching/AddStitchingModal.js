@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form';
-import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Divider, Chip } from '@mui/material';
+import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Divider, Chip, CircularProgress } from '@mui/material';
 import { Close as CloseIcon, Delete as DeleteIcon, Save as SaveIcon, Add as AddIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -49,7 +49,7 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
   // else general), each defaulting to 0; the sum must equal the lot quantity.
   const [zipperTypeId, setZipperTypeId] = React.useState(null);
   const [zipperItems, setZipperItems] = React.useState([]);
-  const [zipperPrefill, setZipperPrefill] = React.useState({}); // accessoryItemId -> qty (edit mode)
+  const [zipperLoading, setZipperLoading] = React.useState(false); // zipper section fetch in-flight
   const watchedClientId = useWatch({ control, name: 'clientId' });
   const watchedZipper = useWatch({ control, name: 'zipperConsumption' });
   const watchedQuantity = useWatch({ control, name: 'quantity' });
@@ -71,39 +71,36 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
     return () => { active = false; };
   }, []);
 
-  // In edit mode, load any previously recorded zipper consumption for this lot.
+  // Load applicable zipper items for the selected client and seed the form's zipperConsumption
+  // rows. In edit mode the items and any previously-recorded consumption are fetched IN PARALLEL
+  // (this used to chain consumption → items, leaving the section blank for a second or two on a
+  // cold backend), and `zipperLoading` drives a spinner placeholder so the section shows progress
+  // instead of nothing.
   useEffect(() => {
-    if (isEditMode && editRecord?.lotId?._id) {
-      apiService.accessories.getConsumption(editRecord.lotId._id, 'stitching')
-        .then(rows => {
-          const map = {};
-          (rows || []).forEach(r => { map[String(r.accessoryItemId)] = r.qty; });
-          setZipperPrefill(map);
-        })
-        .catch(() => setZipperPrefill({}));
-    } else {
-      setZipperPrefill({});
-    }
-  }, [isEditMode, editRecord]);
-
-  // Load applicable zipper items whenever the client (or resolved type) changes,
-  // and seed the form's zipperConsumption rows (preserving edit prefill by item id).
-  useEffect(() => {
-    if (!zipperTypeId || !watchedClientId) { setZipperItems([]); setValue('zipperConsumption', []); return; }
+    if (!open) return;
+    if (!watchedClientId) { setZipperItems([]); setValue('zipperConsumption', []); setZipperLoading(false); return; }
+    if (!zipperTypeId) { setZipperLoading(true); return; } // still resolving the zipper type — keep the placeholder
     let active = true;
-    apiService.accessories.getApplicableItems(zipperTypeId, watchedClientId)
-      .then(items => {
+    setZipperLoading(true);
+    const itemsP = apiService.accessories.getApplicableItems(zipperTypeId, watchedClientId).catch(() => []);
+    const consP = (isEditMode && editRecord?.lotId?._id)
+      ? apiService.accessories.getConsumption(editRecord.lotId._id, 'stitching').catch(() => [])
+      : Promise.resolve([]);
+    Promise.all([itemsP, consP])
+      .then(([items, rows]) => {
         if (!active) return;
-        setZipperItems(items);
-        setValue('zipperConsumption', items.map(i => ({
+        const prefill = {};
+        (rows || []).forEach(r => { prefill[String(r.accessoryItemId)] = r.qty; });
+        setZipperItems(items || []);
+        setValue('zipperConsumption', (items || []).map(i => ({
           accessoryItemId: i._id,
           name: i.name,
-          qty: zipperPrefill[String(i._id)] != null ? zipperPrefill[String(i._id)] : 0,
+          qty: prefill[String(i._id)] != null ? prefill[String(i._id)] : 0,
         })));
       })
-      .catch(() => { if (active) { setZipperItems([]); setValue('zipperConsumption', []); } });
+      .finally(() => { if (active) setZipperLoading(false); });
     return () => { active = false; };
-  }, [zipperTypeId, watchedClientId, zipperPrefill, setValue]);
+  }, [open, zipperTypeId, watchedClientId, isEditMode, editRecord, setValue]);
 
   useEffect(() => {
     if (isEditMode && editRecord) {
@@ -220,7 +217,7 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
             <CloseIcon />
           </IconButton>
         </Box>
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(onSubmit)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 6, md: 4 }} sx={{ alignContent: 'center' }}>
               <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -512,7 +509,17 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
             ))}
 
             {/* ── Zipper consumption (stock) ── */}
-            {zipperShown && (
+            {zipperLoading && (
+              <Grid size={{ xs: 12 }}>
+                <Divider sx={{ mt: 1 }}>
+                  <Chip size="small" label="ZIPPER" />
+                </Divider>
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                  <CircularProgress size={24} />
+                </Box>
+              </Grid>
+            )}
+            {!zipperLoading && zipperShown && (
               <>
                 <Grid size={{ xs: 12 }}>
                   <Divider sx={{ mt: 1 }}>

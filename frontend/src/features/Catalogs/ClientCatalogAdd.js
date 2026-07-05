@@ -215,7 +215,7 @@ function ClientCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess, ed
           </Typography>
           <IconButton onClick={onClose}><CloseIcon /></IconButton>
         </Box>
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(onSubmit)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 6, md: 4 }}>
               <Controller

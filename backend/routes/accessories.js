@@ -41,6 +41,11 @@ router.patch('/types/:id', authenticateToken, restrictTo('admin'), updateType);
 router.get('/low-stock', authenticateToken, getLowStock);
 router.post('/low-stock/test', authenticateToken, restrictTo('admin'), sendLowStockTest);
 
+// Public (no-login) read-only status board of finishing vendor extras. Same controller as the
+// authenticated route below — it only reads (never touches req.user), so it's safe unauthenticated.
+// Deliberately exposes the vendor-extras figures to anonymous viewers (e.g. vendors checking status).
+router.get('/public/finishing-vendor-extras', getFinishingVendorExtras);
+
 // Finishing vendor extras dashboard + returns
 router.get('/finishing-vendor-extras', authenticateToken, getFinishingVendorExtras);
 router.post('/vendor-returns', authenticateToken, createVendorReturn);

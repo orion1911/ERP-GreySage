@@ -517,7 +517,7 @@ function PaymentDialog({ open, type, editing, client, invoices, isMobile, onClos
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }}>
         <DialogTitle>{title}</DialogTitle>
         <DialogContent>
           <LocalizationProvider dateAdapter={AdapterDayjs}>

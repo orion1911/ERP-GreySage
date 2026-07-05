@@ -150,7 +150,7 @@ function CompanySettings() {
         These details print on every invoice. Update them once when the company info changes.
       </Typography>
 
-      <form onSubmit={handleSubmit(onSubmit)}>
+      <form onSubmit={handleSubmit(onSubmit)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }}>
         <Paper sx={sectionPaperSx}>
           <Typography variant="h6" sx={{ mb: 2 }}>Issuer</Typography>
           <Grid container spacing={2}>

@@ -1017,6 +1017,13 @@ const apiService = {
         return response.data;
       } catch (error) { throw error; }
     },
+    // Public, read-only variant used by the anonymous /finishing-extras status board (no auth).
+    getFinishingVendorExtrasPublic: async () => {
+      try {
+        const response = await axiosInstance.get('api/accessories/public/finishing-vendor-extras');
+        return response.data;
+      } catch (error) { throw error; }
+    },
     createVendorReturn: async (payload) => {
       try {
         const response = await axiosInstance.post('api/accessories/vendor-returns', payload);

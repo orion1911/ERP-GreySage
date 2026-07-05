@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '@mui/material/styles';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
@@ -20,6 +20,7 @@ import InputLabel from '@mui/material/InputLabel';
 import { styled } from '@mui/material/styles';
 import ForgotPassword from './ForgotPassword';
 import ThemeToggle from '../../components/Theme/ThemeToggle';
+import ThreeBackground from './ThreeBackground';
 import { Grid } from '@mui/material';
 import authService from '../../services/authService';
 
@@ -140,6 +141,7 @@ export default function Login({ isMobile, variant, setVariant }) {
   return (
     <>
       <CssBaseline enableColorScheme />
+      <ThreeBackground />
       <SignInContainer direction="column" justifyContent="center" data-signin="true">
         {/* <Box
           sx={{
@@ -272,6 +274,11 @@ export default function Login({ isMobile, variant, setVariant }) {
               Sign in
             </Button>
           </Box>
+          <Typography variant="body2" sx={{ textAlign: 'center', color: theme.palette.primary.contrastText }}>
+            <Link component={RouterLink} to="/finishing-extras" color={theme.palette.primary.contrastText} underline="hover">
+              Accessories Status Board
+            </Link>
+          </Typography>
           <Typography variant="caption" sx={{ mb: 1, color: theme.palette.primary.contrastText, textAlign: 'center', fontSize: '0.7rem', cursor: 'pointer' }}>
             {'©   '}
             &nbsp;

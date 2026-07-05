@@ -8,18 +8,24 @@
   <meta name="theme-color" content="#000000" />
   <meta name="description" content="Greysage" />
   <title>Greysage</title>
-  <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/100/three.min.js"></script> -->
-  <!-- ajax/libs/three.js/100/three.min.js -->
-  <script src="./scripts/animate/three.min.js"></script>
-  <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script> -->
-  <!-- ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js -->
-  <script src="./scripts/animate/simplex-noise.min.js"></script>
-  <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.0.3/chroma.min.js"></script> -->
-  <!-- ajax/libs/chroma-js/2.0.3/chroma.min.js -->
-  <script src="./scripts/animate/chroma.min.js"></script>
-  <!-- <script src="https://klevron.github.io/codepen/three.js/OrbitControls.js"></script> -->
-  <!-- codepen/three.js/OrbitControls.js -->
-  <!-- <script src="frontend/public/scripts/OrbitControls.js"></script> -->
+  <!--
+    Paint the persisted-theme background before React mounts so an F5/refresh on
+    any page shows the themed colour instantly (no white/animation flash). The
+    3D login background now lives inside React (<ThreeBackground/>) and only
+    mounts on the auth pages, drawing on top of this base colour.
+  -->
+  <script>
+    (function () {
+      try {
+        var dm = localStorage.getItem('darkMode');
+        var dark = dm === null ? true : JSON.parse(dm) === true;
+        document.documentElement.style.backgroundColor =
+          dark ? 'hsl(230, 62%, 14%)' : 'hsl(222deg 83.33% 97.65%)';
+      } catch (e) {
+        document.documentElement.style.backgroundColor = 'hsl(230, 62%, 14%)';
+      }
+    })();
+  </script>
   <style>
   html, body {
   margin: 0;
@@ -27,22 +33,9 @@
   overflow: hidden;
   height: 100%;
 }
-
-canvas {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: -1;
-  pointer-events: none;
-  display: block;
-}
   </style>
 </head>
 <body style="margin: 0;">
   <div id="root"></div>
-  <canvas id="canvas"></canvas>
-  <script src="./scripts/animate3d.js"></script>
 </body>
 </html>

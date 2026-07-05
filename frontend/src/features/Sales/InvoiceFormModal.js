@@ -566,7 +566,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                   )}
                 />
               </Grid>
-              {billingFirms.length > 0 && (
+              {billingFirms.length > 0 ? (
                 <Grid size={{ xs: 12, md: 3 }}>
                   <Controller
                     name="billingFirmId"
@@ -593,7 +593,21 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                     )}
                   />
                 </Grid>
-              )}
+              ) : client ? (
+                // No selectable sub-firms → show the firm (client's default billing identity)
+                // read-only so it's still visible on the invoice form.
+                <Grid size={{ xs: 12, md: 3 }}>
+                  <TextField
+                    label="Firm"
+                    value={selectedClientFull?.billingName || selectedClientFull?.name || ''}
+                    fullWidth
+                    variant="standard"
+                    InputProps={{ readOnly: true }}
+                    InputLabelProps={{ shrink: true }}
+                    helperText="Firm billed to on this invoice"
+                  />
+                </Grid>
+              ) : null}
               <Grid size={{ xs: 6, md: 3 }}>
                 <Controller
                   name="documentType"

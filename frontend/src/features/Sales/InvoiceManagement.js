@@ -357,6 +357,11 @@ function InvoiceManagement() {
               <Grid size={{ xs: 6 }} sx={{ textAlign: 'left' }}>
                 <Typography variant="caption" color="text.secondary">Client</Typography>
                 <Typography variant="body2">{inv.clientSnapshot?.name || inv.clientId?.name || '—'}</Typography>
+                {inv.clientSnapshot?.billingName && inv.clientSnapshot.billingName !== inv.clientSnapshot?.name && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    {inv.clientSnapshot.billingName}
+                  </Typography>
+                )}
               </Grid>
               <Grid size={{ xs: 3 }}>
                 <Typography variant="caption" color="text.secondary">Qty</Typography>
@@ -406,7 +411,8 @@ function InvoiceManagement() {
             <TableCell sortDirection={sortBy === 'client' ? sortDir : false}>
               <TableSortLabel active={sortBy === 'client'} direction={sortBy === 'client' ? sortDir : 'asc'} onClick={() => handleSort('client')}>Client</TableSortLabel>
             </TableCell>
-            <TableCell align="center" sx={{ width: 150 }}>Lot(s)</TableCell>
+            <TableCell>Firm</TableCell>
+            <TableCell align="center" sx={{ width: 160 }}>Lot(s)</TableCell>
             <TableCell align="right" sx={{ width: 120 }} sortDirection={sortBy === 'totalQty' ? sortDir : false}>
               <TableSortLabel active={sortBy === 'totalQty'} direction={sortBy === 'totalQty' ? sortDir : 'asc'} onClick={() => handleSort('totalQty')}>Total Qty</TableSortLabel>
             </TableCell>
@@ -417,14 +423,15 @@ function InvoiceManagement() {
         </TableHead>
         <TableBody>
           {loading ? (
-            <TableRow><TableCell colSpan={8} align="center">Loading…</TableCell></TableRow>
+            <TableRow><TableCell colSpan={9} align="center">Loading…</TableCell></TableRow>
           ) : pagedInvoices.length === 0 ? (
-            <TableRow><TableCell colSpan={8} align="center">No invoices</TableCell></TableRow>
+            <TableRow><TableCell colSpan={9} align="center">No invoices</TableCell></TableRow>
           ) : pagedInvoices.map((inv) => (
             <TableRow key={inv._id} hover>
               <TableCell>{fmtDate(inv.date)}</TableCell>
               <TableCell><b>{inv.invoiceNumber}</b></TableCell>
               <TableCell>{inv.clientSnapshot?.name || inv.clientId?.name}</TableCell>
+              <TableCell>{inv.clientSnapshot?.billingName || '—'}</TableCell>
               <TableCell align="left"><LotsCell lots={lotsForInvoice(inv)} left /></TableCell>
               <TableCell align="right">{inv.totalQty}</TableCell>
               <TableCell align="right">₹{fmtINR(inv.total)}</TableCell>

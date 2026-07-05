@@ -493,6 +493,7 @@ const listInvoices = async (req, res) => {
     match.$or = [
       { invoiceNumber: re },
       { 'clientSnapshot.name': re },
+      { 'clientSnapshot.billingName': re },     // firm name printed on the invoice
       { 'lines.lotNumberSnapshot': re },        // single-lot lines
       { 'lines.sources.lotNumberSnapshot': re } // merged/combined lines carry lot #s on sources
     ];

@@ -80,7 +80,7 @@ function AccessoryItemModal({ open, onClose, type, clients, editItem, onSaved })
           <Typography variant="h6">{isEdit ? `Edit ${type.name}` : `Add ${type.name}`}</Typography>
           <IconButton onClick={onClose}><CloseIcon /></IconButton>
         </Box>
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(onSubmit)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: hasSubType ? 8 : 12 }}>
               <Controller name="name" control={control} rules={{ required: 'Name is required' }}

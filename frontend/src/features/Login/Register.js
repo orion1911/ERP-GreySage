@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TextField, Button, Container, Typography, Box, MenuItem, Select, InputLabel, FormControl } from '@mui/material';
 import authService from '../../services/authService';
+import ThreeBackground from './ThreeBackground';
 
 function Register() {
   const [form, setForm] = useState({ username: '', email: '', password: '', role: 'user' });
@@ -59,7 +60,9 @@ function Register() {
   };
 
   return (
-    <Box sx={{ mt: 8, p: 4, bgcolor: 'background.paper', borderRadius: 2, boxShadow: 3 }}>
+    <>
+      <ThreeBackground />
+      <Box sx={{ mt: 8, p: 4, bgcolor: 'background.paper', borderRadius: 2, boxShadow: 3 }}>
       <Typography variant="h4" gutterBottom>Register</Typography>
       <TextField
         name="username"
@@ -105,7 +108,8 @@ function Register() {
       <Typography sx={{ mt: 2 }}>
         Already have an account? <a href="/login">Login</a>
       </Typography>
-    </Box>
+      </Box>
+    </>
   );
 }
 

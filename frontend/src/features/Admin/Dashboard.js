@@ -260,8 +260,8 @@ const Dashboard = () => {
                 >
                     <Grid container spacing={2} sx={{ mb: 4, alignItems: 'stretch' }}>
                         {loading ? (
-                            [0, 1, 2, 3, 4].map((i) => (
-                                <Grid key={i} size={{ xs: 6, sm: 4, md: 2.4 }}>
+                            [0, 1, 2, 3, 4, 5].map((i) => (
+                                <Grid key={i} size={{ xs: 6, sm: 4, md: 2 }}>
                                     <Paper elevation={1} sx={{ p: 2, borderRadius: 2 }}>
                                         <Skeleton variant="circular" width={40} height={40} sx={{ mb: 1 }} />
                                         <Skeleton variant="text" width="50%" height={16} />

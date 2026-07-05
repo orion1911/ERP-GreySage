@@ -20,8 +20,11 @@ const today = () => dayjs().format('YYYY-MM-DD');
 // zero = reconciled, negative = vendor was under-supplied (drew down more than sent).
 const netColor = (n) => (n > 0 ? 'warning.main' : n < 0 ? 'info.main' : 'text.disabled');
 
-function FinishingVendorExtras({ hideZero = true }) {
-  const { showSnackbar } = useOutletContext();
+function FinishingVendorExtras({ hideZero = true, readOnly = false, showSnackbar: propShowSnackbar, loadData }) {
+  // Works both inside the authenticated Stock page (context provides showSnackbar) and on the
+  // standalone public board (no Outlet → context is null; caller passes showSnackbar + loadData).
+  const outletCtx = useOutletContext() || {};
+  const showSnackbar = propShowSnackbar || outletCtx.showSnackbar || (() => {});
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openItems, setOpenItems] = useState(() => new Set()); // itemKey `${vendorId}:${itemId}`
@@ -32,12 +35,13 @@ function FinishingVendorExtras({ hideZero = true }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    apiService.accessories.getFinishingVendorExtras()
+    const fetcher = loadData || apiService.accessories.getFinishingVendorExtras;
+    fetcher()
       .then(setData)
       .catch((err) => showSnackbar(err))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadData]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -130,7 +134,7 @@ function FinishingVendorExtras({ hideZero = true }) {
                   <TableCell align="right">Gross extra</TableCell>
                   <TableCell align="right">Returned</TableCell>
                   <TableCell align="right">Net held</TableCell>
-                  <TableCell align="center" sx={{ width: 60 }}>Return</TableCell>
+                  {!readOnly && <TableCell align="center" sx={{ width: 60 }}>Return</TableCell>}
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -155,18 +159,20 @@ function FinishingVendorExtras({ hideZero = true }) {
                         <TableCell align="right" sx={{ color: netColor(item.netHeld), fontWeight: 700 }}>
                           {fmtQty(item.netHeld)} <Typography component="span" variant="caption" color="text.secondary">{item.unit}</Typography>
                         </TableCell>
-                        <TableCell align="center">
-                          <Tooltip title={canReturn ? 'Record return' : 'No vendor to return to'}>
-                            <span>
-                              <IconButton size="small" color="primary" disabled={!canReturn} onClick={() => openReturn(vendor, item)}>
-                                <ReturnIcon fontSize="small" />
-                              </IconButton>
-                            </span>
-                          </Tooltip>
-                        </TableCell>
+                        {!readOnly && (
+                          <TableCell align="center">
+                            <Tooltip title={canReturn ? 'Record return' : 'No vendor to return to'}>
+                              <span>
+                                <IconButton size="small" color="primary" disabled={!canReturn} onClick={() => openReturn(vendor, item)}>
+                                  <ReturnIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </TableCell>
+                        )}
                       </TableRow>
                       <TableRow>
-                        <TableCell colSpan={9} sx={{ py: 0, borderBottom: open ? undefined : 'none' }}>
+                        <TableCell colSpan={readOnly ? 8 : 9} sx={{ py: 0, borderBottom: open ? undefined : 'none' }}>
                           <Collapse in={open} timeout="auto" unmountOnExit>
                             <Box sx={{ py: 1.5, px: 2, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                               {/* Per-lot breakdown */}
@@ -215,11 +221,13 @@ function FinishingVendorExtras({ hideZero = true }) {
                                         <TableCell align="right">{fmtQty(r.qty)}</TableCell>
                                         <TableCell><Typography variant="caption">{r.notes}</Typography></TableCell>
                                         <TableCell align="center">
-                                          <Tooltip title="Reverse return">
-                                            <IconButton size="small" color="error" onClick={() => setConfirmDel(r._id)}>
-                                              <DeleteIcon fontSize="small" />
-                                            </IconButton>
-                                          </Tooltip>
+                                          {!readOnly && (
+                                            <Tooltip title="Reverse return">
+                                              <IconButton size="small" color="error" onClick={() => setConfirmDel(r._id)}>
+                                                <DeleteIcon fontSize="small" />
+                                              </IconButton>
+                                            </Tooltip>
+                                          )}
                                         </TableCell>
                                       </TableRow>
                                     ))}

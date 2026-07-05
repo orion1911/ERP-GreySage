@@ -104,7 +104,7 @@ function AccessoryPurchaseModal({ open, onClose, type, editPurchase, onSaved }) 
           <Typography variant="h6">{isEdit ? 'Edit' : 'Add'} {type.name} Purchase</Typography>
           <IconButton onClick={onClose}><CloseIcon /></IconButton>
         </Box>
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(onSubmit)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 6, md: 3 }} sx={{ alignContent: 'center' }}>
               <LocalizationProvider dateAdapter={AdapterDayjs}>

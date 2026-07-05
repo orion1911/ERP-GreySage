@@ -15,6 +15,19 @@
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
+/* ── No spinner on number inputs ──────────────────────────────────────────
+   Remove the up/down stepper arrows from every <input type="number"> across
+   the app (invoice rate/pcs, quantities, amounts, etc.). Typing/paste still
+   work as normal; only the native spin buttons are hidden. */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input[type=number] {
+    -moz-appearance: textfield;
+}
+
 /* ── Global scrollbar styling (matches Sidebar nav scrollbar) ─────────────
    Applied to every scrollable element across the app. Light/dark variants
    key off the `data-mui-color-scheme` attribute that AppTheme sets on <html>.

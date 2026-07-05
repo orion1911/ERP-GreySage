@@ -114,7 +114,7 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
             </IconButton>
           </Grid>
         </Grid>
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(onSubmit)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 6, md: 6 }}>
               <Controller

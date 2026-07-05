@@ -30,7 +30,7 @@ export default function PublicFinishingExtras() {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', py: { xs: 2, md: 4 } }}>
+    <Box sx={{ height: '100vh', overflowY: 'auto', bgcolor: 'background.default', py: { xs: 2, md: 4 } }}>
       <Container maxWidth="lg">
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2, mb: 2 }}>
           <Box>

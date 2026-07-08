@@ -19,3 +19,4 @@ build
 .claude/settings.local.json
 mongo_init
 
+z_run_coder.bat

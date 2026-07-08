@@ -26,6 +26,7 @@ const reportRoutes = require('./routes/reports');
 const auditLogRoutes = require('./routes/auditLogs');
 const emailRoutes = require('./routes/contact');
 const cronRoutes = require('./routes/cron');
+const makingsRoutes = require('./routes/makings');
 
 // Middleware
 const errorHandler = require('./middleware/error');
@@ -137,6 +138,7 @@ app.use('/api', balancesRoutes);
 app.use('/api', reportRoutes);
 app.use('/api', auditLogRoutes);
 app.use('/api', emailRoutes);
+app.use('/api', makingsRoutes); // MAKINGS excel ↔ MongoDB reconciliation (notification bell)
 app.use('/api/cron', cronRoutes); // machine-triggered (Vercel Cron); guarded by CRON_SECRET, not JWT
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────

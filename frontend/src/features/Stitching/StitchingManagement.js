@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { Typography, Box, Button, TextField, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import { ContentCut } from '@mui/icons-material';
 import apiService from '../../services/apiService';
@@ -23,6 +23,9 @@ const groupByLot = (records) => {
 
 function StitchingManagement() {
   const { showSnackbar, isMobile } = useOutletContext();
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const [stitchingRecords, setStitchingRecords] = useState();
   const [washingRecords, setWashingRecords] = useState();
@@ -39,9 +42,12 @@ function StitchingManagement() {
   const [openFinishingModal, setOpenFinishingModal] = useState(false);
   const [selectedLot, setSelectedLot] = useState(null);
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [prefillStitching, setPrefillStitching] = useState(null);
+  const [washingPrefill, setWashingPrefill] = useState(null);
+  const [finishingPrefill, setFinishingPrefill] = useState(null);
   const [selectedWashingRecord, setSelectedWashingRecord] = useState(null);
   const [selectedFinishingRecord, setSelectedFinishingRecord] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [vendorFilter, setVendorFilter] = useState('');
   const [washingVendorFilter, setWashingVendorFilter] = useState('');
   const [finishingVendorFilter, setFinishingVendorFilter] = useState('');
@@ -80,6 +86,106 @@ function StitchingManagement() {
     fetchData();
   }, []);
 
+  // Deep-link support: the notification bell navigates here with ?search=<lotNumber>.
+  // Sync it into the search box even when the page is already mounted.
+  useEffect(() => {
+    const q = searchParams.get('search');
+    if (q != null) setSearchTerm(q);
+  }, [searchParams]);
+
+  // Prefill support: the bell sends a "Not in DB" lot here via navigation state to open
+  // the Add Stitching form pre-filled with the excel values. Resolve the excel client/
+  // vendor NAMES to their ids (needs clients + vendors loaded), then open the modal and
+  // clear the nav state so it doesn't re-open on later renders.
+  useEffect(() => {
+    const pf = location.state?.prefillStitching;
+    if (!pf || !clients.length || !stitchingVendors.length || !fitStyles.length) return;
+    const norm = (s) => (s || '').trim().toLowerCase();
+    const client = clients.find((c) => norm(c.name) === norm(pf.clientName));
+    const vendor = stitchingVendors.find((v) => norm(v.name) === norm(pf.vendorName));
+    // STYLE → Fit Style: resolve against the lookup; if it doesn't match, keep the raw
+    // name so the form can show it as a hint for the user to pick the right one.
+    const fitStyle = fitStyles.find((f) => norm(f.name) === norm(pf.fitStyleName));
+    setPrefillStitching({
+      lotNumber: pf.lotNumber || '',
+      invoiceNumber: pf.invoiceNumber != null ? String(pf.invoiceNumber) : '',
+      clientId: client?._id || '',
+      vendorId: vendor?._id || '',
+      rate: vendor && Number(vendor.defaultRate) > 0 ? String(vendor.defaultRate) : '',
+      fitStyleId: fitStyle?._id || '',
+      fitStyleName: pf.fitStyleName || '', // raw excel STYLE (hint when unmatched)
+      fabric: pf.fabric || '',             // DETAILS → Fabric
+      waistSize: pf.waistSize || '',       // SIZES → Waist Size
+      quantity: pf.quantity != null ? String(pf.quantity) : '',
+      threadColors: (pf.threadColors && pf.threadColors.length)
+        ? pf.threadColors.map((t) => ({ color: t.color || '', quantity: t.quantity != null ? String(t.quantity) : '' }))
+        : null,
+      date: pf.date || null,
+    });
+    setSearchTerm(pf.lotNumber || ''); // filter the grid to this lot so the saved record shows
+    setSelectedRecord(null);
+    setOpenStitchingModal(true);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, clients, stitchingVendors, fitStyles]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Locate the loaded stitching record for a lot (all records are loaded in the grid),
+  // preferring an exact lotNumber + invoiceNumber match. Used to build selectedLot for
+  // the washing/finishing prefill flows below.
+  const findStitchRecord = (lotNumber, invoiceNumber) => {
+    const recs = stitchingRecords || [];
+    return recs.find((r) => r.lotId?.lotNumber === lotNumber
+        && (invoiceNumber == null || String(r.lotId?.invoiceNumber) === String(invoiceNumber)))
+      || recs.find((r) => r.lotId?.lotNumber === lotNumber);
+  };
+
+  // Bell: "washing missing" (WASH SD in excel) → open Add Washing pre-filled (washer→vendor,
+  // date=WASH SD, quantity=pcs). Needs the stitching record (for lotId/available qty) + vendors.
+  useEffect(() => {
+    const pf = location.state?.prefillWashing;
+    if (!pf || !stitchingRecords || !washingVendors.length) return;
+    const rec = findStitchRecord(pf.lotNumber, pf.invoiceNumber);
+    if (!rec) { setSearchTerm(pf.lotNumber || ''); navigate(location.pathname, { replace: true, state: {} }); return; }
+    const norm = (s) => (s || '').trim().toLowerCase();
+    const vendor = washingVendors.find((v) => norm(v.name) === norm(pf.washer));
+    setSelectedLot({
+      lotNumber: rec.lotId?.lotNumber || '',
+      lotId: rec.lotId?._id || '',
+      invoiceNumber: rec.lotId?.invoiceNumber || '',
+      lotQuantity: (rec.quantity || 0) - (rec.quantityShort || 0),
+    });
+    setWashingPrefill({
+      vendorId: vendor?._id || '',
+      rate: vendor && Number(vendor.defaultRate) > 0 ? String(vendor.defaultRate) : '',
+      date: pf.date || null,
+      quantity: pf.quantity != null ? String(pf.quantity) : '',
+    });
+    setSearchTerm(pf.lotNumber || ''); // filter the grid to this lot
+    setSelectedWashingRecord(null);
+    setOpenWashingModal(true);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, stitchingRecords, washingVendors]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Bell: "finishing missing" (WASH ED in excel) → open Add Finishing pre-filled (date=WASH ED;
+  // the finishing qty auto-fills from the washing record, and the finishing vendor is picked by
+  // the user since the excel doesn't carry it).
+  useEffect(() => {
+    const pf = location.state?.prefillFinishing;
+    if (!pf || !stitchingRecords) return;
+    const rec = findStitchRecord(pf.lotNumber, pf.invoiceNumber);
+    if (!rec) { setSearchTerm(pf.lotNumber || ''); navigate(location.pathname, { replace: true, state: {} }); return; }
+    setSelectedLot({
+      lotNumber: rec.lotId?.lotNumber || '',
+      lotId: rec.lotId?._id || '',
+      invoiceNumber: rec.lotId?.invoiceNumber || '',
+      lotQuantity: rec.quantity || 0,
+    });
+    setFinishingPrefill({ date: pf.date || null, quantity: pf.quantity != null ? String(pf.quantity) : '' });
+    setSearchTerm(pf.lotNumber || ''); // filter the grid to this lot
+    setSelectedFinishingRecord(null);
+    setOpenFinishingModal(true);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, stitchingRecords]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     washingRecords ? setHasWashing(true) : setHasWashing(false);
     finishingRecords ? setHasFinishing(true) : setHasFinishing(false);
@@ -115,6 +221,36 @@ function StitchingManagement() {
     ));
   };
 
+  // After any stitching/washing/finishing record is created or edited, re-diff that lot
+  // against the MAKINGS excel (fast, server-side) and tell the notification bell to refresh
+  // — so a discrepancy the user just resolved (e.g. the washing they created) drops off
+  // immediately instead of lingering until the next full reconciliation.
+  const refreshLotNotification = (record) => {
+    const ln = record?.lotId?.lotNumber;
+    const bill = record?.lotId?.invoiceNumber;
+    if (!ln) return;
+    apiService.makings.resolve(ln, bill)
+      .then(() => window.dispatchEvent(new CustomEvent('makings:refresh')))
+      .catch(() => {}); // non-critical
+  };
+
+  // Re-fetch a lot's freshly-saved records from the DB and merge them in, so the grid
+  // (filtered to the searched lot after a bell prefill) reflects exactly what was
+  // persisted — not just optimistic state. Also refreshes the lot's washing/finishing.
+  const fetchLotFromDb = async (lotNumber, lotId) => {
+    if (!lotNumber) return;
+    try {
+      const fresh = await apiService.stitching.getStitching(lotNumber);
+      setStitchingRecords(prev => {
+        const map = new Map((prev || []).map(r => [r._id, r]));
+        (fresh || []).forEach(r => map.set(r._id, r)); // overwrite existing / add new
+        return [...map.values()];
+      });
+      const lid = lotId || (fresh || [])[0]?.lotId?._id;
+      if (lid) { fetchWashingRecords(lid); fetchFinishingRecords(lid); }
+    } catch (err) { /* non-critical refresh */ }
+  };
+
   const handleAddStitching = (newStitching) => {
     if (selectedRecord && selectedRecord._id === newStitching._id) {
       const updatedRecords = stitchingRecords.map(record =>
@@ -128,7 +264,10 @@ function StitchingManagement() {
       const updatedRecords = [...stitchingRecords, newStitching];
       setStitchingRecords(updatedRecords);
     }
+    refreshLotNotification(newStitching);
+    fetchLotFromDb(newStitching.lotId?.lotNumber, newStitching.lotId?._id);
     setSelectedRecord(null);
+    setPrefillStitching(null);
     setOpenStitchingModal(false);
   };
 
@@ -171,7 +310,10 @@ function StitchingManagement() {
           : r
       ));
     }
+    refreshLotNotification(newWashing);
+    fetchLotFromDb(newWashing.lotId?.lotNumber, newWashing.lotId?._id || lotId);
     setSelectedWashingRecord(null);
+    setWashingPrefill(null);
     setOpenWashingModal(false);
   };
 
@@ -211,7 +353,10 @@ function StitchingManagement() {
       // New finishing advanced the lot status (→ Finishing) — refresh the STATUS chip.
       syncLotStatus(lotId, newFinishing.lotId?.status);
     }
+    refreshLotNotification(newFinishing);
+    fetchLotFromDb(newFinishing.lotId?.lotNumber, newFinishing.lotId?._id || lotId);
     setSelectedFinishingRecord(null);
+    setFinishingPrefill(null);
     setOpenFinishingModal(false);
   };
 
@@ -328,16 +473,17 @@ function StitchingManagement() {
       />
       <AddStitchingModal
         open={openStitchingModal}
-        onClose={() => { setOpenStitchingModal(false); setSelectedRecord(null); }}
+        onClose={() => { setOpenStitchingModal(false); setSelectedRecord(null); setPrefillStitching(null); }}
         clients={clients}
         fitStyles={fitStyles}
         vendors={stitchingVendors}
         onAddStitching={handleAddStitching}
         editRecord={selectedRecord}
+        prefill={prefillStitching}
       />
       <AddWashingModal
         open={openWashingModal}
-        onClose={() => { setOpenWashingModal(false); setSelectedWashingRecord(null); }}
+        onClose={() => { setOpenWashingModal(false); setSelectedWashingRecord(null); setWashingPrefill(null); }}
         lotNumber={selectedWashingRecord?.lotId?.lotNumber || selectedLot?.lotNumber || ''}
         lotId={selectedWashingRecord?.lotId?._id || selectedLot?.lotId || ''}
         invoiceNumber={selectedWashingRecord?.lotId?.invoiceNumber || selectedLot?.invoiceNumber || ''}
@@ -345,10 +491,11 @@ function StitchingManagement() {
         vendors={washingVendors}
         onAddWashing={handleAddWashing}
         editRecord={selectedWashingRecord}
+        prefill={washingPrefill}
       />
       <AddFinishingModal
         open={openFinishingModal}
-        onClose={() => { setOpenFinishingModal(false); setSelectedFinishingRecord(null); }}
+        onClose={() => { setOpenFinishingModal(false); setSelectedFinishingRecord(null); setFinishingPrefill(null); }}
         lotNumber={selectedFinishingRecord?.lotId?.lotNumber || selectedLot?.lotNumber || ''}
         lotId={selectedFinishingRecord?.lotId?._id || selectedLot?.lotId || ''}
         invoiceNumber={selectedFinishingRecord?.lotId?.invoiceNumber || selectedLot?.invoiceNumber || ''}
@@ -356,6 +503,7 @@ function StitchingManagement() {
         vendors={finishingVendors}
         onAddFinishing={handleAddFinishing}
         editRecord={selectedFinishingRecord}
+        prefill={finishingPrefill}
       />
     </>
   );

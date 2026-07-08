@@ -713,8 +713,28 @@ const AuditLogSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// MakingsDiff Schema: cached result of the MAKINGS-excel ↔ MongoDB reconciliation.
+// A single latest-wins doc (key: 'latest') refreshed by the cron/precompute job and
+// read by the notification bell — the ~15s workbook parse is far too slow to run on
+// the user request, so we store the computed diff and serve that instantly.
+const MakingsDiffSchema = new mongoose.Schema({
+  key: { type: String, default: 'latest', unique: true }, // singleton
+  count: { type: Number, default: 0 },
+  discrepancies: { type: Array, default: [] },
+  // Internal excel snapshot (aggregated maker rows) kept for cheap per-lot re-diffs
+  // after a record is created. Never sent to the UI (projected out on read).
+  excelRows: { type: Array, default: [] },
+  scannedRows: { type: Number, default: 0 },
+  sheets: { type: [String], default: [] },
+  status: { type: String, enum: ['ok', 'error'], default: 'ok' },
+  error: { type: String },       // populated when status === 'error'
+  computedMs: { type: Number },  // how long the last recon took
+  generatedAt: { type: Date, default: Date.now },
+});
+
 module.exports = {
   Counter: mongoose.model('Counter', CounterSchema),
+  MakingsDiff: mongoose.model('MakingsDiff', MakingsDiffSchema),
   User: mongoose.model('User', UserSchema),
   Client: mongoose.model('Client', ClientSchema),
   FitStyle: mongoose.model('FitStyle', FitStyleSchema),

@@ -3,6 +3,7 @@
 const { CompanySettings } = require('../mongodb_schema');
 const { getLowStockItems } = require('../services/accessoryService');
 const { notifyLowStock } = require('../services/notificationService');
+const { runMakingsRecon } = require('../services/makingsReconService');
 
 /**
  * Shared orchestration used by both the cron endpoint and the admin "send test" trigger.
@@ -45,4 +46,24 @@ const lowStockDigest = async (req, res) => {
   }
 };
 
-module.exports = { lowStockDigest, runLowStockDigest };
+/**
+ * GET /api/cron/makings-recon — invoked by Vercel Cron. Downloads + parses the
+ * MAKINGS workbook, diffs against MongoDB, and stores the result for the bell.
+ * Secret-guarded (Vercel sends `Authorization: Bearer <CRON_SECRET>`); no JWT.
+ */
+const makingsReconCron = async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const auth = req.headers.authorization || '';
+  if (!secret || auth !== `Bearer ${secret}`) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+  try {
+    const doc = await runMakingsRecon();
+    return res.json({ success: true, count: doc.count, scannedRows: doc.scannedRows, computedMs: doc.computedMs });
+  } catch (err) {
+    console.error('makings recon cron failed:', err.message);
+    return res.status(500).json({ success: false, error: 'Reconciliation failed' });
+  }
+};
+
+module.exports = { lowStockDigest, runLowStockDigest, makingsReconCron };

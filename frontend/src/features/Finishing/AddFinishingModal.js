@@ -10,7 +10,7 @@ import { MorphDateTextField } from '../../components/MuiCustom';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 
-function AddFinishingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQuantity, vendors, onAddFinishing, editRecord }) {
+function AddFinishingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQuantity, vendors, onAddFinishing, editRecord, prefill }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
   const isEditMode = !!editRecord;
   const [loading, setLoading] = useState(false);
@@ -276,16 +276,19 @@ function AddFinishingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lot
       setValue('lotNumber', lotNumber || '');
       setValue('invoiceNumber', invoiceNumber || '');
       setValue('vendorId', '');
-      setValue('quantity', '');
+      // For a "finishing missing" prefill from the bell, seed the date (WASH ED). The
+      // quantity auto-fills from the washing record (washAvailable effect), and the
+      // finishing vendor is left for the user (not carried in the excel).
+      setValue('quantity', (prefill && prefill.quantity) ? prefill.quantity : '');
       setValue('quantityShort', '');
       setValue('quantityShortDesc', '');
       setValue('rate', '');
-      setValue('date', dayjs(new Date()));
+      setValue('date', (prefill && prefill.date) ? dayjs(prefill.date) : dayjs(new Date()));
       setValue('finishOutDate', null);
       setValue('description', '');
       basisTouchedRef.current = false; // follows qty
     }
-  }, [editRecord, isEditMode, lotNumber, invoiceNumber, setValue]);
+  }, [editRecord, isEditMode, lotNumber, invoiceNumber, prefill, setValue]);
 
   const onSubmit = (data) => {
     // Multi-client split must account for every piece.

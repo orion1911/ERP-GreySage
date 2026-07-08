@@ -10,7 +10,7 @@ import { MorphDateTextField } from '../../components/MuiCustom';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 
-function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddStitching, editRecord }) {
+function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddStitching, editRecord, prefill }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
   const isEditMode = !!editRecord;
   const [loading, setLoading] = React.useState(false);
@@ -53,6 +53,10 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
   const watchedClientId = useWatch({ control, name: 'clientId' });
   const watchedZipper = useWatch({ control, name: 'zipperConsumption' });
   const watchedQuantity = useWatch({ control, name: 'quantity' });
+  const watchedFitStyle = useWatch({ control, name: 'fitStyleId' });
+  // When the bell prefills a lot whose excel STYLE didn't match a Fit Style in the app,
+  // show the raw value as a hint so the user can pick the right one. Hides once selected.
+  const fitStyleHint = prefill && prefill.fitStyleName && !watchedFitStyle ? prefill.fitStyleName : '';
 
   const zipperTotal = (watchedZipper || []).reduce((s, z) => s + (Number(z?.qty) || 0), 0);
   // Once zipper items are shown for the client, the entered quantities must total the
@@ -119,10 +123,24 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
       setValue('date', editRecord.date ? dayjs(editRecord.date) : dayjs(new Date()));
       setValue('stitchOutDate', editRecord.stitchOutDate ? dayjs(editRecord.stitchOutDate) : null);
       setValue('description', editRecord.description || '');
+    } else if (prefill) {
+      // Pre-fill for a "Not in App" lot coming from the notification bell (excel values).
+      reset(defaultValues);
+      if (prefill.lotNumber) setValue('lotNumber', prefill.lotNumber);
+      if (prefill.invoiceNumber) setValue('invoiceNumber', prefill.invoiceNumber);
+      if (prefill.clientId) setValue('clientId', prefill.clientId);
+      if (prefill.vendorId) setValue('vendorId', prefill.vendorId);
+      if (prefill.rate) setValue('rate', prefill.rate);
+      if (prefill.fitStyleId) setValue('fitStyleId', prefill.fitStyleId); // matched; else hint shown below the field
+      if (prefill.fabric) setValue('fabric', prefill.fabric);
+      if (prefill.waistSize) setValue('waistSize', prefill.waistSize);
+      if (prefill.quantity) setValue('quantity', prefill.quantity);
+      if (prefill.threadColors) setValue('threadColors', prefill.threadColors);
+      if (prefill.date) setValue('date', dayjs(prefill.date));
     } else {
       reset(defaultValues);
     }
-  }, [editRecord, isEditMode, reset, setValue]);
+  }, [editRecord, isEditMode, prefill, reset, setValue]);
 
   const validateLotNumber = (value) => {
     if (!value) return 'Lot Number is required';
@@ -329,6 +347,11 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
                       ))}
                     </Select>
                     {errors.fitStyleId && <Typography color="error" variant="caption">{errors.fitStyleId.message}</Typography>}
+                    {fitStyleHint && (
+                      <Typography color="warning.main" variant="caption" sx={{ display: 'block' }}>
+                        MAKINGS: “{fitStyleHint}”
+                      </Typography>
+                    )}
                   </FormControl>
                 )}
               />

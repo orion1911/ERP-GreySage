@@ -1185,6 +1185,33 @@ const apiService = {
       } catch (error) { throw error; }
     },
   },
+
+  // MAKINGS excel ↔ MongoDB reconciliation, powering the notification bell.
+  makings: {
+    // Fast read of the last precomputed reconciliation (the bell polls this).
+    getDiff: async () => {
+      try {
+        const response = await axiosInstance.get('api/makings/diff');
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    // Recompute now (downloads + parses the workbook, ~15s) and persist. Manual refresh.
+    // Longer timeout than the default 30s to cover the full serverless budget.
+    refresh: async () => {
+      try {
+        const response = await axiosInstance.post('api/makings/refresh', {}, { timeout: 90000 });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    // Re-diff a single lot after its record was created/edited (fast) so the bell
+    // drops the resolved notification immediately.
+    resolve: async (lotNumber, bill) => {
+      try {
+        const response = await axiosInstance.post('api/makings/resolve', { lotNumber, bill });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+  },
 };
 
 export default apiService;

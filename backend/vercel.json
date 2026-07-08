@@ -4,7 +4,7 @@
   {
    "src": "server.js",
    "use": "@vercel/node",
-   "config": { "includeFiles": ["dist/**"] }
+   "config": { "includeFiles": ["dist/**"], "maxDuration": 60 }
   }
  ],
  "routes": [
@@ -17,6 +17,10 @@
   {
    "path": "/api/cron/low-stock-digest",
    "schedule": "30 3 * * *"
+  },
+  {
+   "path": "/api/cron/makings-recon",
+   "schedule": "0 2 * * *"
   }
  ]
 }

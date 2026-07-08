@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Menu as MenuIcon, PowerSettingsNew as LogoutIcon, Close as CloseIcon } from '@mui/icons-material';
 import { motion } from 'motion/react';
 import ThemeToggle from '../Theme/ThemeToggle';
+import NotificationBell from './NotificationBell';
 import authService from '../../services/authService';
 
 function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }) {
@@ -73,6 +74,7 @@ function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }
                 onAnimationComplete={handleAnimationComplete}
                 style={{ visibility: isVisible || !collapsed ? 'visible' : 'hidden', display: 'flex', gap: 1 }}
               >
+                <NotificationBell />
                 <ThemeToggle />
                 <IconButton
                   onClick={handleLogout}
@@ -85,6 +87,7 @@ function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }
             </Box>
           ) : (
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', pointerEvents: 'auto' }}>
+              <NotificationBell />
               <ThemeToggle />
               <IconButton
                 onClick={handleLogout}

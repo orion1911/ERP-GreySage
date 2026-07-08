@@ -10,7 +10,7 @@ import { MorphDateTextField } from '../../components/MuiCustom';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 
-function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQuantity, vendors, onAddWashing, editRecord }) {
+function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQuantity, vendors, onAddWashing, editRecord, prefill }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
 
   const isEditMode = !!editRecord;
@@ -45,6 +45,21 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
       setValue('washOutDate', editRecord.washOutDate ? dayjs(editRecord.washOutDate) : null);
       setValue('description', editRecord.description || '');
       setValue('washDetails', editRecord.washDetails || [{ washColor: '', washCreation: '', quantity: '', rate: '', quantityShort: '' }]);
+    } else if (prefill) {
+      // Pre-fill for a "washing missing" lot from the notification bell (excel values):
+      // washer→vendor, date=WASH SD, quantity=pcs. Wash colour/creation/rate stay blank
+      // (not in the excel) for the user to complete.
+      setValue('lotNumber', lotNumber || '');
+      setValue('invoiceNumber', invoiceNumber || '');
+      setValue('vendorId', prefill.vendorId || '');
+      setValue('date', prefill.date ? dayjs(prefill.date) : dayjs(new Date()));
+      setValue('washOutDate', null);
+      setValue('description', '');
+      setValue('washDetails', [{
+        washColor: '', washCreation: '',
+        quantity: prefill.quantity || lotQuantity || '',
+        rate: prefill.rate || '', quantityShort: '',
+      }]);
     } else {
       setValue('lotNumber', lotNumber || '');
       setValue('invoiceNumber', invoiceNumber || '');
@@ -55,7 +70,7 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
       // Pre-fill the first wash detail's quantity to the available qty (stitching net of shortage).
       setValue('washDetails', [{ washColor: '', washCreation: '', quantity: lotQuantity || '', rate: '', quantityShort: '' }]);
     }
-  }, [editRecord, isEditMode, lotNumber, invoiceNumber, lotQuantity, setValue]);
+  }, [editRecord, isEditMode, lotNumber, invoiceNumber, lotQuantity, prefill, setValue]);
 
   const onSubmit = (data) => {
     const formattedData = {

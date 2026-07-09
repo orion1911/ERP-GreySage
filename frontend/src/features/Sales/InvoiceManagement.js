@@ -16,6 +16,7 @@ import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 import InvoiceFormModal from './InvoiceFormModal';
 import { downloadInvoicePdf, previewInvoicePdf } from './invoicePdfService';
+import EllipsisText from '../../components/common/EllipsisText';
 
 const fmtINR = (n) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n) || 0);
 const fmtDate = (d) => d ? dayjs(d).format('DD/MM/YYYY') : '';
@@ -428,29 +429,35 @@ function InvoiceManagement() {
             <TableRow><TableCell colSpan={9} align="center">No invoices</TableCell></TableRow>
           ) : pagedInvoices.map((inv) => (
             <TableRow key={inv._id} hover>
-              <TableCell>{fmtDate(inv.date)}</TableCell>
+              <TableCell sx={{ whiteSpace: 'nowrap' }}>{fmtDate(inv.date)}</TableCell>
               <TableCell><b>{inv.invoiceNumber}</b></TableCell>
-              <TableCell>{inv.clientSnapshot?.name || inv.clientId?.name}</TableCell>
-              <TableCell>{inv.clientSnapshot?.billingName || '—'}</TableCell>
+              <TableCell sx={{ maxWidth: 200 }}>
+                <EllipsisText text={inv.clientSnapshot?.name || inv.clientId?.name} />
+              </TableCell>
+              <TableCell sx={{ maxWidth: 180 }}>
+                <EllipsisText text={inv.clientSnapshot?.billingName || '—'} />
+              </TableCell>
               <TableCell align="left"><LotsCell lots={lotsForInvoice(inv)} left /></TableCell>
               <TableCell align="right">{inv.totalQty}</TableCell>
-              <TableCell align="right">₹{fmtINR(inv.total)}</TableCell>
+              <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>₹{fmtINR(inv.total)}</TableCell>
               <TableCell align="center">
                 <Chip size="small" label={inv.status.toUpperCase()} color={statusColor(inv.status)} variant="filled" />
               </TableCell>
-              <TableCell align="center">
-                <Tooltip title="Preview PDF"><span>
-                  <IconButton size="small" onClick={() => handlePreview(inv)}><ViewIcon fontSize="small" /></IconButton>
-                </span></Tooltip>
-                <Tooltip title="Download PDF"><span>
-                  <IconButton size="small" onClick={() => handlePdf(inv)}><PdfIcon fontSize="small" /></IconButton>
-                </span></Tooltip>
-                <Tooltip title="Edit"><span>
-                  <IconButton size="small" disabled={inv.status === 'cancelled'} onClick={() => handleEdit(inv)}><EditIcon fontSize="small" /></IconButton>
-                </span></Tooltip>
-                <Tooltip title="Cancel"><span>
-                  <IconButton size="small" disabled={inv.status === 'cancelled'} onClick={() => setCancelTarget(inv)}><CancelIcon fontSize="small" /></IconButton>
-                </span></Tooltip>
+              <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
+                <Box sx={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'center' }}>
+                  <Tooltip title="Preview PDF"><span>
+                    <IconButton size="small" onClick={() => handlePreview(inv)}><ViewIcon fontSize="small" /></IconButton>
+                  </span></Tooltip>
+                  <Tooltip title="Download PDF"><span>
+                    <IconButton size="small" onClick={() => handlePdf(inv)}><PdfIcon fontSize="small" /></IconButton>
+                  </span></Tooltip>
+                  <Tooltip title="Edit"><span>
+                    <IconButton size="small" disabled={inv.status === 'cancelled'} onClick={() => handleEdit(inv)}><EditIcon fontSize="small" /></IconButton>
+                  </span></Tooltip>
+                  <Tooltip title="Cancel"><span>
+                    <IconButton size="small" disabled={inv.status === 'cancelled'} onClick={() => setCancelTarget(inv)}><CancelIcon fontSize="small" /></IconButton>
+                  </span></Tooltip>
+                </Box>
               </TableCell>
             </TableRow>
           ))}

@@ -11,6 +11,7 @@ import {
 } from '@mui/icons-material';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
+import EllipsisText from '../../components/common/EllipsisText';
 import AccessoryPurchaseModal from './AccessoryPurchaseModal';
 import AccessoryPaymentModal from './AccessoryPaymentModal';
 
@@ -158,9 +159,9 @@ function AccessoryLedger({ type, onStockChange }) {
         <Grid size={{ xs: 12, md: 6 }}>
           <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>Purchases</Typography>
           <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-            <TableContainer sx={{ height: TABLE_HEIGHT, overflowY: 'auto' }}>
+            <TableContainer sx={{ height: TABLE_HEIGHT, overflowY: 'auto', overflowX: 'auto' }}>
               {loadingP ? <Loader /> : (
-                <Table size="small" stickyHeader>
+                <Table size="small" stickyHeader sx={{ minWidth: isMobile ? 540 : 'auto' }}>
                   <TableHead>
                     <TableRow>
                       <TableCell width="80">DATE</TableCell>
@@ -175,17 +176,21 @@ function AccessoryLedger({ type, onStockChange }) {
                     {purchases.rows.length === 0 && <TableRow><TableCell colSpan={6} align="center">No purchases</TableCell></TableRow>}
                     {purchases.rows.map(p => (
                       <TableRow key={p._id} hover sx={{ opacity: p.isPaid ? 0.5 : 1 }}>
-                        <TableCell>{fmtDate(p.date)}</TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>{fmtDate(p.date)}</TableCell>
                         <TableCell>{p.vendorInvoiceNumber || '—'}</TableCell>
-                        <TableCell sx={{ maxWidth: 240, whiteSpace: 'normal' }}>{lineSummary(p)}</TableCell>
+                        <TableCell sx={{ maxWidth: 220 }}>
+                          <EllipsisText text={lineSummary(p)} lines={2} />
+                        </TableCell>
                         <TableCell align="right">{fmtQty(p.totalQty)}</TableCell>
-                        <TableCell align="right">{fmtMoney(p.totalAmount)}</TableCell>
-                        <TableCell align="center">
-                          <Tooltip title={p.isPaid ? 'Paid — mark unpaid' : 'Mark as paid'}>
-                            <IconButton size="small" color={p.isPaid ? 'success' : 'default'} onClick={() => handleMarkPurchasePaid(p)}><PaidIcon fontSize="small" /></IconButton>
-                          </Tooltip>
-                          <IconButton size="small" disabled={p.isPaid} onClick={() => { setEditPurchase(p); setPurchaseModal(true); }}><EditIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" color="error" disabled={p.isPaid} onClick={() => handleDeletePurchase(p._id)}><DeleteIcon fontSize="small" /></IconButton>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{fmtMoney(p.totalAmount)}</TableCell>
+                        <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
+                          <Box sx={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'center' }}>
+                            <Tooltip title={p.isPaid ? 'Paid — mark unpaid' : 'Mark as paid'}>
+                              <IconButton size="small" color={p.isPaid ? 'success' : 'default'} onClick={() => handleMarkPurchasePaid(p)}><PaidIcon fontSize="small" /></IconButton>
+                            </Tooltip>
+                            <IconButton size="small" disabled={p.isPaid} onClick={() => { setEditPurchase(p); setPurchaseModal(true); }}><EditIcon fontSize="small" /></IconButton>
+                            <IconButton size="small" color="error" disabled={p.isPaid} onClick={() => handleDeletePurchase(p._id)}><DeleteIcon fontSize="small" /></IconButton>
+                          </Box>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -208,9 +213,9 @@ function AccessoryLedger({ type, onStockChange }) {
         <Grid size={{ xs: 12, md: 6 }}>
           <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>Payments</Typography>
           <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-            <TableContainer sx={{ height: TABLE_HEIGHT, overflowY: 'auto' }}>
+            <TableContainer sx={{ height: TABLE_HEIGHT, overflowY: 'auto', overflowX: 'auto' }}>
               {loadingPay ? <Loader /> : (
-                <Table size="small" stickyHeader>
+                <Table size="small" stickyHeader sx={{ minWidth: isMobile ? 540 : 'auto' }}>
                   <TableHead>
                     <TableRow>
                       <TableCell>DATE</TableCell>
@@ -225,16 +230,20 @@ function AccessoryLedger({ type, onStockChange }) {
                     {payments.rows.length === 0 && <TableRow><TableCell colSpan={6} align="center">No payments</TableCell></TableRow>}
                     {payments.rows.map(p => (
                       <TableRow key={p._id} hover>
-                        <TableCell>{fmtDate(p.paymentDate)}</TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>{fmtDate(p.paymentDate)}</TableCell>
                         <TableCell>
                           <Chip size="small" label={p.paymentType} color={p.paymentType === 'adjustment' ? 'default' : 'success'} variant="outlined" />
                         </TableCell>
                         <TableCell>{p.paymentMode}</TableCell>
-                        <TableCell>{p.referenceNumber || '—'}</TableCell>
-                        <TableCell align="right">{fmtMoney(p.amount)}</TableCell>
-                        <TableCell align="center">
-                          <IconButton size="small" onClick={() => { setEditPayment(p); setPaymentModal(true); }}><EditIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" color="error" onClick={() => handleDeletePayment(p._id)}><DeleteIcon fontSize="small" /></IconButton>
+                        <TableCell sx={{ maxWidth: 140 }}>
+                          <EllipsisText text={p.referenceNumber || '—'} />
+                        </TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{fmtMoney(p.amount)}</TableCell>
+                        <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
+                          <Box sx={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'center' }}>
+                            <IconButton size="small" onClick={() => { setEditPayment(p); setPaymentModal(true); }}><EditIcon fontSize="small" /></IconButton>
+                            <IconButton size="small" color="error" onClick={() => handleDeletePayment(p._id)}><DeleteIcon fontSize="small" /></IconButton>
+                          </Box>
                         </TableCell>
                       </TableRow>
                     ))}

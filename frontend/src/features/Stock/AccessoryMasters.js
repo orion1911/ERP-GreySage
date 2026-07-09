@@ -3,12 +3,14 @@ import { useOutletContext } from 'react-router-dom';
 import {
   Box, Paper, Grid, TextField, Button, IconButton, Tooltip, FormControlLabel, Switch,
   Table, TableHead, TableBody, TableRow, TableCell, TableContainer, Typography, Stack, Chip,
-  Card, CardContent, CircularProgress
+  Card, CardContent, CircularProgress, Collapse
 } from '@mui/material';
 import {
-  Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon
+  Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon,
+  Tune as TuneIcon, ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import apiService from '../../services/apiService';
+import EllipsisText from '../../components/common/EllipsisText';
 import AccessoryItemModal from './AccessoryItemModal';
 
 const fmtQty = (n) => Number(n || 0).toLocaleString('en-IN');
@@ -21,6 +23,7 @@ function AccessoryMasters({ type, clients, clientFilter = '', onStockChange }) {
   const [showInactive, setShowInactive] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState(null);
+  const [alertsOpen, setAlertsOpen] = useState(false); // low-stock settings collapsed by default to declutter
 
   // Per-type low-stock alert settings (monitor on/off + default reorder level for items
   // of this type that have no level of their own).
@@ -106,23 +109,59 @@ function AccessoryMasters({ type, clients, clientFilter = '', onStockChange }) {
           </Grid>
         </Grid>
         <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px dashed', borderColor: 'divider' }}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} flexWrap="wrap">
-            <FormControlLabel
-              control={<Switch size="small" checked={typeMonitor} onChange={e => setTypeMonitor(e.target.checked)} />}
-              label={<Typography variant="caption">Monitor low stock for {type.name}</Typography>}
+          {/* Set-once config — collapsed by default so the everyday controls above stay uncluttered. */}
+          <Stack
+            direction="row" alignItems="center" spacing={1}
+            onClick={() => setAlertsOpen(o => !o)}
+            sx={{ cursor: 'pointer', userSelect: 'none' }}
+          >
+            <TuneIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+            <Typography variant="body2" fontWeight={600}>Low-stock alerts</Typography>
+            <Chip
+              size="small"
+              variant={typeMonitor ? 'filled' : 'outlined'}
+              color={typeMonitor ? 'warning' : 'default'}
+              label={typeMonitor ? `On · ${Number(typeReorder) || 0}${type?.unit ? ` ${type.unit}` : ''}` : 'Off'}
+              sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '.72rem' } }}
             />
-            {typeMonitor && (
-              <TextField
-                label={`Default reorder level${type?.unit ? ` (${type.unit})` : ''}`}
-                value={typeReorder} onChange={e => setTypeReorder(e.target.value.replace(/[^\d.]/g, ''))}
-                variant="standard" size="small" sx={{ width: 200 }}
-                helperText="Used when an item has no level"
-              />
-            )}
-            <Button size="small" variant="outlined" onClick={saveTypeSettings} disabled={savingType}>
-              {savingType ? 'Saving…' : 'Save alert settings'}
-            </Button>
+            <Box sx={{ flexGrow: 1 }} />
+            <ExpandMoreIcon
+              fontSize="small"
+              sx={{ color: 'text.secondary', transition: 'transform .2s', transform: alertsOpen ? 'rotate(180deg)' : 'none' }}
+            />
           </Stack>
+          <Collapse in={alertsOpen}>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }} spacing={1.5}
+              alignItems={{ sm: 'center' }} sx={{ mt: 1.5 }}
+            >
+              <FormControlLabel
+                control={<Switch size="small" checked={typeMonitor} onChange={e => setTypeMonitor(e.target.checked)} />}
+                label={<Typography variant="caption">Monitor low stock for {type.name}</Typography>}
+              />
+              <Stack
+                direction="row" spacing={1.5} alignItems="center"
+                sx={{ ml: { sm: 'auto' }, width: { xs: '100%', sm: 'auto' } }}
+              >
+                {typeMonitor && (
+                  <TextField
+                    label={`Default reorder level${type?.unit ? ` (${type.unit})` : ''}`}
+                    value={typeReorder} onChange={e => setTypeReorder(e.target.value.replace(/[^\d.]/g, ''))}
+                    variant="standard" size="small"
+                    sx={{ flex: { xs: 1, sm: 'none' }, width: { sm: 200 }, minWidth: 110 }}
+                    helperText="Used when an item has no level"
+                  />
+                )}
+                <Button
+                  size="small" variant="outlined" onClick={saveTypeSettings} disabled={savingType}
+                  startIcon={savingType ? <CircularProgress size={14} color="inherit" /> : null}
+                  sx={{ minWidth: 168, flexShrink: 0 }}
+                >
+                  Save alert settings
+                </Button>
+              </Stack>
+            </Stack>
+          </Collapse>
         </Box>
       </Paper>
 
@@ -135,11 +174,14 @@ function AccessoryMasters({ type, clients, clientFilter = '', onStockChange }) {
             <Card key={item._id} variant="outlined">
               <CardContent sx={{ pb: 1 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                  <Box>
+                  <Box sx={{ minWidth: 0 }}>
                     <Typography fontWeight="bold">{item.name}</Typography>
                     <Typography variant="caption" color="text.secondary">
                       {item.client ? `${item.client.name}` : 'General'} · Rate {item.rate || 0}
                     </Typography>
+                    {item.description && (
+                      <EllipsisText text={item.description} variant="caption" lines={2} sx={{ color: 'text.secondary', fontStyle: 'italic' }} />
+                    )}
                   </Box>
                   <Stack direction="row" spacing={0.5}>
                     <IconButton size="small" onClick={() => { setEditItem(item); setModalOpen(true); }}><EditIcon fontSize="small" /></IconButton>
@@ -183,7 +225,12 @@ function AccessoryMasters({ type, clients, clientFilter = '', onStockChange }) {
               )}
               {filtered.map(item => (
                 <TableRow key={item._id} hover>
-                  <TableCell>{item.name}</TableCell>
+                  <TableCell sx={{ maxWidth: 220 }}>
+                    {item.name}
+                    {item.description && (
+                      <EllipsisText text={item.description} variant="caption" sx={{ color: 'text.secondary', fontStyle: 'italic' }} />
+                    )}
+                  </TableCell>
                   <TableCell>
                     {item.client
                       ? <Chip size="small" label={item.client.name} />

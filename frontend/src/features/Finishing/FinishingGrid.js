@@ -10,6 +10,7 @@ import { Edit as EditIcon } from '@mui/icons-material';
 import { NoRecordRow, TableRowsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
 import FinishingGridSx from './FinishingGridSx';
+import EllipsisText from '../../components/common/EllipsisText';
 import { motion, AnimatePresence } from 'motion/react';
 
 function FinishingGrid({ finishingRecords, hasFinishing, lotId, handleUpdateFinishOut, onEditFinishing, sortBy, setSortBy, sortDirection, setSortDirection, filterAnchorEl, setFilterAnchorEl, filterStatus, setFilterStatus, readOnly = false }) {
@@ -95,8 +96,10 @@ function FinishingGrid({ finishingRecords, hasFinishing, lotId, handleUpdateFini
               ) : processedRecords.length > 0 ? (
                 processedRecords.map((fr, idx) => (
                   <TableRow key={fr._id}>
-                    <TableCell align='center' sx={{ borderBottom: idx !== processedRecords.length - 1 && 0, paddingTop: 0.3, paddingBottom: 0.3 }}>{getFormattedDate(fr.date)}</TableCell>
-                    <TableCell align='center'>{fr.vendorId?.name || 'N/A'}</TableCell>
+                    <TableCell align='center' sx={{ borderBottom: idx !== processedRecords.length - 1 && 0, paddingTop: 0.3, paddingBottom: 0.3, whiteSpace: 'nowrap' }}>{getFormattedDate(fr.date)}</TableCell>
+                    <TableCell align='center' sx={{ maxWidth: 200 }}>
+                      <EllipsisText text={fr.vendorId?.name || 'N/A'} lines={1} variant='body2' />
+                    </TableCell>
                     <TableCell align='center'>{fr.quantity}</TableCell>
                     <TableCell align='center'>{fr.quantityShort ?? 0}</TableCell>
                     <TableCell align='center'>{fr.rate}</TableCell>

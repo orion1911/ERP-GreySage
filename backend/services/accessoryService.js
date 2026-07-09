@@ -147,6 +147,7 @@ const getAccessoryStock = async (accessoryTypeId, clientId) => {
       name: item.name,
       rate: item.rate,
       subType: item.subType,
+      description: item.description || '',
       isActive: item.isActive,
       openingStock: openingQty,
       monitorLowStock: !!item.monitorLowStock,

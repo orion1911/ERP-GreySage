@@ -12,6 +12,7 @@ import {
 } from '@mui/icons-material';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
+import EllipsisText from '../../components/common/EllipsisText';
 import InvoiceFormModal from './InvoiceFormModal';
 
 const fmtDate = (d) => d ? dayjs(d).format('DD/MM/YYYY') : '';
@@ -223,10 +224,10 @@ function DispatchManagement() {
             const chip = statusChip(r.dispatchStatus);
             return (
               <TableRow key={r._id} hover>
-                <TableCell>{fmtDate(r.date)}</TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</TableCell>
                 <TableCell><b>{r.lotNumber}</b><br /><Typography variant="caption" color="text.secondary">Inv {r.invoiceNumber}</Typography></TableCell>
-                <TableCell>{r.clientName}</TableCell>
-                <TableCell>{r.fitStyleName}{r.fabric ? ` · ${r.fabric}` : ''}</TableCell>
+                <TableCell sx={{ maxWidth: 180 }}><EllipsisText text={r.clientName} /></TableCell>
+                <TableCell sx={{ maxWidth: 180 }}><EllipsisText text={`${r.fitStyleName || ''}${r.fabric ? ` · ${r.fabric}` : ''}`} /></TableCell>
                 <TableCell align="right">{r.finalPcs}</TableCell>
                 <TableCell align="right">
                   <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">

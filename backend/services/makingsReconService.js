@@ -233,7 +233,9 @@ const expandColor = (code) => COLOR_NAMES[code.toUpperCase()] || code.toUpperCas
 // A single colour (with or without a count) covers all pcs; multiple colours split by
 // their stated counts. Abbreviations are expanded to the app's full colour names.
 const parseThreadColors = (comments, totalPcs) => {
-  const text = (comments || []).join(' ').replace(/\s+/g, ' ').trim();
+  const text = (comments || []).join(' ')
+    .replace(/[-–—:=]+/g, ' ') // separators between colour and count: "BLK - 500" → "BLK 500"
+    .replace(/\s+/g, ' ').trim();
   if (!text) return null;
   const tokens = text.split(' ');
   const out = [];

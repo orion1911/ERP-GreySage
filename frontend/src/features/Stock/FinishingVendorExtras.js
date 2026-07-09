@@ -12,6 +12,7 @@ import {
 } from '@mui/icons-material';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
+import EllipsisText from '../../components/common/EllipsisText';
 
 const fmtQty = (n) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const today = () => dayjs().format('YYYY-MM-DD');
@@ -152,7 +153,7 @@ function FinishingVendorExtras({ hideZero = true, readOnly = false, showSnackbar
               <TableRow key={r._id}>
                 <TableCell>{dayjs(r.date).format('DD MMM YY')}</TableCell>
                 <TableCell align="right">{fmtQty(r.qty)}</TableCell>
-                <TableCell><Typography variant="caption">{r.notes}</Typography></TableCell>
+                <TableCell sx={{ maxWidth: 180 }}><EllipsisText text={r.notes} variant="caption" lines={2} /></TableCell>
                 <TableCell align="center">
                   {!readOnly && (
                     <Tooltip title="Reverse return">
@@ -287,7 +288,7 @@ function FinishingVendorExtras({ hideZero = true, readOnly = false, showSnackbar
                               {open ? <DownIcon fontSize="small" /> : <RightIcon fontSize="small" />}
                             </IconButton>
                           </TableCell>
-                          <TableCell>{item.name}</TableCell>
+                          <TableCell sx={{ maxWidth: 200 }}><EllipsisText text={item.name} /></TableCell>
                           <TableCell><Typography variant="caption" color="text.secondary">{item.typeName}</Typography></TableCell>
                           <TableCell align="right">{fmtQty(item.sent)}</TableCell>
                           <TableCell align="right">{fmtQty(item.needed)}</TableCell>

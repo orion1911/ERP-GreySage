@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   IconButton, Badge, Popover, Box, Typography, List, ListItemButton,
-  ListItemText, Divider, CircularProgress, Tooltip, Chip, TextField, InputAdornment,
+  Divider, CircularProgress, Tooltip, Chip, TextField, InputAdornment,
 } from '@mui/material';
 import {
   Notifications as BellIcon, Refresh as RefreshIcon, WarningAmber as WarnIcon,
   ErrorOutline as MissingIcon, Search as SearchIcon, Close as ClearIcon,
+  ChevronRight as ChevronIcon, ArrowRightAlt as ArrowIcon, CheckCircleOutline as OkIcon,
 } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 
@@ -36,6 +37,45 @@ const timeAgo = (value) => {
   if (h < 24) return `${h}h ago`;
   return `${Math.round(h / 24)}d ago`;
 };
+
+// Small uppercase section label — mirrors the app's uppercase table-header convention.
+function GroupHeader({ children, count }) {
+  return (
+    <Box
+      sx={{
+        position: 'sticky', top: 0, zIndex: 1,
+        display: 'flex', alignItems: 'center', gap: 1,
+        px: 2, py: 0.75,
+        bgcolor: 'background.paper',
+        borderBottom: (t) => `1px solid ${t.palette.divider}`,
+      }}
+    >
+      <Typography variant="caption" sx={{ fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'text.secondary' }}>
+        {children}
+      </Typography>
+      <Typography variant="caption" color="text.secondary">{count}</Typography>
+    </Box>
+  );
+}
+
+// One excel↔app field disagreement, laid out so the two values line up and scan
+// at a glance instead of running together in a sentence.
+function DiffRow({ field, excel, app }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, minWidth: 0 }}>
+      <Typography variant="caption" sx={{ flexShrink: 0, fontWeight: 600, color: 'text.secondary', minWidth: 62, textTransform: 'uppercase', letterSpacing: '.02em' }}>
+        {field}
+      </Typography>
+      <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.primary' }} noWrap>
+        {String(excel)}
+      </Typography>
+      <ArrowIcon sx={{ fontSize: 15, color: 'text.disabled', flexShrink: 0 }} />
+      <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 600 }} noWrap>
+        {String(app)}
+      </Typography>
+    </Box>
+  );
+}
 
 function NotificationBell() {
   const navigate = useNavigate();
@@ -104,11 +144,12 @@ function NotificationBell() {
   }, [load]);
 
   const open = Boolean(anchorEl);
+  const closePopover = () => { setAnchorEl(null); setFilterText(''); };
+
   const handleItemClick = (it) => {
-    setAnchorEl(null);
-    setFilterText('');
+    closePopover();
     if (!it.inDb && it.excel) {
-      // Lot isn't in the DB yet — open the Add Stitching form pre-filled.
+      // Lot isn't in the app yet — open the Add Stitching form pre-filled.
       navigate('/stitching', { state: { prefillStitching: it.excel } });
     } else if (it.action === 'washing' && it.washingExcel) {
       // Washing record missing (WASH SD in excel) — open Add Washing pre-filled.
@@ -121,20 +162,59 @@ function NotificationBell() {
     }
   };
 
-  // Show missing-record items first (most actionable), then data mismatches — original
-  // order preserved within each group (V8 sort is stable).
-  const sortedItems = [...items].sort((a, b) => (missingKind(b) ? 1 : 0) - (missingKind(a) ? 1 : 0));
   const missingCount = items.filter((it) => missingKind(it)).length;
+  const mismatchCount = items.length - missingCount;
 
-  // Client-side filter by lot # or bill #.
+  // Client-side filter by lot # or bill #, then split into the two triage groups.
   const q = filterText.trim().toLowerCase();
-  const visibleItems = q
-    ? sortedItems.filter((it) => `${it.lotNumber || ''} ${it.bill || ''}`.toLowerCase().includes(q))
-    : sortedItems;
+  const matchesFilter = (it) => !q || `${it.lotNumber || ''} ${it.bill || ''}`.toLowerCase().includes(q);
+  const visibleMissing = items.filter((it) => missingKind(it) && matchesFilter(it));
+  const visibleMismatch = items.filter((it) => !missingKind(it) && matchesFilter(it));
+  const visibleCount = visibleMissing.length + visibleMismatch.length;
 
+  const hasFailure = meta.status === 'error' || Boolean(error);
   const subtitle = refreshing
     ? 'Recomputing… (~15s)'
-    : `${items.length} lot${items.length === 1 ? '' : 's'} need review${missingCount ? ` · ${missingCount} missing` : ''} · synced ${timeAgo(meta.generatedAt)}`;
+    : `synced ${timeAgo(meta.generatedAt)}`;
+
+  const renderItem = (it) => {
+    const mk = missingKind(it);
+    return (
+      <ListItemButton
+        key={`${it.lotNumber}-${it.bill}`}
+        onClick={() => handleItemClick(it)}
+        sx={{
+          alignItems: 'flex-start', py: 1.25, px: 2, gap: 1,
+          // Theme `divider` is too faint on the dark paper to read as a row separator —
+          // use a slightly stronger hairline, and drop it on the last row of the group.
+          borderBottom: (t) => `1px solid ${t.palette.mode === 'dark' ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.08)'}`,
+          '&:last-of-type': { borderBottom: 'none' },
+          '& .nav-caret': { opacity: 0, transition: 'opacity .15s ease' },
+          '&:hover .nav-caret': { opacity: 1 },
+        }}
+      >
+        {mk && (
+          <MissingIcon color={STAGE_COLOR[mk]} fontSize="small" sx={{ mt: 0.25, flexShrink: 0 }} titleAccess="Missing record" />
+        )}
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>{it.lotNumber}</Typography>
+            {it.bill && <Chip size="small" variant="outlined" label={`Bill ${it.bill}`} sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '.7rem' } }} />}
+            {mk && <Chip size="small" color={STAGE_COLOR[mk]} label={MISSING_LABEL[mk]} sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '.7rem', fontWeight: 600 } }} />}
+            {it.client && <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 130 }}>{it.client}</Typography>}
+          </Box>
+          {it.fields?.length > 0 && (
+            <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+              {it.fields.map((f, i) => (
+                <DiffRow key={i} field={f.field} excel={f.excel} app={f.db} />
+              ))}
+            </Box>
+          )}
+        </Box>
+        <ChevronIcon className="nav-caret" fontSize="small" sx={{ color: 'text.disabled', mt: 0.5, flexShrink: 0 }} />
+      </ListItemButton>
+    );
+  };
 
   return (
     <>
@@ -152,16 +232,17 @@ function NotificationBell() {
       <Popover
         open={open}
         anchorEl={anchorEl}
-        onClose={() => { setAnchorEl(null); setFilterText(''); }}
+        onClose={closePopover}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        slotProps={{ paper: { sx: { width: 400, maxWidth: '92vw', maxHeight: 480 } } }}
+        slotProps={{ paper: { sx: { width: 400, maxWidth: '92vw', maxHeight: 520, display: 'flex', flexDirection: 'column', overflow: 'hidden' } } }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1.25 }}>
+        {/* ── Header (fixed) ── */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1.25, flexShrink: 0 }}>
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: 0.5 }}>
               MAKINGS
-              {(meta.status === 'error' || error) && (
+              {hasFailure && (
                 <Tooltip title="The last sync failed — showing the previous result.">
                   <WarnIcon fontSize="small" color="warning" />
                 </Tooltip>
@@ -177,10 +258,26 @@ function NotificationBell() {
             </span>
           </Tooltip>
         </Box>
-        <Divider />
 
+        {/* ── Triage summary + filter (fixed) ── */}
         {items.length > 0 && (
-          <Box sx={{ px: 1.5, pt: 1 }}>
+          <Box sx={{ px: 2, pb: 1.25, flexShrink: 0 }}>
+            <Box sx={{ display: 'flex', gap: 0.75, mb: 1 }}>
+              <Chip
+                size="small"
+                icon={<MissingIcon sx={{ fontSize: 16 }} />}
+                color="warning"
+                variant={missingCount ? 'filled' : 'outlined'}
+                label={`${missingCount} to create`}
+                sx={{ height: 24, fontWeight: 600 }}
+              />
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`${mismatchCount} mismatch${mismatchCount === 1 ? '' : 'es'}`}
+                sx={{ height: 24 }}
+              />
+            </Box>
             <TextField
               fullWidth
               size="small"
@@ -197,83 +294,67 @@ function NotificationBell() {
             />
           </Box>
         )}
+        <Divider />
 
-        {loading && !items.length && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress size={26} />
-          </Box>
-        )}
+        {/* ── Scroll area ── */}
+        <Box sx={{ overflowY: 'auto', flex: 1 }}>
+          {loading && !items.length && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
+              <CircularProgress size={26} />
+            </Box>
+          )}
 
-        {/* Full-area error only when there's nothing to show; otherwise the last-good list stays
-            and the header warn icon flags the failure. */}
-        {!loading && error && !items.length && (
-          <Box sx={{ px: 2, py: 3 }}>
-            <Typography variant="body2" color="error">{error}</Typography>
-          </Box>
-        )}
+          {/* Full-area error only when there's nothing to show; otherwise the last-good list stays
+              and the header warn icon flags the failure. */}
+          {!loading && error && !items.length && (
+            <Box sx={{ px: 2, py: 3 }}>
+              <Typography variant="body2" color="error" sx={{ fontWeight: 600, mb: 0.5 }}>Couldn’t load discrepancies</Typography>
+              <Typography variant="caption" color="text.secondary">{error}</Typography>
+            </Box>
+          )}
 
-        {!loading && !error && meta.status === 'empty' && !items.length && (
-          <Box sx={{ px: 2, py: 3 }}>
-            <Typography variant="body2" color="text.secondary">
-              Not computed yet. Click refresh to reconcile the MAKINGS excel.
-            </Typography>
-          </Box>
-        )}
+          {!loading && !error && meta.status === 'empty' && !items.length && (
+            <Box sx={{ px: 2, py: 4, textAlign: 'center' }}>
+              <RefreshIcon sx={{ fontSize: 30, color: 'text.disabled', mb: 1 }} />
+              <Typography variant="body2" color="text.secondary">
+                Not reconciled yet. Refresh to compare the MAKINGS excel against the app.
+              </Typography>
+            </Box>
+          )}
 
-        {!error && meta.status !== 'empty' && items.length === 0 && !loading && (
-          <Box sx={{ px: 2, py: 3 }}>
-            <Typography variant="body2" color="text.secondary">
-              Everything matches the MAKINGS excel. 🎉
-            </Typography>
-          </Box>
-        )}
+          {!error && meta.status !== 'empty' && items.length === 0 && !loading && (
+            <Box sx={{ px: 2, py: 5, textAlign: 'center' }}>
+              <OkIcon sx={{ fontSize: 34, color: 'success.main', mb: 1 }} />
+              <Typography variant="body2" color="text.secondary">
+                Everything matches the MAKINGS excel.
+              </Typography>
+            </Box>
+          )}
 
-        {items.length > 0 && visibleItems.length === 0 && (
-          <Box sx={{ px: 2, py: 3 }}>
-            <Typography variant="body2" color="text.secondary">No lots match “{filterText}”.</Typography>
-          </Box>
-        )}
+          {items.length > 0 && visibleCount === 0 && (
+            <Box sx={{ px: 2, py: 4, textAlign: 'center' }}>
+              <Typography variant="body2" color="text.secondary">No lots match “{filterText}”.</Typography>
+            </Box>
+          )}
 
-        {visibleItems.length > 0 && (
-          <List dense sx={{ py: 0, overflowY: 'auto', maxHeight: 360 }}>
-            {visibleItems.map((it, idx) => {
-              const mk = missingKind(it);
-              return (
-              <React.Fragment key={`${it.lotNumber}-${it.bill}`}>
-                {idx > 0 && <Divider component="li" />}
-                <ListItemButton
-                  onClick={() => handleItemClick(it)}
-                  alignItems="flex-start"
-                  sx={mk ? { bgcolor: (t) => t.palette.action.hover } : undefined}
-                >
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                        {mk && <MissingIcon color={STAGE_COLOR[mk]} fontSize="small" titleAccess="Missing record" />}
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{it.lotNumber}</Typography>
-                        {it.bill && <Chip size="small" variant="outlined" label={`Bill ${it.bill}`} />}
-                        {mk && <Chip size="small" color={STAGE_COLOR[mk]} label={MISSING_LABEL[mk]} />}
-                        {it.client && (
-                          <Typography variant="caption" color="text.secondary">{it.client}</Typography>
-                        )}
-                      </Box>
-                    }
-                    secondary={
-                      <Box component="span" sx={{ display: 'block', mt: 0.5 }}>
-                        {it.fields.map((f, i) => (
-                          <Typography key={i} component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                            <b>{f.field}:</b> excel <b>{String(f.excel)}</b> · app {String(f.db)}
-                          </Typography>
-                        ))}
-                      </Box>
-                    }
-                  />
-                </ListItemButton>
-              </React.Fragment>
-              );
-            })}
-          </List>
-        )}
+          {visibleMissing.length > 0 && (
+            <>
+              <GroupHeader count={visibleMissing.length}>Needs creating</GroupHeader>
+              <List dense disablePadding>
+                {visibleMissing.map(renderItem)}
+              </List>
+            </>
+          )}
+
+          {visibleMismatch.length > 0 && (
+            <>
+              <GroupHeader count={visibleMismatch.length}>Data mismatches</GroupHeader>
+              <List dense disablePadding>
+                {visibleMismatch.map(renderItem)}
+              </List>
+            </>
+          )}
+        </Box>
       </Popover>
     </>
   );

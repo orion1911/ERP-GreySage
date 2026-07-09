@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableRow, TextField, Button, Container, Typography, Box } from '@mui/material';
 import apiService from '../../services/apiService';
+import EllipsisText from '../../components/common/EllipsisText';
 import * as XLSX from 'xlsx';
 
 function Reports() {
@@ -63,9 +64,9 @@ function Reports() {
             </TableHead>
             <TableBody>
               <TableRow>
-                <TableCell>{r.totalSales}</TableCell>
-                <TableCell>{r.totalPayments}</TableCell>
-                <TableCell>{r.outstandingBalance}</TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>{r.totalSales}</TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>{r.totalPayments}</TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>{r.outstandingBalance}</TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -81,9 +82,11 @@ function Reports() {
             <TableBody>
               {r.topFitStyles.map((d, i) => (
                 <TableRow key={i}>
-                  <TableCell>{d.name}</TableCell>
+                  <TableCell sx={{ maxWidth: 200 }}>
+                    <EllipsisText text={d.name} />
+                  </TableCell>
                   <TableCell>{d.pieces}</TableCell>
-                  <TableCell>{d.amount}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{d.amount}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

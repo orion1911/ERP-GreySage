@@ -9,6 +9,7 @@ import { MorphDateIconField, MorphDateTextField } from '../../components/MuiCust
 import { Edit as EditIcon, ArrowUpward, ArrowDownward, FilterList } from '@mui/icons-material';
 import { NoRecordRow, TableRowsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { getFormattedDate } from '../../components/Validators';
+import EllipsisText from '../../components/common/EllipsisText';
 import WashingGridSx from './WashingGridSx';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -87,8 +88,10 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
                 processedRecords.map((wr, idx) => (
                   <TableRow key={wr._id}>
                     <TableCell></TableCell>
-                    <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>{getFormattedDate(wr.date)}</TableCell>
-                    <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>{wr.vendorId?.name || 'N/A'}</TableCell>
+                    <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0, whiteSpace: 'nowrap' }}>{getFormattedDate(wr.date)}</TableCell>
+                    <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0, maxWidth: 180 }}>
+                      <EllipsisText text={wr.vendorId?.name || 'N/A'} lines={1} sx={{ textAlign: 'center' }} />
+                    </TableCell>
                     <TableCell width="50%" sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
                       <Grid container spacing={0.5} sx={{ mt: 1.5, mb: 1.5 }}>
                         {wr.washDetails.map((wd, index) => (

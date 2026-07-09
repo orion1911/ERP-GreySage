@@ -17,6 +17,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
+import EllipsisText from '../../components/common/EllipsisText';
 
 const fmtINR = (n) => 'Rs. ' + new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n) || 0);
 const fmtDate = (d) => d ? dayjs(d).format('DD/MM/YYYY') : '';
@@ -371,7 +372,7 @@ function ClientPaymentManagement() {
               <TableBody>
                 {ledgerRows.map((row, idx) => (
                   <TableRow key={idx} hover>
-                    <TableCell>{fmtDate(row.date)}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{fmtDate(row.date)}</TableCell>
                     <TableCell>
                       <Chip
                         size="small"
@@ -380,16 +381,16 @@ function ClientPaymentManagement() {
                         variant="outlined"
                       />
                     </TableCell>
-                    <TableCell>{row.ref}</TableCell>
-                    <TableCell>{row.description}</TableCell>
-                    <TableCell align="right">{row.debit ? fmtINR(row.debit) : ''}</TableCell>
-                    <TableCell align="right">{row.credit ? fmtINR(row.credit) : ''}</TableCell>
-                    <TableCell align="center">
+                    <TableCell sx={{ maxWidth: 160 }}><EllipsisText text={row.ref} lines={1} /></TableCell>
+                    <TableCell sx={{ maxWidth: 240 }}><EllipsisText text={row.description} lines={2} /></TableCell>
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{row.debit ? fmtINR(row.debit) : ''}</TableCell>
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{row.credit ? fmtINR(row.credit) : ''}</TableCell>
+                    <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
                       {row.type !== 'invoice' && (
-                        <>
+                        <Box sx={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'center' }}>
                           <Tooltip title="Edit"><IconButton size="small" onClick={() => handleOpenPayment(row.type, row.raw)}><EditIcon fontSize="small" /></IconButton></Tooltip>
                           <Tooltip title="Delete"><IconButton size="small" onClick={() => setDeleteTarget(row.raw)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
-                        </>
+                        </Box>
                       )}
                     </TableCell>
                   </TableRow>

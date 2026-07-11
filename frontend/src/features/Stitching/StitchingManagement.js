@@ -111,7 +111,7 @@ function StitchingManagement() {
       invoiceNumber: pf.invoiceNumber != null ? String(pf.invoiceNumber) : '',
       clientId: client?._id || '',
       vendorId: vendor?._id || '',
-      rate: vendor && Number(vendor.defaultRate) > 0 ? String(vendor.defaultRate) : '',
+      rate: vendor && Number(vendor.defaultRate) > 0 ? String(vendor.defaultRate) : '0',
       fitStyleId: fitStyle?._id || '',
       fitStyleName: pf.fitStyleName || '', // raw excel STYLE (hint when unmatched)
       fabric: pf.fabric || '',             // DETAILS → Fabric
@@ -155,7 +155,7 @@ function StitchingManagement() {
     });
     setWashingPrefill({
       vendorId: vendor?._id || '',
-      rate: vendor && Number(vendor.defaultRate) > 0 ? String(vendor.defaultRate) : '',
+      rate: vendor && Number(vendor.defaultRate) > 0 ? String(vendor.defaultRate) : '0',
       date: pf.date || null,
       quantity: pf.quantity != null ? String(pf.quantity) : '',
     });

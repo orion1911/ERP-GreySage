@@ -23,7 +23,7 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
     date: dayjs(new Date()),
     washOutDate: null,
     description: '',
-    washDetails: [{ washColor: '', washCreation: '', quantity: lotQuantity || '', rate: '', quantityShort: '' }],
+    washDetails: [{ washColor: 'NA', washCreation: 'NA', quantity: lotQuantity || '', rate: '0', quantityShort: '' }],
   };
 
   const { control, handleSubmit, reset, setValue, getValues, formState: { errors } } = useForm({
@@ -44,7 +44,7 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
       setValue('date', editRecord.date ? dayjs(editRecord.date) : dayjs(new Date()));
       setValue('washOutDate', editRecord.washOutDate ? dayjs(editRecord.washOutDate) : null);
       setValue('description', editRecord.description || '');
-      setValue('washDetails', editRecord.washDetails || [{ washColor: '', washCreation: '', quantity: '', rate: '', quantityShort: '' }]);
+      setValue('washDetails', editRecord.washDetails || [{ washColor: 'NA', washCreation: 'NA', quantity: '', rate: '0', quantityShort: '' }]);
     } else if (prefill) {
       // Pre-fill for a "washing missing" lot from the notification bell (excel values):
       // washer→vendor, date=WASH SD, quantity=pcs. Wash colour/creation/rate stay blank
@@ -56,9 +56,9 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
       setValue('washOutDate', null);
       setValue('description', '');
       setValue('washDetails', [{
-        washColor: '', washCreation: '',
+        washColor: 'NA', washCreation: 'NA',
         quantity: prefill.quantity || lotQuantity || '',
-        rate: prefill.rate || '', quantityShort: '',
+        rate: prefill.rate || '0', quantityShort: '',
       }]);
     } else {
       setValue('lotNumber', lotNumber || '');
@@ -68,7 +68,7 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
       setValue('washOutDate', null);
       setValue('description', '');
       // Pre-fill the first wash detail's quantity to the available qty (stitching net of shortage).
-      setValue('washDetails', [{ washColor: '', washCreation: '', quantity: lotQuantity || '', rate: '', quantityShort: '' }]);
+      setValue('washDetails', [{ washColor: 'NA', washCreation: 'NA', quantity: lotQuantity || '', rate: '0', quantityShort: '' }]);
     }
   }, [editRecord, isEditMode, lotNumber, invoiceNumber, lotQuantity, prefill, setValue]);
 

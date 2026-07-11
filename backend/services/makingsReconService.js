@@ -136,14 +136,22 @@ const toInt = (val) => {
   return Number.isNaN(n) ? 0 : n;
 };
 
-// PCS SHORT column: "12M" → short 12 in making, "5W" → short 5 in washing.
-// May carry both (e.g. "12M 5W" or "12M/5W"). Returns { making, washing }.
+// PCS SHORT column → { making, washing } short counts.
+//   "12M" / "4 M"        → 12 / 4 short in making
+//   "5W"                 → 5 short in washing
+//   "10M-1W" / "2M/1W"   → both (M and W parts, any of space / slash / dash between)
+//   "2/W" / "1/W"        → the number belongs to washing (digit sits before the slash-letter)
+//   bare number          → a making short
+//   "4PLUS M" / "3 EXTRA"→ NOT a short: PLUS/EXTRA mark surplus pieces, so the cell is ignored.
 const parsePcsShort = (text) => {
   const out = { making: 0, washing: 0 };
   if (!text) return out;
   const s = String(text).toUpperCase();
-  const m = s.match(/(\d+)\s*M/);
-  const w = s.match(/(\d+)\s*W/);
+  // "PLUS"/"EXTRA" denote surplus, not a shortage — void the whole cell.
+  if (/PLUS|EXTRA/.test(s)) return out;
+  // The count may attach to M/W directly, across a space, or before a slash ("2/W").
+  const m = s.match(/(\d+)\s*\/?\s*M/);
+  const w = s.match(/(\d+)\s*\/?\s*W/);
   if (m) out.making = toInt(m[1]);
   if (w) out.washing = toInt(w[1]);
   // A bare number with no M/W suffix is treated as a making short.

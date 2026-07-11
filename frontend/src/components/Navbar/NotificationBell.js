@@ -3,13 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import {
   IconButton, Badge, Popover, Box, Typography, List, ListItemButton,
   Divider, CircularProgress, Tooltip, Chip, TextField, InputAdornment,
+  ToggleButton, ToggleButtonGroup,
 } from '@mui/material';
 import {
   Notifications as BellIcon, Refresh as RefreshIcon, WarningAmber as WarnIcon,
   ErrorOutline as MissingIcon, Search as SearchIcon, Close as ClearIcon,
   ChevronRight as ChevronIcon, ArrowRightAlt as ArrowIcon, CheckCircleOutline as OkIcon,
+  Add as AddIcon, ContentCut as StitchIcon, LocalLaundryService as WashIcon,
+  AutoAwesome as FinishIcon,
 } from '@mui/icons-material';
 import apiService from '../../services/apiService';
+import EllipsisText from '../common/EllipsisText';
 
 const POLL_MS = 5 * 60 * 1000;
 
@@ -20,6 +24,9 @@ const missingKind = (it) => (
   !it.inDb ? 'stitching' : it.action === 'washing' ? 'washing' : it.action === 'finishing' ? 'finishing' : null
 );
 const MISSING_LABEL = { stitching: 'Add Stitching', washing: 'Add Washing', finishing: 'Add Finishing' };
+// Same stage icons the app uses elsewhere: stitching = scissors, washing = washing machine,
+// finishing = stars — paired with a "+" like the Stitching table's row actions.
+const STAGE_ICON = { stitching: StitchIcon, washing: WashIcon, finishing: FinishIcon };
 // Match the app's status chip colours (OrderStatusChip): Stitching(2)=primary,
 // Washing(3)=secondary, Finishing(4)=warning — so the stage reads the same everywhere.
 const STAGE_COLOR = { stitching: 'primary', washing: 'secondary', finishing: 'warning' };
@@ -86,6 +93,7 @@ function NotificationBell() {
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ status: 'empty', generatedAt: null });
   const [filterText, setFilterText] = useState('');
+  const [groups, setGroups] = useState(['create', 'mismatch']); // multi-select toggles; both = show all
   const mounted = useRef(true);
   const refreshingRef = useRef(false); // guards a poll/focus read from stomping an in-flight refresh
 
@@ -144,7 +152,7 @@ function NotificationBell() {
   }, [load]);
 
   const open = Boolean(anchorEl);
-  const closePopover = () => { setAnchorEl(null); setFilterText(''); };
+  const closePopover = () => { setAnchorEl(null); setFilterText(''); setGroups(['create', 'mismatch']); };
 
   const handleItemClick = (it) => {
     closePopover();
@@ -165,11 +173,14 @@ function NotificationBell() {
   const missingCount = items.filter((it) => missingKind(it)).length;
   const mismatchCount = items.length - missingCount;
 
-  // Client-side filter by lot # or bill #, then split into the two triage groups.
+  // Client-side filters: the lot/bill text box AND the create/mismatch toggles (both
+  // selected by default = show all), then split into the two triage groups.
   const q = filterText.trim().toLowerCase();
   const matchesFilter = (it) => !q || `${it.lotNumber || ''} ${it.bill || ''}`.toLowerCase().includes(q);
-  const visibleMissing = items.filter((it) => missingKind(it) && matchesFilter(it));
-  const visibleMismatch = items.filter((it) => !missingKind(it) && matchesFilter(it));
+  const showCreate = groups.includes('create');
+  const showMismatch = groups.includes('mismatch');
+  const visibleMissing = showCreate ? items.filter((it) => missingKind(it) && matchesFilter(it)) : [];
+  const visibleMismatch = showMismatch ? items.filter((it) => !missingKind(it) && matchesFilter(it)) : [];
   const visibleCount = visibleMissing.length + visibleMismatch.length;
 
   const hasFailure = meta.status === 'error' || Boolean(error);
@@ -179,6 +190,8 @@ function NotificationBell() {
 
   const renderItem = (it) => {
     const mk = missingKind(it);
+    const StageIcon = mk ? STAGE_ICON[mk] : null;
+    const meta = [it.client, it.maker].filter(Boolean).join(' · '); // CLIENT · MAKER/vendor
     return (
       <ListItemButton
         key={`${it.lotNumber}-${it.bill}`}
@@ -193,15 +206,19 @@ function NotificationBell() {
           '&:hover .nav-caret': { opacity: 1 },
         }}
       >
-        {mk && (
-          <MissingIcon color={STAGE_COLOR[mk]} fontSize="small" sx={{ mt: 0.25, flexShrink: 0 }} titleAccess="Missing record" />
-        )}
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>{it.lotNumber}</Typography>
-            {it.bill && <Chip size="small" variant="outlined" label={`Bill ${it.bill}`} sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '.7rem' } }} />}
-            {mk && <Chip size="small" color={STAGE_COLOR[mk]} label={MISSING_LABEL[mk]} sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '.7rem', fontWeight: 600 } }} />}
-            {it.client && <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 130 }}>{it.client}</Typography>}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Typography variant="body2" sx={{ fontWeight: 700, flexShrink: 0 }}>{it.lotNumber}</Typography>
+            {it.bill && <Chip size="small" variant="outlined" label={`Bill ${it.bill}`} sx={{ height: 20, flexShrink: 0, '& .MuiChip-label': { px: 0.75, fontSize: '.7rem' } }} />}
+            {meta && <EllipsisText text={meta} variant="caption" sx={{ color: 'text.secondary', maxWidth: 180 }} />}
+            {mk && StageIcon && (
+              <Tooltip title={MISSING_LABEL[mk]} arrow placement="top">
+                <Box sx={{ ml: 'auto', flexShrink: 0, display: 'inline-flex', alignItems: 'center', color: 'text.secondary' }}>
+                  <AddIcon sx={{ fontSize: 14 }} />
+                  <StageIcon sx={{ fontSize: 18 }} />
+                </Box>
+              </Tooltip>
+            )}
           </Box>
           {it.fields?.length > 0 && (
             <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
@@ -211,7 +228,17 @@ function NotificationBell() {
             </Box>
           )}
         </Box>
-        <ChevronIcon className="nav-caret" fontSize="small" sx={{ color: 'text.disabled', mt: 0.5, flexShrink: 0 }} />
+        {/* Right column, split to mirror the content: warning sits beside the first row, and the
+            chevron is centred over the remaining diff rows (which can span several lines). Both
+            cells centre-align, so warning and chevron share the same vertical axis. */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', flexShrink: 0, alignSelf: 'stretch', alignItems: 'center' }}>
+          <Box sx={{ height: 22, display: 'flex', alignItems: 'center' }}>
+            {mk && <MissingIcon color={STAGE_COLOR[mk]} titleAccess="Missing record" sx={{ fontSize: 18 }} />}
+          </Box>
+          <Box sx={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+            <ChevronIcon className="nav-caret" sx={{ color: 'text.disabled', fontSize: 22 }} />
+          </Box>
+        </Box>
       </ListItemButton>
     );
   };
@@ -235,7 +262,7 @@ function NotificationBell() {
         onClose={closePopover}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        slotProps={{ paper: { sx: { width: 400, maxWidth: '92vw', maxHeight: 520, display: 'flex', flexDirection: 'column', overflow: 'hidden' } } }}
+        slotProps={{ paper: { sx: { width: 350, maxWidth: '94vw', maxHeight: 520, display: 'flex', flexDirection: 'column', overflow: 'hidden' } } }}
       >
         {/* ── Header (fixed) ── */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1.25, flexShrink: 0 }}>
@@ -262,22 +289,56 @@ function NotificationBell() {
         {/* ── Triage summary + filter (fixed) ── */}
         {items.length > 0 && (
           <Box sx={{ px: 2, pb: 1.25, flexShrink: 0 }}>
-            <Box sx={{ display: 'flex', gap: 0.75, mb: 1 }}>
-              <Chip
-                size="small"
-                icon={<MissingIcon sx={{ fontSize: 16 }} />}
-                color="warning"
-                variant={missingCount ? 'filled' : 'outlined'}
-                label={`${missingCount} to create`}
-                sx={{ height: 24, fontWeight: 600 }}
-              />
-              <Chip
-                size="small"
-                variant="outlined"
-                label={`${mismatchCount} mismatch${mismatchCount === 1 ? '' : 'es'}`}
-                sx={{ height: 24 }}
-              />
-            </Box>
+            {/* Filter toggles styled like physical buttons: raised when off, pressed (inset) when on.
+                Multi-select — both on by default (show all); turn one off to hide that group.
+                At least one must stay selected. */}
+            <ToggleButtonGroup
+              size="small"
+              value={groups}
+              onChange={(e, v) => { if (v.length) setGroups(v); }}
+              sx={{
+                display: 'flex', gap: 1, mb: 1,
+                '& .MuiToggleButton-root': {
+                  flex: 1, gap: 0.5, py: 0.5, lineHeight: 1.2,
+                  textTransform: 'none', fontWeight: 600, fontSize: '.78rem',
+                  borderRadius: '8px !important',
+                  border: (t) => `1px solid ${t.palette.divider}`,
+                  // raised
+                  boxShadow: (t) => (t.palette.mode === 'dark' ? '0 2px 0 rgba(0,0,0,.55)' : '0 2px 0 rgba(0,0,0,.14)'),
+                  transition: 'transform .1s ease, box-shadow .1s ease',
+                  '&:hover': { bgcolor: 'action.hover' },
+                  '&.Mui-disabled': { opacity: 0.5, boxShadow: 'none' },
+                },
+                // pressed
+                '& .MuiToggleButton-root.Mui-selected': {
+                  boxShadow: 'inset 0 2px 5px rgba(0,0,0,.4)',
+                  transform: 'translateY(1px)',
+                },
+              }}
+            >
+              <ToggleButton
+                value="create" disabled={!missingCount}
+                sx={{
+                  color: 'warning.main',
+                  borderColor: (t) => `${t.palette.warning.main} !important`,
+                  // Selected hover stays on warning.main — warning.dark is too dark a jump for orange.
+                  '&.Mui-selected': { bgcolor: 'warning.main', color: 'warning.contrastText', '&:hover': { bgcolor: 'warning.main' } },
+                }}
+              >
+                <MissingIcon sx={{ fontSize: 16 }} />
+                {missingCount} to create
+              </ToggleButton>
+              <ToggleButton
+                value="mismatch" disabled={!mismatchCount}
+                sx={{
+                  color: 'primary.light',
+                  borderColor: (t) => `${t.palette.primary.light} !important`,
+                  '&.Mui-selected': { bgcolor: 'primary.main', color: 'primary.contrastText', '&:hover': { bgcolor: 'primary.dark' } },
+                }}
+              >
+                {mismatchCount} mismatch{mismatchCount === 1 ? '' : 'es'}
+              </ToggleButton>
+            </ToggleButtonGroup>
             <TextField
               fullWidth
               size="small"
@@ -285,6 +346,7 @@ function NotificationBell() {
               placeholder="Filter lot # or bill #"
               value={filterText}
               onChange={(e) => setFilterText(e.target.value)}
+              sx={{ '& .MuiOutlinedInput-input': { py: '3px', fontSize: '.82rem' } }}
               InputProps={{
                 startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>),
                 endAdornment: filterText

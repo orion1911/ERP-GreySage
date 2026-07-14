@@ -72,7 +72,7 @@ function Appbar({ variant, setVariant, isMobile, handleDrawerToggle, collapsed }
                 animate={{ x: collapsed ? 40 : 0, opacity: collapsed ? 0 : 1 }}
                 transition={{ duration: 0.225, ease: 'easeInOut' }}
                 onAnimationComplete={handleAnimationComplete}
-                style={{ visibility: isVisible || !collapsed ? 'visible' : 'hidden', display: 'flex', gap: 1 }}
+                style={{ visibility: isVisible || !collapsed ? 'visible' : 'hidden', display: 'flex', alignItems: 'center', gap: 8 }}
               >
                 <NotificationBell />
                 <ThemeToggle />

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   IconButton, Badge, Popover, Box, Typography, List, ListItemButton,
   Divider, CircularProgress, Tooltip, Chip, TextField, InputAdornment,
-  ToggleButton, ToggleButtonGroup,
+  ToggleButton, ToggleButtonGroup, useTheme, useMediaQuery,
 } from '@mui/material';
 import {
   Notifications as BellIcon, Refresh as RefreshIcon, WarningAmber as WarnIcon,
@@ -86,6 +86,8 @@ function DiffRow({ field, excel, app }) {
 
 function NotificationBell() {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [anchorEl, setAnchorEl] = useState(null);
   const [loading, setLoading] = useState(false);   // initial/poll read
   const [refreshing, setRefreshing] = useState(false); // manual recompute
@@ -262,7 +264,30 @@ function NotificationBell() {
         onClose={closePopover}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        slotProps={{ paper: { sx: { width: 350, maxWidth: '94vw', maxHeight: 520, display: 'flex', flexDirection: 'column', overflow: 'hidden' } } }}
+        slotProps={{
+          paper: {
+            sx: {
+              // Mobile: stretch to 85.2vw and pin left:7vw so the right margin matches the
+              // left (the bell isn't at the screen edge, so the default right-anchor left a
+              // big gap on the right), plus a top gap so it clears the app bar.
+              // Desktop: NO left/width override at all — the Popover's inline anchor
+              // positioning keeps it aligned to the bell. (A responsive `left` object leaks
+              // its !important into every breakpoint and floats desktop to the left.)
+              ...(isMobile
+                ? { width: '85.2vw', maxWidth: '85.2vw', left: '7vw !important', mt: 2 }
+                : { width: 350, maxWidth: 350 }),
+              maxHeight: 520,
+              display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              // MUI's default elevation shadow is near-invisible on a dark background, so the
+              // popover reads as flat. A layered, higher-opacity shadow plus a faint top-edge
+              // ring lifts it off the page as a proper floating overlay in both themes.
+              border: (t) => `1px solid ${t.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}`,
+              boxShadow: (t) => (t.palette.mode === 'dark'
+                ? '0 16px 40px -8px rgba(0,0,0,0.8), 0 6px 16px rgba(0,0,0,0.6)'
+                : '0 16px 40px -8px rgba(0,0,0,0.28), 0 6px 16px rgba(0,0,0,0.12)'),
+            },
+          },
+        }}
       >
         {/* ── Header (fixed) ── */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1.25, flexShrink: 0 }}>

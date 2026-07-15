@@ -121,7 +121,9 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
   for (let i = 0; i < rawLines.length; i++) {
     const raw = rawLines[i];
     const label = `Line ${i + 1}`;
-    const rate = Number(raw.rate);
+    const isSample = !!raw.isSample;
+    // Sample lines are non-chargeable regardless of any rate the client sends.
+    const rate = isSample ? 0 : Number(raw.rate);
     if (!Number.isFinite(rate) || rate < 0) {
       throw new Error(`${label}: rate must be a non-negative number`);
     }
@@ -129,8 +131,8 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
       throw new Error(`${label}: description is required`);
     }
 
-    const isMerged = Array.isArray(raw.sources) && raw.sources.length > 0;
-    const isDamaged = !!raw.isDamaged;
+    const isMerged = !isSample && Array.isArray(raw.sources) && raw.sources.length > 0;
+    const isDamaged = !isSample && !!raw.isDamaged;
 
     const line = {
       lineNo: i + 1,
@@ -140,6 +142,20 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
       unit: raw.unit ? String(raw.unit).trim() : '',
       rate
     };
+
+    if (isSample) {
+      // SAMPLE line — no lot, no pool decrement, amount 0. Only needs a positive qty so
+      // the printed "samples included" count is meaningful; totalQty picks it up downstream.
+      const pcs = parseInt(raw.pcs, 10);
+      if (!Number.isInteger(pcs) || pcs < 1) {
+        throw new Error(`${label}: sample pcs must be a positive integer`);
+      }
+      line.pcs = pcs;
+      line.isSample = true;
+      line.amount = 0;
+      lines.push(line);
+      continue;
+    }
 
     if (isMerged) {
       // MERGED line — pcs is the sum of its per-lot sources; each source subtracts from its lot,

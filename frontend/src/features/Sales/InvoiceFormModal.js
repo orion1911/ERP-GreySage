@@ -56,8 +56,11 @@ const emptyLine = {
   rate: '',
   remainingPcs: null,
   finalPcs: null,
-  notFinished: false  // selected lot has no Finishing record yet — warn, don't block
+  notFinished: false,
+  isSample: false
 };
+
+const emptySample = { ...emptyLine, isSample: true, description: 'SAMPLE ', rate: 0 };
 
 function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
@@ -169,7 +172,8 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
             unit: l.unit || '',
             rate: l.rate,
             remainingPcs: null,
-            finalPcs: null
+            finalPcs: null,
+            isSample: !!l.isSample
           };
         })
       });
@@ -423,6 +427,16 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
     );
   };
 
+  const renderLotOrSample = (idx, cur, options) => (
+    cur.isSample ? (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minHeight: 32 }}>
+        <Chip size="small" color="secondary" variant="outlined" label="SAMPLE"
+          sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.04em' } }} />
+        <Typography variant="caption" color="text.secondary">non-chargeable · no lot</Typography>
+      </Box>
+    ) : renderLotField(idx, cur, options)
+  );
+
   const onSubmit = (data) => {
     if (!data.client?._id) return showSnackbar('Please select a client');
     if (!data.lines || data.lines.length === 0) return showSnackbar('Add at least one line item');
@@ -432,6 +446,22 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
     const outLines = [];
     for (let i = 0; i < data.lines.length; i++) {
       const l = data.lines[i];
+      if (l.isSample) {
+        // SAMPLE line — no lot, non-chargeable. Just needs a description + positive qty.
+        const pcs = parseInt(l.pcs, 10);
+        if (!l.description || !String(l.description).trim()) return showSnackbar(`Line ${i + 1}: description is required`);
+        if (!Number.isInteger(pcs) || pcs < 1) return showSnackbar(`Line ${i + 1}: enter the sample pcs`);
+        outLines.push({
+          description: l.description,
+          remark: l.remark,
+          hsnSac: l.hsnSac,
+          unit: l.unit,
+          pcs,
+          rate: 0,
+          isSample: true
+        });
+        continue;
+      }
       if (l.merged) {
         const isEditMerged = !!editInvoice && Array.isArray(l.sources) && l.sources.length > 0;
         const split = isEditMerged ? l.sources : computeFifoSources(l.mergeLots, l.pcs);
@@ -686,7 +716,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                         </IconButton>
                       </Box>
 
-                      {renderLotField(idx, cur, lotOptions)}
+                      {renderLotOrSample(idx, cur, lotOptions)}
 
                       <Controller
                         name={`lines.${idx}.description`}
@@ -755,6 +785,8 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                                 variant="standard"
                                 size="small"
                                 fullWidth
+                                disabled={cur.isSample}
+                                helperText={cur.isSample ? 'Sample — free' : ''}
                                 inputProps={{ min: 0, step: 0.01, style: { textAlign: 'right' } }}
                               />
                             )}
@@ -797,7 +829,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                       <TableRow key={row.id}>
                         <TableCell>{idx + 1}</TableCell>
                         <TableCell>
-                          {renderLotField(idx, cur, lotsForClient)}
+                          {renderLotOrSample(idx, cur, lotsForClient)}
                         </TableCell>
                         <TableCell>
                           <Controller
@@ -862,6 +894,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                                 type="number"
                                 variant="standard"
                                 size="small"
+                                disabled={cur.isSample}
                                 inputProps={{ min: 0, step: 0.01, style: { textAlign: 'right' } }}
                               />
                             )}
@@ -881,9 +914,12 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
             </Box>
           )}
 
-          <Box sx={{ mt: 1 }}>
+          <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button startIcon={<AddIcon />} onClick={() => append({ ...emptyLine })}>
               Add Item
+            </Button>
+            <Button startIcon={<AddIcon />} color="secondary" onClick={() => append({ ...emptySample })}>
+              Add Sample
             </Button>
           </Box>
 

@@ -23,6 +23,7 @@ import ThemeToggle from '../../components/Theme/ThemeToggle';
 import ThreeBackground from './ThreeBackground';
 import { Grid } from '@mui/material';
 import authService from '../../services/authService';
+import { SnackBar } from '../../components/SnackBar';
 
 const Card = styled(MuiCard)(({ theme }) => ({
   display: 'flex',
@@ -83,7 +84,17 @@ export default function Login({ isMobile, variant, setVariant }) {
   const [passwordErrorMessage, setPasswordErrorMessage] = useState('');
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ email: '', password: '' });
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'error' });
+  const snackTimeout = React.useRef();
   const navigate = useNavigate();
+
+  const showSnackbar = (message, severity = 'error') => {
+    clearTimeout(snackTimeout.current);
+    setSnackbar({ open: true, message: String(message || 'Something went wrong'), severity });
+    snackTimeout.current = setTimeout(() => setSnackbar((prev) => ({ ...prev, open: false })), 6000);
+  };
+
+  useEffect(() => () => clearTimeout(snackTimeout.current), []);
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -134,7 +145,7 @@ export default function Login({ isMobile, variant, setVariant }) {
           localStorage.setItem('user', JSON.stringify(res.user));
           navigate('/dashboard');
         })
-        .catch((err) => { alert(err.response?.error || 'Login failed'); setLoading(false) });
+        .catch((err) => { showSnackbar(err.response?.error || 'Login failed'); setLoading(false) });
     }
   };
 
@@ -290,6 +301,11 @@ export default function Login({ isMobile, variant, setVariant }) {
           </Typography>
         </Card>
       </SignInContainer>
+      <SnackBar
+        open={snackbar.open}
+        message={snackbar.message}
+        severity={snackbar.severity}
+      />
     </>
   );
 }

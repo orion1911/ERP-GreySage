@@ -392,7 +392,8 @@ const InvoiceLineSchema = new mongoose.Schema({
   amount: { type: Number, required: true, min: 0 }, // pcs * rate, recomputed server-side
   // true = this line draws from the lot's DAMAGED pool (combined-damaged third-party sale)
   // instead of the good/client-dispatchable pool. Default false ⇒ legacy lines stay "good".
-  isDamaged: { type: Boolean, default: false }
+  isDamaged: { type: Boolean, default: false },
+  isSample: { type: Boolean, default: false }
 }, { _id: true });
 
 // Invoice: parent doc = dispatch event = printable bill. Client + addresses are

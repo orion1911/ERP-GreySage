@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, IconButton, Stack, TextField, MenuItem,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer, TablePagination,
@@ -8,12 +8,14 @@ import {
 } from '@mui/material';
 import {
   Search as SearchIcon, Edit as EditIcon,
-  ReceiptLong as InvoiceIcon, Warning as DamagedIcon
+  ReceiptLong as InvoiceIcon, Warning as DamagedIcon,
+  LocalShipping as ManualDispatchIcon, Tune as CorrectQtyIcon
 } from '@mui/icons-material';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
 import EllipsisText from '../../components/common/EllipsisText';
 import InvoiceFormModal from './InvoiceFormModal';
+import ManualDispatchModal from './ManualDispatchModal';
 
 const fmtDate = (d) => d ? dayjs(d).format('DD/MM/YYYY') : '';
 
@@ -26,6 +28,12 @@ const statusChip = (s) => STATUS_META[s] || { label: String(s || '—').toUpperC
 
 function DispatchManagement() {
   const { showSnackbar, isMobile } = useOutletContext();
+  const navigate = useNavigate();
+
+  // Final pcs is derived from production records, so quantity corrections happen at
+  // source in Stitching Management. Same ?search= jump the notification bell uses.
+  const correctQuantities = (row) =>
+    navigate(`/stitching?search=${encodeURIComponent(row.lotNumber)}`);
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
@@ -41,6 +49,9 @@ function DispatchManagement() {
   // new-invoice modal (prefilled from a row)
   const [modalOpen, setModalOpen] = useState(false);
   const [preset, setPreset] = useState(null);
+
+  // manual-dispatch modal (legacy lots that will never be invoiced)
+  const [manualTarget, setManualTarget] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -156,7 +167,12 @@ function DispatchManagement() {
                 </Grid>
                 <Grid size={{ xs: 3 }}>
                   <Typography variant="caption" color="text.secondary">Dispatched</Typography>
-                  <Typography variant="body2">{r.invoicedPcs}</Typography>
+                  <Typography variant="body2">
+                    {r.dispatchedPcs ?? r.invoicedPcs}
+                    {r.manualDispatchedPcs > 0 && (
+                      <Typography component="span" variant="caption" color="text.secondary"> ({r.manualDispatchedPcs} m)</Typography>
+                    )}
+                  </Typography>
                 </Grid>
                 <Grid size={{ xs: 3 }}>
                   <Typography variant="caption" color="text.secondary">Good Rem.</Typography>
@@ -173,11 +189,37 @@ function DispatchManagement() {
                 </Grid>
               </Grid>
 
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
-                <Button size="small" startIcon={<InvoiceIcon />} disabled={r.goodRemaining <= 0} onClick={() => handleCreateInvoice(r)}>
-                  Create Invoice
+              {/* Actions wrap on narrow screens rather than overflowing. Labels are
+                  abbreviated here; the desktop table uses icon buttons with tooltips. */}
+              <Stack
+                direction="row"
+                spacing={0.5}
+                sx={{ mt: 1, flexWrap: 'wrap', justifyContent: 'flex-end', rowGap: 0.5 }}
+              >
+                <Button
+                  size="small"
+                  startIcon={<CorrectQtyIcon sx={{ fontSize: 16 }} />}
+                  onClick={() => correctQuantities(r)}
+                >
+                  Qty
                 </Button>
-              </Box>
+                <Button
+                  size="small"
+                  startIcon={<ManualDispatchIcon sx={{ fontSize: 16 }} />}
+                  onClick={() => setManualTarget(r)}
+                >
+                  Mark Sent
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<InvoiceIcon sx={{ fontSize: 16 }} />}
+                  disabled={r.goodRemaining <= 0}
+                  onClick={() => handleCreateInvoice(r)}
+                >
+                  Invoice
+                </Button>
+              </Stack>
             </CardContent>
           </Card>
         );
@@ -235,13 +277,28 @@ function DispatchManagement() {
                     <Tooltip title="Set damaged pcs"><IconButton size="small" sx={{ p: 0.25 }} onClick={() => openDamaged(r)}><EditIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
                   </Stack>
                 </TableCell>
-                <TableCell align="right">{r.invoicedPcs}</TableCell>
+                <TableCell align="right">
+                  {r.dispatchedPcs ?? r.invoicedPcs}
+                  {r.manualDispatchedPcs > 0 && (
+                    <Tooltip title={`${r.manualDispatchedPcs} marked dispatched manually (no invoice)`}>
+                      <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                        ({r.manualDispatchedPcs} m)
+                      </Typography>
+                    </Tooltip>
+                  )}
+                </TableCell>
                 <TableCell align="right"><b>{r.goodRemaining}</b></TableCell>
                 <TableCell align="right">{r.damagedRemaining}</TableCell>
                 <TableCell align="center"><Chip size="small" label={chip.label} color={chip.color} variant="filled" /></TableCell>
                 <TableCell align="center">
                   <Tooltip title={r.goodRemaining <= 0 ? 'Fully dispatched' : 'Create invoice for remaining good pcs'}><span>
                     <IconButton size="small" disabled={r.goodRemaining <= 0} onClick={() => handleCreateInvoice(r)}><InvoiceIcon fontSize="small" /></IconButton>
+                  </span></Tooltip>
+                  <Tooltip title="Mark as dispatched without an invoice (old lots)"><span>
+                    <IconButton size="small" onClick={() => setManualTarget(r)}><ManualDispatchIcon fontSize="small" /></IconButton>
+                  </span></Tooltip>
+                  <Tooltip title="Correct qty / short in Stitching Management"><span>
+                    <IconButton size="small" onClick={() => correctQuantities(r)}><CorrectQtyIcon fontSize="small" /></IconButton>
                   </span></Tooltip>
                 </TableCell>
               </TableRow>
@@ -295,6 +352,15 @@ function DispatchManagement() {
           <Button variant="contained" onClick={saveDamaged} disabled={savingDamaged}>Save</Button>
         </DialogActions>
       </Dialog>
+
+      <ManualDispatchModal
+        open={!!manualTarget}
+        lot={manualTarget}
+        onClose={() => setManualTarget(null)}
+        onSaved={load}
+        showSnackbar={showSnackbar}
+        isMobile={isMobile}
+      />
 
       <InvoiceFormModal
         open={modalOpen}

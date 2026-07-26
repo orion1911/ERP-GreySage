@@ -3,7 +3,8 @@ const {
   Invoice,
   Client,
   Lot,
-  CompanySettings
+  CompanySettings,
+  ManualDispatch
 } = require('../mongodb_schema');
 const {
   getLotsAvailableForDispatch,
@@ -13,6 +14,10 @@ const {
   sumGoodInvoicedForLot,
   sumDamagedSoldForLot,
   recalcLotInvoiced,
+  recalcLotManualDispatch,
+  getManualDispatchCapacity,
+  recordManualDispatchHistory,
+  listManualDispatches,
   generateInvoiceNumber,
   generateInvoiceInternalId,
   recomputeInvoiceTotals,
@@ -623,11 +628,178 @@ const setInvoiceCounter = async (req, res) => {
   });
 };
 
+
+// ─── Manual dispatch (legacy lots) ───────────────────────────────────────────
+// Lots physically dispatched before this system went live will never receive a sales
+// Invoice, so invoicedPcs stays 0 and they sit on the Pending Dispatch board forever.
+// These handlers record the dispatch by hand.
+//
+// PCS ONLY. No Invoice document is created, and clientBalanceService is deliberately
+// never called — money for these lots was billed outside the system and is carried by
+// ClientBalance.openingBalance. Adding a balance write here would double-count it.
+
+const parsePcs = (value, field) => {
+  if (value === '' || value === null || value === undefined) return 0;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) throw new Error(`${field} must be a non-negative whole number`);
+  return n;
+};
+
+/**
+ * GET /api/sales-invoices/manual-dispatch/:lotId
+ * Existing manual entries for a lot, plus how many pcs are still claimable — the modal
+ * uses the capacity block to bound its inputs.
+ */
+const getManualDispatchForLot = async (req, res) => {
+  const { lotId } = req.params;
+  const lot = await Lot.findById(lotId).select('lotNumber').lean();
+  if (!lot) return res.status(404).json({ error: 'Lot not found' });
+
+  const [entries, capacity] = await Promise.all([
+    listManualDispatches(lotId),
+    getManualDispatchCapacity(lotId)
+  ]);
+
+  res.json({
+    lotId,
+    lotNumber: lot.lotNumber,
+    entries,
+    capacity
+  });
+};
+
+/**
+ * POST /api/sales-invoices/manual-dispatch
+ * Body: { lotId, goodPcs, damagedPcs, dispatchDate, reference, notes }
+ */
+const createManualDispatch = async (req, res) => {
+  const { lotId, dispatchDate, reference, notes } = req.body;
+  if (!lotId) return res.status(400).json({ error: 'lotId is required' });
+  if (!dispatchDate) return res.status(400).json({ error: 'Dispatch date is required' });
+
+  const lot = await Lot.findById(lotId);
+  if (!lot) return res.status(404).json({ error: 'Lot not found' });
+
+  let goodPcs, damagedPcs;
+  try {
+    goodPcs = parsePcs(req.body.goodPcs, 'Good pcs');
+    damagedPcs = parsePcs(req.body.damagedPcs, 'Damaged pcs');
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (goodPcs + damagedPcs <= 0) {
+    return res.status(400).json({ error: 'Enter at least one piece to dispatch' });
+  }
+
+  const cap = await getManualDispatchCapacity(lotId);
+  if (goodPcs > cap.goodAvailable) {
+    return res.status(400).json({
+      error: `Cannot dispatch ${goodPcs} good pcs — only ${cap.goodAvailable} available ` +
+        `(total ${cap.goodTotal}, invoiced ${cap.invoicedPcs}, already marked ${cap.otherManualGood}).`
+    });
+  }
+  if (damagedPcs > cap.damagedAvailable) {
+    return res.status(400).json({
+      error: `Cannot dispatch ${damagedPcs} damaged pcs — only ${cap.damagedAvailable} available ` +
+        `(damaged pool ${cap.damagedPcs}, sold ${cap.damagedSoldPcs}, already marked ${cap.otherManualDamaged}).`
+    });
+  }
+
+  const entry = await ManualDispatch.create({
+    lotId, goodPcs, damagedPcs,
+    dispatchDate: new Date(dispatchDate),
+    reference: reference || '',
+    notes: notes || '',
+    createdBy: req.user.userId
+  });
+
+  await recalcLotManualDispatch(lotId);
+  await recordManualDispatchHistory(entry._id, lotId, 'create', null, entry.toObject(), req.user.userId);
+  await logAction(req.user.userId, 'create_manual_dispatch', 'ManualDispatch', entry._id,
+    `Manually dispatched ${goodPcs} good + ${damagedPcs} damaged pcs for lot ${lot.lotNumber}`);
+
+  const updated = await Lot.findById(lotId).lean();
+  res.status(201).json({ entry, lot: { _id: updated._id, status: updated.status, manualDispatchedPcs: updated.manualDispatchedPcs, manualDamagedSoldPcs: updated.manualDamagedSoldPcs } });
+};
+
+/**
+ * PUT /api/sales-invoices/manual-dispatch/:id
+ */
+const updateManualDispatch = async (req, res) => {
+  const { id } = req.params;
+  const entry = await ManualDispatch.findById(id);
+  if (!entry) return res.status(404).json({ error: 'Manual dispatch entry not found' });
+
+  const before = entry.toObject();
+  let goodPcs = entry.goodPcs;
+  let damagedPcs = entry.damagedPcs;
+  try {
+    if (req.body.goodPcs !== undefined) goodPcs = parsePcs(req.body.goodPcs, 'Good pcs');
+    if (req.body.damagedPcs !== undefined) damagedPcs = parsePcs(req.body.damagedPcs, 'Damaged pcs');
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (goodPcs + damagedPcs <= 0) {
+    return res.status(400).json({ error: 'Enter at least one piece to dispatch' });
+  }
+
+  // Exclude this entry so its own current pcs don't count against it.
+  const cap = await getManualDispatchCapacity(entry.lotId, entry._id);
+  if (goodPcs > cap.goodAvailable) {
+    return res.status(400).json({ error: `Cannot set ${goodPcs} good pcs — only ${cap.goodAvailable} available.` });
+  }
+  if (damagedPcs > cap.damagedAvailable) {
+    return res.status(400).json({ error: `Cannot set ${damagedPcs} damaged pcs — only ${cap.damagedAvailable} available.` });
+  }
+
+  entry.goodPcs = goodPcs;
+  entry.damagedPcs = damagedPcs;
+  if (req.body.dispatchDate) entry.dispatchDate = new Date(req.body.dispatchDate);
+  if (req.body.reference !== undefined) entry.reference = req.body.reference;
+  if (req.body.notes !== undefined) entry.notes = req.body.notes;
+  entry.updatedBy = req.user.userId;
+  entry.updatedAt = new Date();
+  await entry.save();
+
+  await recalcLotManualDispatch(entry.lotId);
+  await recordManualDispatchHistory(entry._id, entry.lotId, 'update', before, entry.toObject(), req.user.userId);
+  await logAction(req.user.userId, 'update_manual_dispatch', 'ManualDispatch', entry._id,
+    `Updated manual dispatch to ${goodPcs} good + ${damagedPcs} damaged pcs`);
+
+  res.json(entry);
+};
+
+/**
+ * DELETE /api/sales-invoices/manual-dispatch/:id
+ * Reverses the entry — pcs return to the available pool and lot status re-derives,
+ * dropping back to Finished/Ready if nothing else is dispatched.
+ */
+const deleteManualDispatch = async (req, res) => {
+  const { id } = req.params;
+  const entry = await ManualDispatch.findById(id);
+  if (!entry) return res.status(404).json({ error: 'Manual dispatch entry not found' });
+
+  const before = entry.toObject();
+  const lotId = entry.lotId;
+  await entry.deleteOne();
+
+  await recalcLotManualDispatch(lotId);
+  await recordManualDispatchHistory(id, lotId, 'delete', before, null, req.user.userId);
+  await logAction(req.user.userId, 'delete_manual_dispatch', 'ManualDispatch', id,
+    `Removed manual dispatch of ${before.goodPcs} good + ${before.damagedPcs} damaged pcs`);
+
+  res.json({ success: true });
+};
+
 module.exports = {
   getLotsAvailable,
   getLotsDamagedAvailable,
   getPendingDispatchList,
   updateLotDamaged,
+  getManualDispatchForLot,
+  createManualDispatch,
+  updateManualDispatch,
+  deleteManualDispatch,
   createInvoice,
   updateInvoice,
   cancelInvoice,

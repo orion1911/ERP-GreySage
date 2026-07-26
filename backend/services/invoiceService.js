@@ -8,7 +8,9 @@ const {
   Finishing,
   Counter,
   Client,
-  FitStyle
+  FitStyle,
+  ManualDispatch,
+  ManualDispatchHistory
 } = require('../mongodb_schema');
 
 /**
@@ -177,9 +179,14 @@ const recalcLotInvoiced = async (lotId) => {
   lot.invoicedPcs = invoicedPcs;
   lot.damagedSoldPcs = damagedSoldPcs;
 
-  const goodRemaining = finalPcs - (lot.damagedPcs || 0) - invoicedPcs;
+  // Dispatched = invoiced + manually recorded. Manual entries are pcs-only (no Invoice,
+  // no ClientBalance) but count identically towards remaining pcs and lot status, so a
+  // legacy lot marked dispatched by hand closes out exactly like an invoiced one.
+  const totalDispatched = invoicedPcs + (lot.manualDispatchedPcs || 0);
+
+  const goodRemaining = finalPcs - (lot.damagedPcs || 0) - totalDispatched;
   let nextStatus = lot.status;
-  if (invoicedPcs > 0) {
+  if (totalDispatched > 0) {
     nextStatus = goodRemaining <= 0 ? 7 : 6;
   } else if (lot.status === 6 || lot.status === 7) {
     nextStatus = 5; // dispatch fully reversed → back to Finished/Ready
@@ -197,6 +204,87 @@ const recalcLotInvoiced = async (lotId) => {
  * Get remaining GOOD (client-dispatchable) pcs for a lot:
  * finalPcs - damagedPcs - goodInvoiced (excluding given invoice).
  */
+/**
+ * Recompute Lot.manualDispatchedPcs / manualDamagedSoldPcs from the ManualDispatch
+ * collection, then re-run recalcLotInvoiced so remaining pcs and lot status pick the
+ * new figures up. This is the manual-dispatch counterpart of recalcLotInvoiced and
+ * MUST be called after every ManualDispatch create/update/delete — same denormalisation
+ * contract as vendor/client balances.
+ */
+const recalcLotManualDispatch = async (lotId) => {
+  if (!lotId) return;
+  const agg = await ManualDispatch.aggregate([
+    { $match: { lotId: new mongoose.Types.ObjectId(lotId) } },
+    { $group: {
+        _id: null,
+        good: { $sum: { $ifNull: ['$goodPcs', 0] } },
+        damaged: { $sum: { $ifNull: ['$damagedPcs', 0] } }
+    } }
+  ]);
+  const good = agg[0]?.good || 0;
+  const damaged = agg[0]?.damaged || 0;
+
+  await Lot.updateOne(
+    { _id: lotId },
+    { $set: { manualDispatchedPcs: good, manualDamagedSoldPcs: damaged } }
+  );
+
+  // Re-derives status and keeps invoicedPcs authoritative in the same pass.
+  return recalcLotInvoiced(lotId);
+};
+
+/**
+ * Capacity check for a manual dispatch, so an operator can't mark more pcs dispatched
+ * than the lot physically has. Returns what's still available, optionally ignoring one
+ * existing entry (so editing that entry doesn't count itself as already-consumed).
+ */
+const getManualDispatchCapacity = async (lotId, excludeEntryId = null) => {
+  const lot = await Lot.findById(lotId).lean();
+  if (!lot) return null;
+
+  const finalPcs = await getFinalPcsForLot(lotId);
+  const damagedPcs = lot.damagedPcs || 0;
+
+  const match = { lotId: new mongoose.Types.ObjectId(lotId) };
+  if (excludeEntryId) match._id = { $ne: new mongoose.Types.ObjectId(excludeEntryId) };
+  const agg = await ManualDispatch.aggregate([
+    { $match: match },
+    { $group: {
+        _id: null,
+        good: { $sum: { $ifNull: ['$goodPcs', 0] } },
+        damaged: { $sum: { $ifNull: ['$damagedPcs', 0] } }
+    } }
+  ]);
+  const otherManualGood = agg[0]?.good || 0;
+  const otherManualDamaged = agg[0]?.damaged || 0;
+
+  const goodTotal = Math.max(0, finalPcs - damagedPcs);
+  return {
+    finalPcs,
+    damagedPcs,
+    goodTotal,
+    invoicedPcs: lot.invoicedPcs || 0,
+    damagedSoldPcs: lot.damagedSoldPcs || 0,
+    otherManualGood,
+    otherManualDamaged,
+    // What THIS entry may claim.
+    goodAvailable: Math.max(0, goodTotal - (lot.invoicedPcs || 0) - otherManualGood),
+    damagedAvailable: Math.max(0, damagedPcs - (lot.damagedSoldPcs || 0) - otherManualDamaged)
+  };
+};
+
+const recordManualDispatchHistory = async (entryId, lotId, action, beforeData, afterData, userId) => {
+  await ManualDispatchHistory.create({
+    entryId, lotId, action, beforeData, afterData, changedBy: userId
+  });
+};
+
+const listManualDispatches = async (lotId) =>
+  ManualDispatch.find({ lotId })
+    .populate('createdBy', 'username')
+    .sort({ dispatchDate: -1, createdAt: -1 })
+    .lean();
+
 const getRemainingPcsForLot = async (lotId, excludeInvoiceId = null) => {
   const [finalPcs, invoicedPcs, lot] = await Promise.all([
     getFinalPcsForLot(lotId),
@@ -244,8 +332,11 @@ const getLotsAvailableForDispatch = async ({ clientId, search, limit = 50 } = {}
     const finalPcs = finalPcsByLot.get(String(lot._id)) || 0;
     const damagedPcs = lot.damagedPcs || 0;
     const invoicedPcs = lot.invoicedPcs || 0;
-    // Good remaining excludes damaged pcs (those are sold combined to a third party).
-    const remainingPcs = Math.max(0, finalPcs - damagedPcs - invoicedPcs);
+    const manualDispatchedPcs = lot.manualDispatchedPcs || 0;
+    // Good remaining excludes damaged pcs (sold combined to a third party) AND anything
+    // already marked dispatched by hand — otherwise a legacy lot could be invoiced for
+    // pcs that physically left the building years ago.
+    const remainingPcs = Math.max(0, finalPcs - damagedPcs - invoicedPcs - manualDispatchedPcs);
     if (remainingPcs <= 0) continue;
     results.push({
       _id: lot._id,
@@ -263,6 +354,7 @@ const getLotsAvailableForDispatch = async ({ clientId, search, limit = 50 } = {}
       finalPcs,
       damagedPcs,
       invoicedPcs,
+      manualDispatchedPcs,
       remainingPcs,
       notFinished: !finishedLotIds.has(String(lot._id)) // no Finishing record yet → warn, don't block
     });
@@ -295,7 +387,12 @@ const getLotsWithDamagedAvailable = async ({ search, limit = 50 } = {}) => {
 
   const results = [];
   for (const lot of lots) {
-    const damagedAvailable = Math.max(0, (lot.damagedPcs || 0) - (lot.damagedSoldPcs || 0));
+    // Nets off manually-recorded damaged sales too — damaged pcs disposed of outside the
+    // invoicing flow are gone and must not be offered again in the combined-sale picker.
+    const damagedAvailable = Math.max(
+      0,
+      (lot.damagedPcs || 0) - (lot.damagedSoldPcs || 0) - (lot.manualDamagedSoldPcs || 0)
+    );
     if (damagedAvailable <= 0) continue;
     results.push({
       _id: lot._id,
@@ -312,6 +409,7 @@ const getLotsWithDamagedAvailable = async ({ search, limit = 50 } = {}) => {
       date: lot.date,
       damagedPcs: lot.damagedPcs || 0,
       damagedSoldPcs: lot.damagedSoldPcs || 0,
+      manualDamagedSoldPcs: lot.manualDamagedSoldPcs || 0,
       damagedAvailable
     });
     if (results.length >= limit) break;
@@ -336,10 +434,10 @@ const getPendingDispatch = async ({ search, status, page = 0, limit = 25 } = {})
   }
 
   const lots = await Lot.find(query)
-    .select('lotId lotNumber invoiceNumber clientId fitStyleId fabric waistSize date damagedPcs invoicedPcs damagedSoldPcs createdAt')
+    .select('lotId lotNumber invoiceNumber clientId fitStyleId fabric waistSize date damagedPcs invoicedPcs damagedSoldPcs manualDispatchedPcs manualDamagedSoldPcs createdAt')
     .populate('clientId', 'name clientCode')
     .populate('fitStyleId', 'name')
-    .sort({ createdAt: -1 })
+    .sort({ date: 1, createdAt: 1 }) // oldest first — this board is a backlog to work down
     .lean();
 
   // Batch the production lookup: one set of 3 aggregations for ALL lots instead of
@@ -354,10 +452,19 @@ const getPendingDispatch = async ({ search, status, page = 0, limit = 25 } = {})
     const damagedPcs = lot.damagedPcs || 0;
     const invoicedPcs = lot.invoicedPcs || 0;
     const damagedSoldPcs = lot.damagedSoldPcs || 0;
+    const manualDispatchedPcs = lot.manualDispatchedPcs || 0;
+    const manualDamagedSoldPcs = lot.manualDamagedSoldPcs || 0;
+
+    // Invoiced and manually-recorded pcs are interchangeable for dispatch purposes —
+    // both mean "these left the building". Only the money differs, and manual entries
+    // deliberately carry none.
+    const dispatchedPcs = invoicedPcs + manualDispatchedPcs;
+    const damagedGonePcs = damagedSoldPcs + manualDamagedSoldPcs;
+
     const goodTotal = Math.max(0, finalPcs - damagedPcs);
-    const goodRemaining = Math.max(0, goodTotal - invoicedPcs);
-    const damagedRemaining = Math.max(0, damagedPcs - damagedSoldPcs);
-    const dispatchStatus = invoicedPcs <= 0 ? 'pending' : (goodRemaining > 0 ? 'partial' : 'dispatched');
+    const goodRemaining = Math.max(0, goodTotal - dispatchedPcs);
+    const damagedRemaining = Math.max(0, damagedPcs - damagedGonePcs);
+    const dispatchStatus = dispatchedPcs <= 0 ? 'pending' : (goodRemaining > 0 ? 'partial' : 'dispatched');
     if (status && status !== dispatchStatus) continue;
     rows.push({
       _id: lot._id,
@@ -376,12 +483,33 @@ const getPendingDispatch = async ({ search, status, page = 0, limit = 25 } = {})
       damagedPcs,
       damagedSoldPcs,
       invoicedPcs,
+      manualDispatchedPcs,
+      manualDamagedSoldPcs,
+      dispatchedPcs,
       goodTotal,
       goodRemaining,
       damagedRemaining,
       dispatchStatus
     });
   }
+
+  // Oldest pending first. dispatchStatus is computed in memory above (it depends on
+  // production + invoice + manual figures, none of which are sortable in Mongo), so the
+  // ordering is applied here — before pagination slices the page, so page 1 really is
+  // the oldest outstanding work rather than the oldest slice of an arbitrary order.
+  //
+  // Outstanding lots rank above fully-dispatched ones: an old lot that's already gone
+  // out is history, not backlog, and shouldn't push genuinely pending work down the
+  // list. Drop STATUS_RANK from the comparator below for a pure oldest-first date sort.
+  const STATUS_RANK = { pending: 0, partial: 1, dispatched: 2 };
+  rows.sort((a, b) => {
+    const rank = (STATUS_RANK[a.dispatchStatus] ?? 9) - (STATUS_RANK[b.dispatchStatus] ?? 9);
+    if (rank !== 0) return rank;
+    const dateA = a.date ? new Date(a.date).getTime() : 0;
+    const dateB = b.date ? new Date(b.date).getTime() : 0;
+    if (dateA !== dateB) return dateA - dateB; // oldest first
+    return String(a.lotNumber || '').localeCompare(String(b.lotNumber || ''));
+  });
 
   const total = rows.length;
   const start = page * limit;
@@ -520,6 +648,10 @@ module.exports = {
   sumGoodInvoicedForLot,
   sumDamagedSoldForLot,
   recalcLotInvoiced,
+  recalcLotManualDispatch,
+  getManualDispatchCapacity,
+  recordManualDispatchHistory,
+  listManualDispatches,
   getRemainingPcsForLot,
   getLotsAvailableForDispatch,
   getLotsWithDamagedAvailable,

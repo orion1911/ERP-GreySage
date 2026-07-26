@@ -7,21 +7,10 @@ const CounterSchema = new mongoose.Schema({
 });
 
 // Refresh token subdoc — one entry per active session/device.
-//
-// The cookie value is `<tokenId>.<secret>`:
-//   tokenId — public, non-secret handle. Indexed, so validating a cookie is ONE
-//             document lookup + ONE bcrypt compare, regardless of how many users
-//             or sessions exist. (The previous scheme had no handle, so `refresh`
-//             had to load every user with a live token and bcrypt-compare each
-//             entry until it hit — O(users × sessions) bcrypt calls per refresh.)
-//   secret  — the actual credential. Only bcrypt(secret) is stored, so a DB leak
-//             still can't be used to mint sessions.
-//
-// familyId groups rotations from the same login. A tokenId that resolves but whose
-// secret does NOT match is a theft signal — see authController.refresh, which wipes
-// every entry sharing that familyId.
+// tokenHash is bcrypt(refreshToken) so a DB leak can't be used to mint sessions.
+// familyId groups rotations from the same login; if a previously-rotated token
+// is ever re-presented (theft signal) we wipe every entry sharing that familyId.
 const RefreshTokenSchema = new mongoose.Schema({
-  tokenId: { type: String, index: true },
   familyId: { type: String, required: true, index: true },
   tokenHash: { type: String, required: true },
   expiresAt: { type: Date, required: true },
@@ -188,6 +177,21 @@ const LotSchema = new mongoose.Schema({
   // i.e. damaged pcs already sold to third parties. Recomputed alongside invoicedPcs.
   // damagedRemaining = damagedPcs - damagedSoldPcs.
   damagedSoldPcs: { type: Number, default: 0, min: 0 },
+
+  // ─── Manual dispatch (legacy lots) ─────────────────────────────────────────
+  // Lots physically dispatched before this system went live, or otherwise billed
+  // outside it, will never get a sales Invoice — so invoicedPcs stays 0 and they sit
+  // on the Pending Dispatch board forever. These two caches are the manual-entry
+  // counterparts of invoicedPcs / damagedSoldPcs, summed from the ManualDispatch
+  // collection by invoiceService.recalcLotManualDispatch and folded into the same
+  // remaining/status maths.
+  //
+  // They are PCS ONLY. Manual dispatch never creates an Invoice and never touches
+  // ClientBalance — money for these lots was billed outside the system and is carried
+  // by ClientBalance.openingBalance.
+  manualDispatchedPcs: { type: Number, default: 0, min: 0 },
+  manualDamagedSoldPcs: { type: Number, default: 0, min: 0 },
+
   createdAt: { type: Date, default: Date.now }
 });
 LotSchema.index({ lotNumber: 1, invoiceNumber: 1 });
@@ -452,6 +456,44 @@ InvoiceSchema.index({ 'lines.lotId': 1 }); // "which invoices reference this lot
 InvoiceSchema.index({ 'lines.sources.lotId': 1 }); // same, for merged-line source lots
 
 // InvoiceHistory: audit log mirror of VendorPaymentEntryHistory
+// ─── Manual Dispatch ─────────────────────────────────────────────────────────
+// A dispatch that happened outside the invoicing flow. One document = one physical
+// dispatch event against one lot. Source of truth for Lot.manualDispatchedPcs and
+// Lot.manualDamagedSoldPcs, exactly as Invoice.lines is for invoicedPcs.
+//
+// Deliberately carries NO money fields. These lots were billed outside the system;
+// their outstanding sits in ClientBalance.openingBalance. Recording one here must
+// never call clientBalanceService.
+const ManualDispatchSchema = new mongoose.Schema({
+  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot', required: true, index: true },
+  // Good pcs dispatched to the lot's own client.
+  goodPcs: { type: Number, default: 0, min: 0 },
+  // Damaged pcs sold on (third-party combined sale), mirroring an isDamaged invoice line.
+  damagedPcs: { type: Number, default: 0, min: 0 },
+  dispatchDate: { type: Date, required: true },
+  // Free text: old challan number, manual bill number, courier docket, etc.
+  reference: { type: String, trim: true },
+  notes: { type: String, trim: true },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+ManualDispatchSchema.index({ lotId: 1, dispatchDate: -1 });
+
+// Audit trail, mirroring InvoiceHistory / VendorPaymentEntryHistory.
+const ManualDispatchHistorySchema = new mongoose.Schema({
+  entryId: { type: mongoose.Schema.Types.ObjectId, ref: 'ManualDispatch' },
+  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot' },
+  action: { type: String, enum: ['create', 'update', 'delete'], required: true },
+  beforeData: { type: mongoose.Schema.Types.Mixed },
+  afterData: { type: mongoose.Schema.Types.Mixed },
+  changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdAt: { type: Date, default: Date.now }
+});
+ManualDispatchHistorySchema.index({ lotId: 1, createdAt: -1 });
+ManualDispatchHistorySchema.index({ entryId: 1 });
+
 const InvoiceHistorySchema = new mongoose.Schema({
   invoiceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', required: true },
   action: { type: String, enum: ['create', 'update', 'cancel', 'delete'], required: true },
@@ -765,6 +807,8 @@ module.exports = {
   CompanySettings: mongoose.model('CompanySettings', CompanySettingsSchema),
   Invoice: mongoose.model('Invoice', InvoiceSchema),
   InvoiceHistory: mongoose.model('InvoiceHistory', InvoiceHistorySchema),
+  ManualDispatch: mongoose.model('ManualDispatch', ManualDispatchSchema),
+  ManualDispatchHistory: mongoose.model('ManualDispatchHistory', ManualDispatchHistorySchema),
   ClientPaymentEntry: mongoose.model('ClientPaymentEntry', ClientPaymentEntrySchema),
   ClientPaymentEntryHistory: mongoose.model('ClientPaymentEntryHistory', ClientPaymentEntryHistorySchema),
   ClientBalance: mongoose.model('ClientBalance', ClientBalanceSchema),

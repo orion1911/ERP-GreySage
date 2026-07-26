@@ -281,6 +281,88 @@ const apiService = {
   },
 
   // Vendor Payments API calls
+  vendorPayments: {
+    getVendorsByType: async (vendorType) => {
+      try {
+        const response = await axiosInstance.get('api/vendors-by-type', {
+          params: { vendorType },
+        });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    getVendorLotsDetails: async (vendorId, vendorType) => {
+      try {
+        const response = await axiosInstance.get('api/vendor-lots-details', {
+          params: { vendorId, vendorType },
+        });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    addVendorPayment: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/vendor-payment', payload);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    addShortAdjustment: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/short-adjustment', payload);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    getVendorPaymentEntries: async (vendorId, vendorType) => {
+      try {
+        const response = await axiosInstance.get('api/vendor-payment-entries', {
+          params: { vendorId, vendorType },
+        });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    getVendorBalanceSummary: async (vendorId, vendorType) => {
+      try {
+        const response = await axiosInstance.get('api/vendor-balance-summary', {
+          params: { vendorId, vendorType },
+        });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    updatePaymentEntry: async (entryId, payload) => {
+      try {
+        const response = await axiosInstance.put(`api/vendor-payment/${entryId}`, payload);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+
+    deletePaymentEntry: async (entryId) => {
+      try {
+        const response = await axiosInstance.delete(`api/vendor-payment/${entryId}`);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+  },
+
   // Fabric Vendors API calls
   fabricVendors: {
     createFabricVendor: async (vendorData) => {
@@ -747,6 +829,34 @@ const apiService = {
     updateLotDamaged: async (lotId, damagedPcs) => {
       try {
         const response = await axiosInstance.patch(`api/sales-invoices/lots/${lotId}/damaged`, { damagedPcs });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+
+    // ── Manual dispatch (legacy lots, never invoiced) ──────────────────────
+    // Records pcs as dispatched without creating an invoice. Pcs only — these calls
+    // never affect the client's outstanding balance.
+    getManualDispatch: async (lotId) => {
+      try {
+        const response = await axiosInstance.get(`api/sales-invoices/manual-dispatch/${lotId}`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    createManualDispatch: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/sales-invoices/manual-dispatch', payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    updateManualDispatch: async (id, payload) => {
+      try {
+        const response = await axiosInstance.put(`api/sales-invoices/manual-dispatch/${id}`, payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    deleteManualDispatch: async (id) => {
+      try {
+        const response = await axiosInstance.delete(`api/sales-invoices/manual-dispatch/${id}`);
         return response.data;
       } catch (error) { throw error; }
     },

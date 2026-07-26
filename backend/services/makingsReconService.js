@@ -510,9 +510,11 @@ const diffRow = (row, db) => {
   // a blank DETAILS cell or a lot with no fabric recorded is missing data, not a
   // mismatch, and flagging those would bury the real conflicts in noise.
   if (row.details && db.fabric) {
-    const norm = (s) => s.replace(/\s+/g, ' ').trim().toLowerCase();
-    if (norm(row.details) !== norm(db.fabric)) {
-      add('FABRIC', row.details, db.fabric);
+    if(db.fabric.trim().toLowerCase() == 'na') {
+      const norm = (s) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+      if (norm(row.details) !== norm(db.fabric)) {
+        add('FABRIC', row.details, db.fabric);
+      }
     }
   }
   // WASH SD present in excel but no wash-start / stitch-out recorded.

@@ -15,9 +15,18 @@ const {
   exportLotsToExcel,
   exportPaymentsToExcel
 } = require('../controllers/vendorBalanceController');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, restrictTo } = require('../middleware/auth');
 
 // Get all vendors by type with their balances
+// ─── Authorisation note ──────────────────────────────────────────────────────
+// Endpoints that DESTROY or RE-BASE financial records are admin-only. Everyday
+// recording (creating a payment, an invoice, a purchase) is deliberately left open
+// to any authenticated user, because that is the actual day-to-day job of the staff
+// using this system — tightening those would break normal workflow.
+//
+// If you want stricter separation of duties later, `restrictTo('admin')` is the knob;
+// apply it per-line below rather than globally.
+
 router.get('/vendors-by-type', authenticateToken, getVendorsByType);
 
 // Get vendor lots with amounts and payments (main dashboard data)
@@ -49,7 +58,7 @@ router.get('/export-payments-excel', authenticateToken, exportPaymentsToExcel);
 router.put('/vendor-payment/:entryId', authenticateToken, updatePaymentEntry);
 
 // Delete a payment entry
-router.delete('/vendor-payment/:entryId', authenticateToken, deletePaymentEntry);
+router.delete('/vendor-payment/:entryId', authenticateToken, restrictTo('admin'), deletePaymentEntry);
 
 // Mark a lot (production record) paid/unpaid for a vendor
 router.patch('/lot-paid', authenticateToken, markLotPaid);

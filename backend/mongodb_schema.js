@@ -7,10 +7,21 @@ const CounterSchema = new mongoose.Schema({
 });
 
 // Refresh token subdoc — one entry per active session/device.
-// tokenHash is bcrypt(refreshToken) so a DB leak can't be used to mint sessions.
-// familyId groups rotations from the same login; if a previously-rotated token
-// is ever re-presented (theft signal) we wipe every entry sharing that familyId.
+//
+// The cookie value is `<tokenId>.<secret>`:
+//   tokenId — public, non-secret handle. Indexed, so validating a cookie is ONE
+//             document lookup + ONE bcrypt compare, regardless of how many users
+//             or sessions exist. (The previous scheme had no handle, so `refresh`
+//             had to load every user with a live token and bcrypt-compare each
+//             entry until it hit — O(users × sessions) bcrypt calls per refresh.)
+//   secret  — the actual credential. Only bcrypt(secret) is stored, so a DB leak
+//             still can't be used to mint sessions.
+//
+// familyId groups rotations from the same login. A tokenId that resolves but whose
+// secret does NOT match is a theft signal — see authController.refresh, which wipes
+// every entry sharing that familyId.
 const RefreshTokenSchema = new mongoose.Schema({
+  tokenId: { type: String, index: true },
   familyId: { type: String, required: true, index: true },
   tokenHash: { type: String, required: true },
   expiresAt: { type: Date, required: true },

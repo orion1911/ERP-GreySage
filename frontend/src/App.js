@@ -199,7 +199,6 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login isMobile={isMobile} variant={variant} setVariant={setVariant} />} />
-            <Route path="/register" element={<Register isMobile={isMobile} variant={variant} setVariant={setVariant} />} />
             {/* Public, no-login read-only status board for finishing vendors. */}
             <Route path="/finishing-extras" element={<PublicFinishingExtras />} />
             <Route element={<AuthenticatedLayout isMobile={isMobile} variant={variant} setVariant={setVariant} />}>
@@ -222,6 +221,11 @@ function App() {
                 <Route path="/users" element={<UserManagement />} />
                 <Route path="/audit-logs" element={<AuditLogs />} />
                 <Route path="/admin/company-settings" element={<CompanySettings />} />
+                {/* Account creation is an admin action. This was previously a PUBLIC
+                    route, which — combined with the form's Role dropdown and an
+                    unauthenticated POST /api/register — let anyone self-register as
+                    an administrator. */}
+                <Route path="/register" element={<Register isMobile={isMobile} variant={variant} setVariant={setVariant} />} />
               </Route>
             </Route>
             <Route path="/" element={<Navigate to="/login" />} />

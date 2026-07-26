@@ -4,6 +4,11 @@ import { TextField, Button, Container, Typography, Box, MenuItem, Select, InputL
 import authService from '../../services/authService';
 import ThreeBackground from './ThreeBackground';
 
+// NOTE: this page is now mounted INSIDE AdminLayout (see App.js) and the matching
+// POST /api/register endpoint requires an authenticated admin. It used to be a public
+// route whose Role dropdown let any visitor create themselves an Admin account.
+// The dropdown is fine to keep now that only an administrator can reach the page —
+// the server whitelists `role` regardless and never trusts what the client sends.
 function Register() {
   const [form, setForm] = useState({ username: '', email: '', password: '', role: 'user' });
   const [errors, setErrors] = useState({ username: '', email: '', password: '' });
@@ -37,8 +42,9 @@ function Register() {
     if (!form.password) {
       newErrors.password = 'Password is required';
       valid = false;
-    } else if (form.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    } else if (form.password.length < 8) {
+      // Must match MIN_PASSWORD_LENGTH in backend/controllers/authController.js
+      newErrors.password = 'Password must be at least 8 characters';
       valid = false;
     }
 
@@ -51,7 +57,10 @@ function Register() {
 
     authService.register(form)
       .then(() => {
-        navigate('/login');
+        // The admin creating the account stays signed in — send them back to the
+        // user list, not to /login (which used to be the destination when this was
+        // a public self-service signup page).
+        navigate('/users');
       })
       .catch(err => {
         const serverError = err.response?.data?.error || 'Registration failed';

@@ -893,11 +893,19 @@ const getProductionStages = async (req, res) => {
 // Financial Summary: Invoice Status
 const getInvoiceStatus = async (req, res) => {
   try {
-    const payload = await getOrSet(DASH, ['invoiceStatus', req.query.fromDate, req.query.toDate, req.user.role, req.user.role === 'user' ? String(req.user._id) : 'all'], DASH_TTL, async () => {
+    // NOTE: this chart was silently broken and always rendered zeros. Two causes,
+    // both fixed here:
+    //   1. It bucketed into ['Pending','Paid','Partial'], which are statuses from the
+    //      OLD skeletal Invoice schema deleted in the 2026-05 Sales rewrite. The live
+    //      enum is ['draft','issued','cancelled'], so nothing ever matched.
+    //   2. It filtered on `req.user._id`, but the JWT payload is { userId, role } —
+    //      `_id` is undefined. That also poisoned the cache key below, so every
+    //      non-admin shared a single cache entry keyed on the string "undefined".
+    //      Invoice has no per-user ownership field at all, so the filter is dropped.
+    const payload = await getOrSet(DASH, ['invoiceStatus', req.query.fromDate, req.query.toDate], DASH_TTL, async () => {
     const dateFilter = getDateRangeFilter(req.query);
-    const userFilter = req.user.role === 'user' ? { userId: req.user._id } : {};
     const invoiceStatus = await Invoice.aggregate([
-      { $match: { ...dateFilter, ...userFilter } },
+      { $match: { ...dateFilter } },
       {
         $group: {
           _id: '$status',
@@ -906,10 +914,11 @@ const getInvoiceStatus = async (req, res) => {
       }
     ]);
 
-    const labels = ['Pending', 'Paid', 'Partial'];
-    const data = Array(3).fill(0);
+    const statuses = ['draft', 'issued', 'cancelled'];
+    const labels = ['Draft', 'Issued', 'Cancelled'];
+    const data = Array(statuses.length).fill(0);
     invoiceStatus.forEach(item => {
-      const index = labels.indexOf(item._id.charAt(0).toUpperCase() + item._id.slice(1));
+      const index = statuses.indexOf(String(item._id || '').toLowerCase());
       if (index !== -1) data[index] = item.count;
     });
 

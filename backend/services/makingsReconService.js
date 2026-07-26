@@ -413,6 +413,7 @@ const gatherDbByLot = async (lotNumbers) => {
       lotNumber: lot.lotNumber,
       invoiceNumber: lot.invoiceNumber,
       client: lot.clientId?.name || '',
+      fabric: lot.fabric || '',
       status: lot.status,
       grossPcs,
       makingShort,
@@ -502,6 +503,17 @@ const diffRow = (row, db) => {
   const minStatus = STAGE_MIN_STATUS[row.stage];
   if (db.status < minStatus) {
     add('STAGE', STAGE_LABELS[row.stage] || row.stage, STATUS_NAMES[db.status] || `status ${db.status}`);
+  }
+  // FABRIC — the excel's DETAILS column maps to Lot.fabric. Compared on
+  // whitespace-collapsed, case-folded text (same treatment as WASHER above) so
+  // cosmetic differences don't register. Flagged only when BOTH sides have a value:
+  // a blank DETAILS cell or a lot with no fabric recorded is missing data, not a
+  // mismatch, and flagging those would bury the real conflicts in noise.
+  if (row.details && db.fabric) {
+    const norm = (s) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+    if (norm(row.details) !== norm(db.fabric)) {
+      add('FABRIC', row.details, db.fabric);
+    }
   }
   // WASH SD present in excel but no wash-start / stitch-out recorded.
   if (row.washSd && !db.washStartDates.length && !db.stitchOutDates.length) {

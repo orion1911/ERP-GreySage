@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useOutletContext, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
-import { Typography, Box, Button, TextField, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { Typography, Box, Button, TextField, FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel, Tooltip } from '@mui/material';
 import { ContentCut } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 import StitchingGrid from './StitchingGrid';
@@ -49,6 +49,7 @@ function StitchingManagement() {
   const [selectedFinishingRecord, setSelectedFinishingRecord] = useState(null);
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [vendorFilter, setVendorFilter] = useState('');
+  const [noZipperFilter, setNoZipperFilter] = useState(false);
   const [washingVendorFilter, setWashingVendorFilter] = useState('');
   const [finishingVendorFilter, setFinishingVendorFilter] = useState('');
   const [clientFilter, setClientFilter] = useState('');
@@ -85,6 +86,21 @@ function StitchingManagement() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Re-fetch only the stitching list when the No Zipper toggle flips. Vendors, clients
+  // and the washing/finishing groupings are unaffected, so re-running the whole 8-call
+  // bulk load would be wasteful. Skips the first run because fetchData() already covered it.
+  const skipFirstZipperFetch = useRef(true);
+  useEffect(() => {
+    if (skipFirstZipperFetch.current) { skipFirstZipperFetch.current = false; return; }
+    let cancelled = false;
+    apiService.stitching
+      .getStitching('', '', noZipperFilter)
+      .then((res) => { if (!cancelled) setStitchingRecords(res); })
+      .catch((err) => { if (!cancelled) showSnackbar(err); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noZipperFilter]);
 
   // Deep-link support: the notification bell navigates here with ?search=<lotNumber>.
   // Sync it into the search box even when the page is already mounted.
@@ -438,11 +454,26 @@ function StitchingManagement() {
             </Select>
           </FormControl>
         </Box>
-        {/* On mobile the Add button is moved next to the sort/date filter inside the grid. */}
         {!isMobile && (
-          <Button variant="contained" endIcon={<ContentCut />} onClick={() => { setSelectedRecord(null); setOpenStitchingModal(true); }} sx={{ mt: 2 }}>
-            Add
-          </Button>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 2 }}>
+            <Tooltip title="Missing zipper">
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small"
+                    color="warning"
+                    checked={noZipperFilter}
+                    onChange={(e) => setNoZipperFilter(e.target.checked)}
+                  />
+                }
+                label="Missing Zipper"
+                sx={{ mr: 0, whiteSpace: 'nowrap', '& .MuiFormControlLabel-label': { fontSize: '0.875rem' } }}
+              />
+            </Tooltip>
+            <Button variant="contained" endIcon={<ContentCut />} onClick={() => { setSelectedRecord(null); setOpenStitchingModal(true); }}>
+              Add
+            </Button>
+          </Box>
         )}
       </Box>
       <StitchingGrid
@@ -467,6 +498,8 @@ function StitchingManagement() {
         statusFilter={statusFilter}
         setStatusFilter={setStatusFilter}
         onAdd={() => { setSelectedRecord(null); setOpenStitchingModal(true); }}
+        noZipperFilter={noZipperFilter}
+        onToggleNoZipper={() => setNoZipperFilter((v) => !v)}
         onEditStitching={handleEditStitching}
         onEditWashing={handleEditWashing}
         onEditFinishing={handleEditFinishing}

@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { Stitching, Lot, Finishing, Washing, Counter, Client, FitStyle, AccessoryType, AccessoryItem } = require('../mongodb_schema');
+const { Stitching, Lot, Finishing, Washing, Counter, Client, FitStyle, AccessoryType, AccessoryItem, AccessoryConsumption } = require('../mongodb_schema');
 const { updateVendorBalance, bumpVendorLedgers } = require('../services/vendorBalanceService');
 const accessoryService = require('../services/accessoryService');
 const { logAction } = require('../utils/logger');
@@ -382,7 +382,7 @@ const updateStitchingStatus = async (req, res) => {
 };
 
 const getStitching = async (req, res) => {
-  const { search, invoiceNumber } = req.query;
+  const { search, invoiceNumber, noZipper } = req.query;
   let filter = {};
   if (search) {
     filter.lotId = { $in: await Lot.find({ lotNumber: { $regex: search, $options: 'i' } }).distinct('_id') };
@@ -392,6 +392,31 @@ const getStitching = async (req, res) => {
       return res.status(400).json({ error: 'Invoice number must be a valid number' });
     }
     filter.lotId = { $in: await Lot.find({ invoiceNumber: parsedInvoiceNumber }).distinct('_id') };
+  }
+
+  // ─── "No Zipper" filter ────────────────────────────────────────────────────
+  // Zipper consumption is optional on the stitching flow (see prepareZipperConsumption),
+  // so a lot can be saved with none recorded. This surfaces exactly those lots.
+  //
+  // Implemented as an EXCLUSION: find the lots that DO have zipper consumption summing
+  // above zero, then exclude them. Doing it the other way round would only ever return
+  // lots that have AccessoryConsumption rows summing to 0, and would silently miss the
+  // common case — lots with no zipper rows at all.
+  if (noZipper === 'true' || noZipper === true) {
+    const zipperType = await AccessoryType.findOne({ key: 'zipper' }).select('_id').lean();
+    if (zipperType) {
+      const withZipper = await AccessoryConsumption.aggregate([
+        { $match: { accessoryTypeId: zipperType._id, stage: 'stitching' } },
+        { $group: { _id: '$lotId', total: { $sum: { $ifNull: ['$qty', 0] } } } },
+        { $match: { total: { $gt: 0 } } }
+      ]);
+      const lotIdsWithZipper = withZipper.map((r) => r._id);
+      // Merge with any lotId constraint the search/invoice filter already set — Mongo
+      // allows $in and $nin on the same field.
+      filter.lotId = { ...(filter.lotId || {}), $nin: lotIdsWithZipper };
+    }
+    // No zipper type configured at all ⇒ nothing has zipper consumption ⇒ every lot
+    // qualifies, so the filter is intentionally left untouched.
   }
 
   let query = Stitching.find(filter)

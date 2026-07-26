@@ -186,10 +186,11 @@ const apiService = {
       }
     },
 
-    getStitching: async (search = '', invoiceNumber = '') => {
+    getStitching: async (search = '', invoiceNumber = '', noZipper = false) => {
       try {
         const response = await axiosInstance.get('api/stitching', {
-          params: { search, invoiceNumber },
+          // noZipper: only lots with no zipper consumption recorded at stitching.
+          params: { search, invoiceNumber, ...(noZipper ? { noZipper: true } : {}) },
         });
         return response.data;
       } catch (error) {

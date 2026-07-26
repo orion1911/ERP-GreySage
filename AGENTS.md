@@ -1,396 +1,493 @@
 # GreySage ERP — Agent Context
 
-Single-file context for any AI coding assistant (Claude, GPT, Gemini, Cursor, Codex, etc.) working on this repo. Read this first before exploring source.
+Single-file context for any AI coding assistant working on this repo. Read this first,
+before exploring source.
 
-**Repo root:** `D:\Work\SalesAndAccounting`
-**Last context refresh:** 2026-06-06 (Stock Management / Accessories module — masters w/ per-item `openingStock`, purchase+payment ledger, client-filterable item-based stock summary w/ button/rivet split, zipper@stitching + finishing consumption (zero allowed); plus vendor default rates, per-lot/per-purchase Paid markers, 12h token-refresh session, net-of-shortage stage pre-fill + downstream shortage cascade + out-date auto-fill. Previous: Sales/Dispatch/Billing 2026-05-23 — see section 7.) (verify with `git log` and `git status` before trusting time-sensitive details)
+**Last context refresh:** 2026-07-26, against commit `d368de6` "invoice with sample entry
+option" (2026-07-15).
+
+**This file drifts.** The previous refresh sat six weeks stale and asserted several things
+that were no longer true. Before trusting anything time-sensitive below, run
+`git log --oneline -20` and `git status`, and treat §7 as the most perishable section. If
+you land significant work, update this file as part of it.
 
 ---
 
 ## 1. What this project is
 
-GreySage is an ERP for a garment manufacturer. Bulk client orders are split into **Lots** (batches), each tracked through three production stages — **Stitching → Washing → Finishing** — performed by vendors at per-piece rates. The system has three pillars:
+An ERP for a garment manufacturer (issuer entity **ALLYZ JEANS**). Bulk client orders are
+split into **Lots** (batches), each tracked through three production stages —
+**Stitching → Washing → Finishing** — performed by external vendors at per-piece rates.
+
+Five pillars:
 
 1. **Production** — lots flowing through the three stages.
-2. **Vendor accounting** — per-vendor ledger of what's owed for stitching/washing/finishing work and what's been paid.
-3. **Sales / Dispatch / Billing** — invoices to clients for finished pcs from one or more lots, with a per-client payment ledger and PDF invoice generation. (Added 2026-05-23; replaces the old skeletal Invoice module.)
+2. **Vendor accounting** — per-vendor ledger of what's owed and what's been paid.
+3. **Sales / Dispatch / Billing** — invoices to clients, per-client payment ledger, PDF
+   invoice generation.
+4. **Stock** — consumable accessories (zippers, buttons, rivets, labels, tags, pocketing,
+   polybags) with per-lot consumption hooked into production.
+5. **Reconciliation** — nightly diff of a shared OneDrive Excel workbook against the
+   database, surfaced through an in-app notification bell.
 
-The business spec lives in `backend/BRD.MD`. Key idea: a **LotNumber** like `A/1/5` means series `A`, batches 1 through 5. A series caps at 100 batches before rolling over (`A` → `B` → `C`...). A single batch can be written as `A/46`.
+A **LotNumber** like `A/1/5` means series `A`, batches 1 through 5. A series caps at 100
+batches before rolling over (`A` → `B` → `C`). A single batch is written `A/46`.
 
-**Important architectural note:** the original "Order" collection was removed as an entry point (commit `836271d`). **Lot is now the root aggregate** and is created at the start of the Stitching flow. The `Order` schema, route, and controller files still exist in the codebase but `orderRoutes` is **commented out** in `server.js`. A one-time migration script `backend/migrations/migrate-orders-to-lots.js` was used for the cutover.
+**Lot is the root aggregate.** The original `Order` collection was removed as an entry
+point (commit `836271d`); its schema, route and controller still exist but `orderRoutes` is
+**commented out** in `server.js`, and `features/Orders/` is not mounted in `App.js`. Don't
+revive it without being asked. `backend/migrations/migrate-orders-to-lots.js` handled the
+cutover.
 
-**Sales side:** one Invoice document = one dispatch event = the printable Bill of Supply / Tax Invoice. Each invoice has N line items, each line referencing one Lot (or null for legacy). A lot can be dispatched in parts across multiple invoices; the remaining pcs come from the production aggregate minus what's been invoiced. Issuer (ALLYZ JEANS — name, GSTIN, MSME, bank, signatory) lives in a `CompanySettings` singleton printed on every invoice. PDF generated client-side with jsPDF.
+Scale: 22 controllers, 22 route files, 8 services, 36 Mongoose models, ~35k lines.
 
 ---
 
 ## 2. Tech stack
 
 **Backend** (`backend/`)
-- Node.js + Express 4, Mongoose 7
-- `express-async-errors` (async throws propagate to global handler)
-- Auth: `bcryptjs` + `jsonwebtoken`
-- Excel export: `xlsx` (server-side, recently moved from client)
-- Email: `@sendgrid/mail`
+
+- Node.js 18, Express 4, Mongoose 7
+- `express-async-errors` — async throws propagate to the global handler
+- Auth: `bcryptjs` + `jsonwebtoken`; short access token + rotating opaque refresh token
+- Cache: **Upstash Redis over REST** (`@upstash/redis`) — stateless HTTP, no pool
+- Email: **Brevo SMTP via `nodemailer`** (not SendGrid — replaced in `85f07ec`)
+- Excel: `xlsx` — server-side export *and* workbook parsing for reconciliation
 - Validation: `express-validator`
-- Deployed as a **Vercel serverless function** (`server.js` exports `module.exports = app`; `app.listen` only runs when `NODE_ENV !== 'production'`)
+- Deployed as a **Vercel serverless function**: `server.js` exports the app; `app.listen`
+  only runs when `NODE_ENV !== 'production'`
 
 **Frontend** (`frontend/`)
-- Create React App (`react-scripts 5`), React 18, React Router 6
-- **MUI v7** (`@mui/material`, `@mui/icons-material`) + **MUI X v8** (`x-data-grid`, `x-charts`, `x-date-pickers`, `x-date-pickers-pro`)
-- MUI X is a paid license — `App.js` calls `LicenseInfo.setLicenseKey(process.env.REACT_APP_MUI_LICENSE_KEY)`
-- Forms: `react-hook-form`. Dates: `dayjs`. Tables: also `@tanstack/react-table`. Animation: `motion`.
-- PDF generation: `jspdf` + `jspdf-autotable` (client-side, used in `features/Sales/invoicePdfService.js` to render Bill of Supply / Tax Invoice). Default Helvetica font has no ₹ glyph — service uses `Rs.` prefix instead.
-- No Redux/Zustand — component-local state, `localStorage` for auth, snackbar lifted into layout and passed via `useOutletContext`.
+
+- CRA (`react-scripts 5`), React 18, React Router 6
+- **MUI v7** + **MUI X v8** (data-grid, charts, date-pickers, date-pickers-pro)
+- MUI X is a paid licence — `App.js` calls `LicenseInfo.setLicenseKey(...)`
+- `react-hook-form`, `dayjs`, `@tanstack/react-table`, `motion`
+- `jspdf` + `jspdf-autotable` for invoices. Helvetica has no ₹ glyph, so
+  `invoicePdfService.js` prints `Rs.`
+- No Redux/Zustand — component-local state, `localStorage` for auth, snackbar lifted into
+  the layout and passed via `useOutletContext`
 
 **Database**
-- MongoDB 7.0 with **replica set `rs0`** (required because `stitchingController.createStitching` uses a multi-document transaction)
-- Production: Mongo Atlas M0 (tight connection limits — see operational note below)
-- Local dev: `docker-compose.yml` brings up Mongo (auto replSet init via entrypoint), backend on port 5000, frontend on 8080→3000
 
-**Operational constraint to respect:** Mongo pool is capped at `maxPoolSize: 3` and `autoIndex: false` in `server.js`. The Mongoose connection is cached on `global._mongoConnection` to survive warm serverless invocations. **Do not "fix" these to standard best-practice values** — they were tuned this way after Atlas M0 was hitting connection limits (commit `5c7c939`).
+- MongoDB 7.0 with **replica set `rs0`** — required, because
+  `stitchingController.createStitching` opens a multi-document transaction
+- Production: Atlas M0. Local: `docker-compose.yml` (Mongo with auto replSet init, API on
+  5000, frontend 8080→3000)
 
 ---
 
 ## 3. Repository layout
 
 ```
-D:\Work\SalesAndAccounting\
-├── backend/                  # API (active)
-│   ├── server.js             # Entry: CORS, Mongo connect middleware, route mounting
-│   ├── mongodb_schema.js     # ALL Mongoose models in one file
-│   ├── routes/               # One file per resource
-│   ├── controllers/          # One file per resource
+ERP-GreySage/
+├── backend/
+│   ├── server.js               # CORS, Mongo connect middleware, route mounting
+│   ├── mongodb_schema.js       # ALL 36 Mongoose models in one file
+│   ├── routes/                 # one file per resource
+│   ├── controllers/            # one file per resource
 │   ├── services/
-│   │   ├── vendorBalanceService.js  # Denormalization + lots-by-vendor aggregation
-│   │   ├── invoiceService.js        # Final/remaining pcs, FY counter, amount-in-words
-│   │   └── clientBalanceService.js  # Mirror of vendorBalanceService for the client side
-│   ├── middleware/
-│   │   ├── auth.js           # authenticateToken (JWT)
-│   │   ├── error.js          # Global handler, translates Mongo unique-violation
-│   │   └── requestValidator.js
-│   ├── migrations/
-│   │   ├── migrate-orders-to-lots.js  # One-time historical migration
-│   │   ├── seed-accessory-data.js     # Seeds accessory masters/opening-stock/purchases/payments
-│   │   │                              #   (idempotent; `--wipe` arg = full reset; URI as argv[2])
-│   │   └── dedupe-accessory-types.js  # One-off: removes duplicate AccessoryType rows
-│   ├── utils/logger.js       # logAction writes to AuditLog
-│   ├── BRD.MD                # Business requirements (READ THIS for domain)
-│   ├── server-side-excel-export-summary.md  # UTF-16 encoded; content describes xlsx refactor
-│   └── vercel.json
+│   │   ├── vendorBalanceService.js    # vendor denormalisation + lots-by-vendor aggregation
+│   │   ├── clientBalanceService.js    # client-side mirror
+│   │   ├── invoiceService.js          # final/remaining pcs, FY counter, amount-in-words,
+│   │   │                              #   dispatch board, manual dispatch
+│   │   ├── accessoryService.js        # stock, balances, consumption, seeding
+│   │   ├── makingsReconService.js     # OneDrive workbook download + parse + diff
+│   │   ├── notificationService.js     # low-stock digest (WhatsApp is a stub)
+│   │   ├── emailService.js            # Brevo SMTP wrapper
+│   │   └── cache.js                   # Upstash read-through, version-stamped keys
+│   ├── middleware/             # auth.js, error.js
+│   ├── migrations/             # one-time migrations + seeds
+│   ├── scripts/                # operational utilities
+│   ├── utils/logger.js         # logAction → AuditLog
+│   ├── BRD.MD                  # business requirements (GITIGNORED — read for domain)
+│   └── vercel.json             # serverless config + cron schedules
 │
-├── frontend/                 # Active React app
-│   └── src/
-│       ├── App.js            # All routes + layouts (Authenticated, Admin)
-│       ├── components/
-│       │   ├── Navbar/       # Sidebar.js, Appbar.js (responsive, collapsible)
-│       │   ├── Theme/AppTheme.js  # Theme variants + dark mode persistence
-│       │   ├── SnackBar.js, ErrorBoundary.js, NotFound.js
-│       │   ├── Validators.js, MuiCustom.js, OrderStatusChip.js, Skeleton/
-│       ├── features/         # Domain-grouped feature folders
-│       │   ├── Admin/        # Dashboard (~851), DashboardExcel, Reports, AuditLogs, UserMgmt, CompanySettings, StatCard
-│       │   ├── Catalogs/     # 6 lookups; each has {Name}Catalog.js + {Name}CatalogAdd.js + {Name}CatalogSx.js
-│       │   ├── Stitching/    # StitchingManagement, LotsManagement, StitchingGrid, AddStitchingModal
-│       │   ├── Washing/      # Grid + AddModal + Sx
-│       │   ├── Finishing/    # Grid + AddModal + Sx
-│       │   ├── VendorPayments/   # VendorPaymentManagement.js (~1381 lines)
-│       │   ├── Sales/        # InvoiceManagement + InvoiceFormModal + invoicePdfService (jsPDF)
-│       │   ├── ClientPayments/   # ClientPaymentManagement — mirror of VendorPayments for clients
-│       │   ├── Orders/       # EXISTS BUT DORMANT — route not mounted in App.js
-│       │   └── Login/        # Login, Register, ForgotPassword
-│       └── services/
-│           ├── axiosInstance.js   # Base axios + JWT interceptor
-│           ├── apiService.js      # All API calls grouped by domain
-│           └── authService.js
+├── frontend/src/
+│   ├── App.js                  # all routes + layouts (Authenticated, Admin)
+│   ├── components/
+│   │   ├── Navbar/             # Sidebar, Appbar, NotificationBell, Breadcrumbs
+│   │   ├── Theme/              # theme variants + dark mode
+│   │   └── SnackBar, ErrorBoundary, NotFound, Validators, MuiCustom, OrderStatusChip
+│   ├── features/
+│   │   ├── Stitching/  Washing/  Finishing/
+│   │   ├── Sales/              # InvoiceManagement, InvoiceFormModal, DispatchManagement,
+│   │   │                       #   ManualDispatchModal, invoicePdfService
+│   │   ├── VendorPayments/  ClientPayments/
+│   │   ├── Stock/              # StockManagement, masters, ledger, vendor extras
+│   │   ├── Catalogs/           # 6 lookups, each a 3-file triplet
+│   │   ├── Admin/              # Dashboard, ProductionDashboard, DashboardExcel, Reports,
+│   │   │                       #   AuditLogs, UserManagement, CompanySettings
+│   │   ├── Orders/             # DORMANT — not mounted
+│   │   └── Login/
+│   └── services/               # axiosInstance, apiService, authService
 │
-├── docker-compose.yml        # Local dev: Mongo replSet + backend + frontend
-├── init-mongo.js, keyfile.txt
-├── .env, .env.development    # Gitignored — do NOT commit or echo
-├── README.md
-│
-├── frontendv2/               # GITIGNORED — stalled rewrite, not active
-├── bkp/, frontend/bkp/       # GITIGNORED — backups
-├── docs/                     # GITIGNORED — local-only docs
-├── mongo_init/               # GITIGNORED (added in current uncommitted .gitignore edit)
-├── *.zip                     # GITIGNORED snapshots (backend.zip, frontend.zip, src.zip)
-└── ext/process.py            # Small Python utility (standalone)
+├── ext/process.py              # retired Python workbook parser (reference for the JS port)
+├── docker-compose.yml, init-mongo.js
+├── AGENTS.md                   # this file
+└── README.md
 ```
+
+Gitignored and off-limits unless asked: `frontendv2/` (stalled rewrite), `bkp/`,
+`frontend/bkp/`, `docs/`, `*.zip`, `build/`, all `.env*`.
 
 ---
 
-## 4. Domain model (the schema)
+## 4. Domain model
 
-All Mongoose models live in **one file**: `backend/mongodb_schema.js`. Summary:
+All models live in **`backend/mongodb_schema.js`**.
 
-**Lookups** (each has `isActive` flag for soft-disable):
-- `Client` — has unique `clientCode`, unique-index on `name`. **Extended for Sales:** `gstin`, `pan`, `billingAddress` + `shippingAddress` (`AddressSchema` subdoc: line1/line2/city/state/stateCode/pincode/country). The legacy `address` free-text field is kept for back-compat.
-- `FitStyle` — replaces an older `Product` collection; unique on `name`
-- `FabricVendor`, `StitchingVendor`, `WashingVendor`, `FinishingVendor` — separate collections per vendor type. The three **production** vendors also carry a `defaultRate` (Number) — selecting the vendor in the stage modal pre-fills the rate field (still editable; washing fills every wash-detail row). `updateVendor` whitelists fields, so new vendor fields must be added there too.
+**Lookups** (each with an `isActive` soft-disable flag):
 
-**Lot** (root aggregate, replaces Order):
-- `lotId` — generated `LT-YYYYMMDD###` via `Counter` collection (`_id: 'lotId'`)
-- `lotNumber` — unique, format `SERIES/SUBSERIES[/LOTNUM]`. Parsing + range-overlap validation in `stitchingController.js` (`parseLotNumber`, `validateLotNumber`).
-- `invoiceNumber` — unique, numeric (**this is the UPSTREAM/source invoice on the lot — DO NOT confuse with the sales-side `Invoice.invoiceNumber` which is `INV{FY}/{seq}`**)
-- `clientId`, `fabric`, `fitStyleId`, `waistSize`, `date`, `description`
-- `status` enum `[2,3,4,5,6]` (status `1` was the removed Order stage), plus `statusHistory[]`
-- `invoicedPcs` (sales-side cache) — sum of pcs across all non-cancelled `Invoice.lines` referencing this lot. Recomputed by `invoiceService.recalcLotInvoiced(lotId)` after every invoice write. `remainingPcs = finalPcs(production) - invoicedPcs`.
+- `Client` — unique `clientCode`, unique index on `name`. Carries `gstin`, `pan`,
+  `billingAddress` + `shippingAddress` (`AddressSchema` subdoc), and **`billingFirms[]`** —
+  optional sub-billers, so one client can be invoiced under several firm identities (added
+  `3a19342`). Legacy free-text `address` kept for back-compat.
+- `FitStyle` — replaced an older `Product` collection; unique on `name`.
+- `FabricVendor`, `StitchingVendor`, `WashingVendor`, `FinishingVendor` — separate
+  collections. The three production vendors carry a `defaultRate` that pre-fills the stage
+  modal. `updateVendor` **whitelists fields**, so new vendor fields must be added there too.
 
-**Production stages** (each references `lotId`, has its own `vendorId` + `rate` + `quantityShort`; each also has an `isPaid`/`paidAt` "settled" marker — see below):
-- **`Stitching`** — top-level `quantity`/`rate`. Also has `threadColors: [{color, quantity}]` — **sum of thread color quantities MUST equal lot `quantity`** (controller-enforced).
-- **`Washing`** — schema-asymmetric: no top-level quantity/rate. Instead has `washDetails: [{washColor, washCreation, quantity, rate, quantityShort, quantityShortDesc}]`. Each entry is a separate wash sub-record. Several places (Excel export, vendor balance aggregation) special-case this — when iterating Washing data, **check for `washDetails` array** rather than scalar fields.
-- **`Finishing`** — mirrors Stitching without `threadColors`.
+**Lot** (root aggregate):
 
-**Stage quantity pre-fill (UI):** each stage's available qty is **net of upstream shortage** — Washing pre-fills to `stitching.quantity − quantityShort`; Finishing pre-fills (and the modal *fetches the washing record* to compute) `Σ(washDetails.quantity − quantityShort)`. Backend validates Finishing qty == available washing qty, so keep these in sync.
+- `lotId` — `LT-YYYYMMDD###` via the `Counter` collection
+- `lotNumber` — unique, `SERIES/SUBSERIES[/LOTNUM]`. Parsing and range-overlap validation
+  live at the top of `stitchingController.js` (`parseLotNumber`, `validateLotNumber`)
+- `invoiceNumber` — unique, numeric. **This is the UPSTREAM/maker bill, not the sales
+  invoice.** See §8
+- `status` enum `[2..7]` — 2 Stitching · 3 Washing · 4 Finishing · 5 Finished/Ready ·
+  6 Partially Dispatched · 7 Dispatched — plus `statusHistory[]`
+- `invoicedPcs` — cached sum of issued **good** invoice-line pcs
+- `damagedPcs` — pcs held back from the client, still sellable, later sold combined to a
+  third party. `clientDispatchableGood = finalPcs − damagedPcs`
+- `damagedSoldPcs` — cached sum of issued **damaged** invoice-line pcs
 
-**Shortage cascades downstream (backend):** editing an earlier stage's shortage auto-adjusts later stages so quantities stay consistent. `updateStitching` → `cascadeShortageFromStitching` re-sums the washing `washDetails` to the new available (delta applied to the largest detail) then re-derives `finishing.quantity`; `updateWashing` → `recomputeFinishingFromWashing` re-derives `finishing.quantity`. After a stitching/washing edit the UI refetches downstream records.
+`finalPcs` is **derived, never stored** — `invoiceService.getFinalPcsForLot(s)` walks
+Finishing → Washing → Stitching, taking `quantity − quantityShort`. Presence of any doc in a
+stage stops the fallback, so a lot with an empty-`washDetails` Washing doc resolves to 0
+rather than falling through to Stitching.
 
-**Out-date auto-fill:** creating a **Washing** entry sets the stitching record's `stitchOutDate` to the washing entry's date; creating a **Finishing** entry sets the washing's `washOutDate` to the finishing entry's date (both use the *selected* date, not `new Date()`).
+**Production stages** — each references `lotId` and has its own `vendorId`, `rate`,
+`quantityShort`, and an `isPaid`/`paidAt` settled marker:
 
-**Per-lot "Paid" marker:** `Stitching/Washing/Finishing` each have `isPaid` + `paidAt`. The Vendor Payments **Lots** table has a PAID toggle per lot (`PATCH /api/vendor-balances/lot-paid` → `markLotPaid` flips the production record by `{lotId, vendorId}`); a paid row is dimmed. `getVendorLotsDetails` returns `isPaid` (+ `recordId`) per lot. **Purely a status flag — it does NOT touch the money ledger/balance.** (Accessory purchases have the same marker — see Stock Management.)
+- **`Stitching`** — top-level `quantity`/`rate`, plus `threadColors: [{color, quantity}]`.
+  Thread quantities **must sum to the lot quantity** (controller-enforced).
+- **`Washing`** — **schema-asymmetric**: no top-level quantity/rate. Instead
+  `washDetails: [{washColor, washCreation, quantity, rate, quantityShort, quantityShortDesc}]`.
+  Code handling all three stages uniformly must special-case this.
+- **`Finishing`** — mirrors Stitching without thread colours. Also `accessoryBasisPcs`.
 
-Latest commit (`90c94c6`) relaxed validation to allow `quantity: 0` and `rate: 0` on Stitching entries (previously enforced `min: 1` / `min: 0`).
+**Vendor accounting**: `VendorPaymentEntry` (the ledger — `paymentScope` vendor|lot,
+`paymentType` payment|short_adjustment), `VendorPaymentEntryHistory` (before/after
+snapshots), `VendorBalance` (denormalised aggregate).
 
-**Vendor accounting** (three collections that work together):
-- **`VendorPaymentEntry`** — the ledger. Fields: `vendorId`, `vendorType` ∈ `['stitching','washing','finishing']`, `paymentScope` ∈ `['vendor','lot']` (vendor-level lump sum vs lot-specific), optional `lotId`, `paymentType` ∈ `['payment','short_adjustment']`, `amount`, `paymentDate`, `shortQuantity`/`shortRate` for adjustments, `createdBy`, `updatedBy`.
-- **`VendorPaymentEntryHistory`** — full audit log of create/update/delete with `beforeData` + `afterData` snapshots.
-- **`VendorBalance`** — **denormalized aggregate** (`totalDue`, `totalPaid`, `remainingBalance`, `lastUpdated`). Recomputed by `services/vendorBalanceService.updateVendorBalance`. **Always call `updateVendorBalance(vendorId, vendorType)` after any write that affects vendor money** — otherwise the aggregate drifts out of sync with the ledger.
+**Sales**: `CompanySettings` (issuer singleton), `Invoice`, `InvoiceHistory`,
+`ClientPaymentEntry`, `ClientPaymentEntryHistory`, `ClientBalance`.
 
-**Sales / Dispatch / Billing** (added 2026-05-23):
-- **`CompanySettings`** — singleton (one document, upserted on PUT). Issuer block printed on every invoice: name, multi-line address, GSTIN/PAN/MSME, email/phone, GST state, bank details, authorised signatory, `defaultInvoicePrefix` (default `INV`), `defaultDocumentType` (`BILL_OF_SUPPLY` | `TAX_INVOICE`).
-- **`Invoice`** (the parent doc — one Invoice = one dispatch event = one printable bill):
-  - `invoiceId` internal `INV-YYYYMMDD###`, `invoiceNumber` human `INV{FY}/{seq}` (e.g. `INV2627/29`) — unique, atomic via Counter `_id: 'invoice-{fyShort}'`. FY starts April 1.
-  - `documentType`, `date`, `clientId`, `placeOfSupply { stateCode, stateName }`
-  - **FROZEN snapshots** (do NOT mutate on later client/lot edits): `clientSnapshot { name, clientCode, gstin, pan, phone, email }`, `billTo` (AddressSchema), `shipTo` (AddressSchema)
-  - `lines: [InvoiceLineSchema]` subdocs — `lotId` (optional, null = legacy line), `lotNumberSnapshot`, `lotInvoiceNumberSnapshot`, `description` (free-form), `hsnSac`, `pcs`, `unit`, `rate`, `amount`
-  - `subTotal`, `roundOff`, `total`, `totalQty`, `amountInWords` (Indian lakh/crore numbering)
-  - `status` ∈ `['draft','issued','cancelled']` (default `issued`). Cancelling returns the lot pcs to the available pool.
-- **`InvoiceHistory`** — audit log: `action ∈ ['create','update','cancel','delete']`, `beforeData`/`afterData`, `changedBy`.
-- **`ClientPaymentEntry`** — mirror of `VendorPaymentEntry`. Fields: `clientId`, `paymentScope ∈ ['client','invoice']`, optional `invoiceId`, `paymentType ∈ ['payment','adjustment']`, `amount`, `paymentDate`, `paymentMode ∈ ['cash','bank','upi','cheque','other']`, `referenceNumber` (cheque #/UTR), `notes`, audit fields.
-- **`ClientPaymentEntryHistory`** — mirror of `VendorPaymentEntryHistory`.
-- **`ClientBalance`** — denormalized aggregate (unique on `clientId`): `openingBalance` (for legacy seed from the spreadsheets), `totalInvoiced`, `totalPaid`, `totalAdjustment`, `remainingBalance = opening + invoiced - paid - adjustment`. Recomputed by `services/clientBalanceService.updateClientBalance`. **Always call `updateClientBalance(clientId)` after any write that affects client money** (invoice create/update/cancel, payment create/update/delete).
+- `Invoice.invoiceNumber` is `INV{FY}/{seq}`, FY starting 1 April, atomic via Counter
+  `_id: 'invoice-{fyShort}'`. **Never generate one by hand** —
+  `invoiceService.generateInvoiceNumber(date, prefix)`.
+- `status` ∈ `draft | issued | cancelled` (default `issued`). Cancelling returns pcs.
+- **Frozen snapshots**: `clientSnapshot`, `billTo`, `shipTo`, `lines[].lotNumberSnapshot`,
+  `lines[].lotInvoiceNumberSnapshot` — copied at issue time, never refreshed.
+- `lines[].isDamaged` marks a damaged-stock sale line.
+- `lines[].sources[]` — per-lot breakdown for a **merged** line drawing from several lots
+  (added `759150d`). Source pcs sum to the line's pcs; each source's pcs is what subtracts
+  from that lot. Empty for single-lot and legacy lines.
 
-**Stock Management / Accessories** (added 2026-06-02 — Phase 1):
-Tracks consumable accessories (zippers, buttons, label-tags, pocketing, polybags). Two independent denormalized aggregates, both fed by `AccessoryPurchase`:
-- **STOCK** (per item, computed on read — no denormalization) = `openingStock + Σ purchase-line qty − Σ consumption qty`.
-- **MONEY** (per type, denormalized into `AccessoryBalance`) = opening + Σ purchases − Σ payments − Σ adjustments.
+**Stock / Accessories**: `AccessoryType` (seeded lookup, `key` slug drives behaviour),
+`AccessoryItem` (masters per type; `clientId` null = general, set = client-specific;
+`subType` ∈ label|tag|button|rivet; `openingStock`), `AccessoryPurchase` (header + lines,
+`isPaid` marker), `AccessoryPayment` + `AccessoryPaymentHistory`, `AccessoryBalance`,
+`AccessoryConsumption` (per-item stock-out, keyed by `(lotId, stage)`),
+`AccessoryVendorReturn` (items returned by a finishing vendor).
 
-`getAccessoryStock(typeId, clientId)` and `getStockSummary(clientId)` accept a **client filter** (`''` = all, `'general'` = unassigned, `<id>` = that client — Stock page top-right dropdown). The summary is computed **per item** (not per-type aggregate) so it can be client-filtered and sub-type-split: for the **Button** type, `availableQty` is the BUTTON-only count and `rivetAvailable` is the rivet sub-count shown under it.
+Two independent aggregates: **stock** per item, computed on read
+(`openingStock + purchases − consumption`); **money** per type, denormalised into
+`AccessoryBalance`.
 
-Collections:
-- **`AccessoryType`** — seeded lookup (`key` slug drives behaviour). `key`, `name`, `unit` (pcs/mtr), `consumptionStage` ∈ `['stitching','finishing']`, `sortOrder`, `isActive`. Auto-seeded by `accessoryService.seedAccessoryTypes` (zipper/button/label-tag/pocketing/polybag) on first `/types` or `/stock/summary` hit.
-- **`AccessoryItem`** — the master/lookup per type (e.g. "AD BLUE 5.5 INCH"). `accessoryTypeId`, `name`, `rate`, `clientId` (**null = general/common-for-all**; set = custom for that client), `subType` ∈ `['label','tag','button','rivet',null]` (paired streams: label/tag and button/rivet), `openingStock` (go-live on-hand qty, set in the Masters form — counts toward available; preferred over the old rate-0 opening-stock purchase), `isActive`. Unique on `(accessoryTypeId, name)`. Selecting an item in a purchase line pre-fills the line rate from the item's master `rate`.
-- **`AccessoryPurchase`** — one supplier invoice = header + N `lines[{accessoryItemId, nameSnapshot, qty, rate, amount}]` (a single INV can carry both a label and a tag line). `accessoryTypeId`, `date`, `vendorInvoiceNumber`, `supplier`, `totalQty`, `totalAmount`, plus an `isPaid`/`paidAt`/`paidBy` settled marker (`PATCH /accessories/purchases/:id/paid`; paid rows are dimmed + Edit/Delete disabled — a status flag only, doesn't touch the balance). **Call `accessoryService.updateAccessoryBalance(typeId)` after any purchase write.** Purchases + payments are **server-paginated** (`page`/`limit`, default 10) → `{ rows, total }`.
-- **`AccessoryBalance.openingBalance`** is settable from the UI per type (Stock ledger → "Opening Balance" button → `PATCH /api/accessories/opening-balance`), mirroring client-balance opening. Used to carry the pre-go-live outstanding.
-- **`AccessoryPayment`** (+ **`AccessoryPaymentHistory`**) — payments/adjustments against an **article-type account** (the "account" is the AccessoryType, matching the Excel's per-type ledger tabs — there is intentionally no per-supplier ledger in Phase 1). Mirror of VendorPaymentEntry. **Call `updateAccessoryBalance` + write history after any payment write.**
-- **`AccessoryBalance`** — denormalized per type (unique on `accessoryTypeId`): `openingBalance`, `totalPurchased`, `totalPaid`, `totalAdjustment`, `remainingBalance`.
-- **`AccessoryConsumption`** — per-item stock-out ledger, source of truth for consumed qty. Keyed by `(lotId, stage)` so editing a Stitching/Finishing record **replaces** its rows. **Zipper consumption** is written inside `stitchingController.createStitching`'s transaction (via `replaceConsumption`); **Finishing consumption** (button/label/tag/polybag) is written inside `finishingController.createFinishing`'s transaction via `replaceFinishingConsumption`. Both updateStitching/updateFinishing replace non-transactionally.
+Consumption hooks: **zippers** at stitching (inside the transaction; optional — all-zero
+skips, but any partial entry must sum to the lot quantity); **buttons / labels / tags /
+polybags** at finishing, with **rivets auto-derived at 4× buttons**. Pocketing is excluded
+from consumption (purchases and payments only).
 
-**Zipper consumption hook (Stitching):** `createStitching`/`updateStitching` accept an optional `zipperConsumption: [{accessoryItemId, qty}]`. It's **optional/non-blocking** — if every qty is 0 (or no zipper masters exist) it's skipped so the critical stitching flow never breaks; but once **any** zipper qty is entered, the sum **must equal the lot quantity** (validated client- and server-side, returns 400 with a clear message). The stitching modal shows ALL applicable zipper items for the selected client (client-mapped items if any exist, else general), each defaulting to 0.
+**Reconciliation**: `MakingsDiff` — a single stored snapshot with `count`,
+`discrepancies[]`, `excelRows[]` (needed to re-diff one lot after a fix), `scannedRows`,
+and `status` ∈ ok|error.
 
-**Finishing consumption hook (Phase 2):** `createFinishing`/`updateFinishing` accept `accessoryConsumption: [{accessoryItemId, qty}]` (a flat list across types; each item's type/name/clientLinked is resolved server-side). The modal calls `GET /api/accessories/finishing-items?invoiceNumber=` which resolves the lot's client and returns consumption **slots** — Button, **Label**, **Tag** (Label-Tag expands into two slots, consumed as a pair), Polybag — each listing client-mapped **AND** general items so a lot can be split partial-client + partial-general (each slot supports multiple split rows). **Rivets are NOT a slot**: they're auto-derived at **4× the total buttons** against the default rivet item (`subType:'rivet'`), carried on the Button group's `rivet` field and appended to the consumption set on save (1 button + 4 rivets per piece). **Pocketing is excluded** (metres, purchases/payments only — `accessoryService.FINISHING_CONSUMABLE_KEYS`). New entries pre-fill each slot to the finishing quantity (which already nets stitching/washing shortage); users adjust upward for extras. **Zero is allowed** (not required) — editing an **old** finishing record (no saved consumption) defaults its slots to 0 so saving doesn't wrongly decrement stock. (Zipper consumption is likewise optional: all-zero skips, but a *partial* entry must still sum to the lot quantity.)
-
-**Dormant schemas** (still defined, not actively used):
-- `Order` — removed as entry point
-- `Balance`, `Report` — wired to routes but UIs are minimal/skeletal. (The old `Invoice` schema/route was **removed** 2026-05-23 when the new Sales module took its place.)
+**Dormant**: `Order`, `Balance`, `Report` — defined, routes mostly wired, UIs skeletal.
 
 ---
 
 ## 5. API routing
 
-**Mounting in `server.js`:** Most routes at `/api`; four sub-prefixed exceptions:
+Most routes mount flat at `/api`. Six sub-prefixed exceptions:
 
 ```js
-app.use('/api', authRoutes);
-app.use('/api', dashboardRoutes);
-app.use('/api', userRoutes);
-app.use('/api', clientRoutes);
-app.use('/api', fitStyleRoutes);
-app.use('/api', vendorRoutes);
-// app.use('/api', orderRoutes);   ← COMMENTED OUT (Order stage removed)
-app.use('/api', lotRoutes);
-app.use('/api', stitchingRoutes);
-app.use('/api', washingRoutes);
-app.use('/api', finishingRoutes);
-app.use('/api/vendor-balances', vendorBalanceRoutes);    // ← SUB-PREFIX
-app.use('/api/sales-invoices', salesInvoiceRoutes);      // ← SUB-PREFIX (2026-05-23)
-app.use('/api/client-balances', clientBalanceRoutes);    // ← SUB-PREFIX (2026-05-23)
-app.use('/api/company-settings', companySettingsRoutes); // ← SUB-PREFIX (2026-05-23)
-app.use('/api/accessories', accessoryRoutes);            // ← SUB-PREFIX (2026-06-02 Stock Mgmt)
-app.use('/api', balancesRoutes);
-app.use('/api', reportRoutes);
-app.use('/api', auditLogRoutes);
-app.use('/api', emailRoutes);
+app.use('/api/vendor-balances', vendorBalanceRoutes);
+app.use('/api/sales-invoices', salesInvoiceRoutes);
+app.use('/api/client-balances', clientBalanceRoutes);
+app.use('/api/company-settings', companySettingsRoutes);
+app.use('/api/accessories', accessoryRoutes);
+app.use('/api/cron', cronRoutes);            // machine-triggered, CRON_SECRET not JWT
+// app.use('/api', orderRoutes);             // COMMENTED OUT — Order stage removed
 ```
 
-**Sub-prefixed routes** (easy to miss — copy the prefix from the matching `app.use` line):
-- `/api/vendor-balances/*` — vendor payment ops + Excel export
-- `/api/sales-invoices/*` — invoice CRUD + `lots-available` autocomplete + cancel + history
-- `/api/client-balances/*` — client payment ops + ledger + opening balance + history
-- `/api/company-settings` — admin-only singleton get/update
-- `/api/accessories/*` — Stock Mgmt: `types`, `items`(+`/applicable`, +`/finishing-items`), `purchases`, `payments`(+`/:id/history`), `balance` (+ PATCH `/opening-balance` to seed per-type opening balance, mirror of `/api/client-balances/opening-balance`), `stock`(+`/summary`), `consumption`. Purchases/payments are server-paginated (`page`/`limit`, default 10) returning `{ rows, total }`.
+Everything else (auth, users, clients, fitStyles, vendors, lots, stitching, washing,
+finishing, dashboard, reports, auditLogs, contact, makings) sits directly under `/api`.
 
-**Auth:** every route except `/api/auth/*` should call `authenticateToken` middleware (see pattern in `routes/vendorBalances.js`).
+**Auth:** every route calls `authenticateToken` except `/api/auth/*`, `POST /api/contact`
+(anonymous marketing form), `GET /api/accessories/public/finishing-vendor-extras`
+(deliberately public board for a vendor), and `/api/cron/*` (secret-guarded).
 
-**CORS:** allowlist from `CORS_ORIGINS` env var (comma-separated). Default fallback is `https://greysage.vercel.app`.
+**`restrictTo('admin')`** is applied sparingly — user management, audit logs, company
+settings, accessory types, low-stock test, invoice counter. Day-to-day financial recording
+is open to any authenticated user by design; see §10.
 
-**Errors:** controllers can `throw` or `return res.status(...).json({error})`. `express-async-errors` propagates throws to the global handler in `middleware/error.js`, which translates Mongo duplicate-key errors.
+**CORS:** allowlist from `CORS_ORIGINS`, defaulting to `https://greysage.vercel.app`.
+
+**Errors:** controllers may throw or return `res.status(...)`. `express-async-errors` routes
+throws to `middleware/error.js`, which translates Mongo duplicate-key errors.
+
+**Route order matters** in `salesInvoices.js` — specific paths must stay above `/:id`, or
+Express swallows them.
 
 ---
 
 ## 6. Frontend conventions
 
-**Routing** lives entirely in `App.js`. Two layout wrappers:
-- `AuthenticatedLayout` — requires `localStorage.token`; provides Sidebar, Appbar, SnackBar, ErrorBoundary
-- `AdminLayout` — additionally requires `user.role === 'admin'` (reads `JSON.parse(localStorage.user)`)
+**Routing** lives entirely in `App.js`. `AuthenticatedLayout` requires
+`localStorage.token`; `AdminLayout` additionally requires `user.role === 'admin'`.
 
-**Shared context to child routes** is via React Router's `useOutletContext`:
+**Shared context** via `useOutletContext()`:
+
 ```js
 const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
 ```
-Use `showSnackbar(messageOrError, severity)` for user-facing notifications. Passing an axios error object triggers session-expiry handling (auto-redirect to login on 401/403).
 
-**Catalog pattern** — every lookup uses the same triplet in `features/Catalogs/`:
-- `{Name}Catalog.js` — list/grid view
-- `{Name}CatalogAdd.js` — create/edit modal
-- `{Name}CatalogSx.js` — MUI `sx` style objects extracted to a side file
+`showSnackbar(messageOrError, severity)` — passing an axios error triggers session-expiry
+handling.
 
-Copy this triplet when adding a new lookup.
+**Mobile is a first-class layout, not a fallback.** Several features ship a dedicated
+`*Sx.js` mobile component (`StitchingGridSx`, `OrderGridSx`, `WashingGridSx`, …) rendered
+when `isMobile`. Some controls **move** between layouts — e.g. the Stitching "Add" button
+lives in `StitchingManagement` on desktop but inside `StitchingGridSx` on mobile. **Always
+implement both.** Desktop-only work gets sent back.
 
-**API calls** all go through `frontend/src/services/apiService.js` — a single object grouped by domain. Add new endpoints to the matching group; don't call `axios` directly from components.
+**Catalog triplet** — `{Name}Catalog.js` (list), `{Name}CatalogAdd.js` (modal),
+`{Name}CatalogSx.js` (styles). Copy it for a new lookup.
 
----
+**API calls** all go through `frontend/src/services/apiService.js`, grouped by domain.
+Never call axios directly from a component.
 
-## 7. Recent activity & current checkpoint
+**Deep links** — `navigate('/stitching?search=<lotNumber>')`; `StitchingManagement` reads it
+via `useSearchParams`. The notification bell established this pattern; reuse it rather than
+embedding editors in other screens.
 
-**Active workstream (uncommitted, 2026-05-23): Sales/Dispatch/Billing module.** New first-class pillar of the system that generates customer invoices (Bill of Supply / Tax Invoice PDFs) from production lots and tracks client payments. Touches:
-- Schema: extended `Client` (GSTIN/PAN/billingAddress/shippingAddress), extended `Lot` (`invoicedPcs` cache), added `CompanySettings`/`Invoice`/`InvoiceHistory`/`ClientPaymentEntry`/`ClientPaymentEntryHistory`/`ClientBalance`; deleted old skeletal `Invoice` schema.
-- Backend: new `services/invoiceService.js` + `services/clientBalanceService.js`, new controllers (`salesInvoiceController`, `clientBalanceController`, `companySettingsController`), new routes (`/api/sales-invoices`, `/api/client-balances`, `/api/company-settings`). Deleted old `controllers/invoiceController.js` + `routes/invoices.js`.
-- Frontend: new `features/Sales/` (`InvoiceManagement`, `InvoiceFormModal` with per-line lot autocomplete, `invoicePdfService` with jsPDF), new `features/ClientPayments/` mirroring VendorPayments, new `features/Admin/CompanySettings.js`. Extended `features/Catalogs/ClientCatalogAdd.js` with GSTIN/PAN/Bill/Ship addresses. Updated `App.js` routes (`/sales/invoices`, `/sales/client-payments`, `/admin/company-settings`) and Sidebar. Deleted old `features/Admin/InvoiceManagement.js`.
-- Deps: added `jspdf` + `jspdf-autotable` to `frontend/package.json`. Run `npm install` in `frontend/`.
-
-**Where to verify when picking this up:**
-- Visit `/admin/company-settings` first and fill in the ALLYZ JEANS issuer block (name, address, GSTIN, MSME, bank, signatory). Reference data is in `docs/business_core/INV2627 27 BRANDKO MART LLP.pdf` (a sample WhiteBill invoice this layout matches).
-- Confirm a Lot's `remainingPcs` shows correctly by creating an invoice line against it and watching `invoicedPcs` on the lot. Try cancelling — pcs should return to the pool.
-- PDF preview/download in `InvoiceManagement` calls `invoicePdfService.generateInvoicePdf` with the company settings + full invoice; rendering uses `Rs.` (not `₹`) because Helvetica has no rupee glyph.
-
-**Last committed state:** `90c94c6 making entry with zero qty and rate` (2026-04-09). Recent commit progression (newest first):
-1. `90c94c6` — allow zero qty/rate Stitching
-2. `399c299` — vendor payment management v2: UI fix
-3. `da29fff` — vendor payment management v2
-4. `bc278e6` — vendor payment management
-5. `d11c6b0` — dashboard upgrade
-6. `5c7c939` — serverless api maxPoolSize fix (Atlas M0)
-7. `b76f92f` — migrated to LOT-based
+**Caching** — `getOrSet(resource, parts, ttl, fetchFn)` reads through Upstash with
+version-stamped keys; `bumpVersion(resource)` after a write invalidates a whole family in
+O(1). Fail-open by design: a cache outage must never turn a working request into a 500.
 
 ---
 
-## 8. Gotchas — things that will trip you up
+## 7. Current checkpoint (most perishable section)
 
-**Token refresh hinges on the 401 vs 403 distinction.** Short-lived JWT access token (default 15m) + opaque rotating refresh token (httpOnly `rt` cookie, bcrypt-hashed in `User.refreshTokens`, **default 12h** session — `authController` `REFRESH_TOKEN_TTL`). The axios interceptor (`axiosInstance.js`) only performs the silent refresh on a **401**, so `middleware/auth.js` returns **401 for an expired access token** (`TokenExpiredError`) and 403 only for genuinely-invalid tokens. If you ever make auth return 403 on expiry, the session dies after one access-token lifetime instead of refreshing. Edit the auth-config constants (`ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL_HOURS`/`_DAYS`) in `authController.js`, not elsewhere.
+**Last commit:** `d368de6` (2026-07-15). Recent progression, newest first: invoice sample
+entry · recon notification UI · MAKINGS recon bell (`a1fd53b`) · public finishing-extras
+board (`b363523`) · per-client accessory split + rivet split · Redis integration (`d2cc02a`)
+· low-stock mail via Brevo (`85f07ec`) · invoice combine-lots (`759150d`) · multiple billers
+per client (`3a19342`) · dispatch module (`a527e52`) · Stock Management.
 
-**Duplicate `vendorPayments` key in `apiService.js`.** The object literal in `frontend/src/services/apiService.js` declares a `vendorPayments` block twice (around line 284 and around line 578). JavaScript keeps the **second** declaration — the first block is dead code calling URLs that no longer exist on the backend (`/api/vendor-payment*` vs the real `/api/vendor-balances/vendor-payment*`). When editing vendor-payment calls, edit the **second** block. The first should probably be deleted, but confirm before doing so.
+### Work prepared 2026-07-26 but NOT yet in the repo
 
-**Order stage is dormant, not just unused.**
-- `frontend/src/features/Orders/` files exist (grid, modal, management) but the route is not mounted in `App.js`.
-- `backend/routes/orders.js` and `backend/controllers/orderController.js` exist but `app.use('/api', orderRoutes)` is commented out in `server.js`.
-- The `Order` Mongoose model is still defined.
-- Don't suggest fixes to this code without checking whether the user actually wants the Order stage revived.
+Delivered as zips of complete replacement files, all built on `d368de6`. **Check `git log`
+and `git status` to see which have actually been applied.**
 
-**Washing is schema-asymmetric.** It has `washDetails[]` instead of top-level `quantity`/`rate`. Code that handles all three stages uniformly must special-case Washing. See `vendorBalanceService.getVendorLotsDetails` for an example.
+**A. Security hardening** (16 files). Fixes a critical hole: `POST /api/register` was
+anonymous *and* honoured a client-supplied `role`, while `/register` was a public SPA route
+with an **Admin option in its Role dropdown** — anyone could self-register as an
+administrator on the live system. Now gated by an admin JWT, except first-user bootstrap on
+an empty database. Also: removed the `'your_jwt_secret'` fallback (the API now throws on boot
+without `JWT_SECRET`); Upstash-backed rate limiting on login/refresh/register/contact; HTML
+escaping in the contact email template; `restrictTo('admin')` on payment-entry deletes,
+invoice delete and client opening-balance; refresh-token validation reduced from
+O(users × sessions) bcrypt calls to one indexed lookup via a `<tokenId>.<secret>` cookie;
+fixed `getInvoiceStatus`, which bucketed into the deleted schema's Pending/Paid/Partial and
+filtered on `req.user._id` (the JWT carries `userId`), so the chart always rendered zeros;
+deleted ~390 lines of dead code; added `scripts/ensure-indexes.js`.
 
-**Vendor balance is denormalized.** `VendorBalance` is a cached aggregate, not source of truth. The source of truth is `VendorPaymentEntry` + the production-stage records (Stitching/Washing/Finishing). Any code path that writes to those collections must call `vendorBalanceService.updateVendorBalance(vendorId, vendorType)` afterward, or the aggregate drifts.
+**B. Manual dispatch** (7 files). For legacy lots dispatched before the system existed,
+which will never be invoiced and so sat permanently "pending" with `invoicedPcs = 0`. New
+`ManualDispatch` + `ManualDispatchHistory` collections, `Lot.manualDispatchedPcs` /
+`manualDamagedSoldPcs` caches, `recalcLotManualDispatch`, four endpoints under
+`/api/sales-invoices/manual-dispatch`, and `features/Sales/ManualDispatchModal.js`. Dispatch
+status sums both streams (`invoicedPcs + manualDispatchedPcs`), and manual pcs net out of the
+invoice autocomplete and the combined-damaged picker. Pending Dispatch sorts **oldest pending
+first** — in memory, after `dispatchStatus` is computed, before pagination; outstanding ranks
+above fully-dispatched.
 
-**Client balance is denormalized too.** `ClientBalance` is a cached aggregate of `Invoice` (non-cancelled) + `ClientPaymentEntry`. Any code path that writes to those must call `clientBalanceService.updateClientBalance(clientId)` afterward. Same rule, mirror collection.
+**C. No Zipper filter + FABRIC reconciliation** (6 files).
+`GET /api/stitching?noZipper=true` returns lots with no zipper consumption at stitching,
+implemented as an exclusion (`$nin` the lots that have it) because the obvious inverse misses
+lots with no consumption rows at all. UI is an MUI `Switch` — left of Add on desktop, right
+of Add on mobile. Separately, `makingsReconService.diffRow` **was not comparing Fabric**:
+`DETAILS` was parsed but used only for the Add-Stitching prefill, and the DB entry didn't
+expose `Lot.fabric`. Both added; compared whitespace-collapsed and case-folded, flagged only
+when both sides have a value.
 
-**Lot `invoicedPcs` is denormalized too.** Sum of pcs across non-cancelled invoice lines referencing the lot. Recomputed by `invoiceService.recalcLotInvoiced(lotId)` after every invoice create/update/cancel/delete. Any new code that mutates invoice lines must call it (for every affected lot — both added and removed lots when editing).
+**D. `README.md`** — standard project readme, deliberately excluding all of the above.
 
-**Invoice snapshots are FROZEN.** `Invoice.clientSnapshot`, `billTo`, `shipTo`, and `lines[i].lotNumberSnapshot`/`lotInvoiceNumberSnapshot` are copied from the live records at issue time and **never refreshed**. Standard accounting practice — the printed PDF and the stored Invoice must match forever. Editing a Client or Lot does NOT update past invoices.
+---
 
-**Two different "invoice numbers" exist — don't confuse them.** `Lot.invoiceNumber` is a numeric upstream invoice from the source (printed on Stitching screens, predates the sales module). `Invoice.invoiceNumber` is the sales-side string like `INV2627/29` (FY-scoped seq via Counter `_id: 'invoice-{fyShort}'`). The Lot's number is displayed alongside lotNumber on the invoice line as `lotInvoiceNumberSnapshot` for reference.
+## 8. Gotchas
 
-**Sales Invoice number is FY-scoped.** FY starts April 1 (Indian fiscal year). `invoiceService.generateInvoiceNumber(date)` derives `fyShort` from the date and atomically increments a per-FY Counter. Don't generate invoice numbers any other way.
+**`autoIndex: false` in production.** None of the 40+ `Schema.index(...)` declarations are
+applied automatically — they may not exist in the database at all. Run
+`node backend/scripts/ensure-indexes.js --dry-run` to find out (ships with package A;
+**never yet run**). Read its header first: `syncIndexes()` drops indexes present in the DB
+but absent from the schema.
 
-**PDF rendering uses `Rs.`, not `₹`.** jsPDF's default Helvetica font has no rupee glyph. `features/Sales/invoicePdfService.js` prefixes amounts with `Rs. `. If a custom font is added later, switch back to `₹`.
+**Serverless tuning is intentional.** `maxPoolSize: 3`, `minPoolSize: 1`, `autoIndex: false`,
+connection cached on `global._mongoConnection`. Tuned after Atlas M0 hit connection limits
+(`5c7c939`). Don't "modernise" them.
 
-**Serverless tuning is intentional.** `maxPoolSize: 3`, `autoIndex: false`, global connection cache. These exist to keep Atlas M0 happy. Don't "modernize" them.
+**Token refresh hinges on 401 vs 403.** The axios interceptor only performs the silent
+refresh on a **401**, so `middleware/auth.js` returns 401 for an *expired* access token and
+403 only for a genuinely invalid one. Return 403 on expiry and the session dies after one
+access-token lifetime. Edit TTLs in `authController.js`, nowhere else.
 
-**MongoDB replica set is required even in dev.** `stitchingController.createStitching` uses `mongoose.startSession()` for a multi-document transaction. Vanilla `mongod` won't work — use the `docker-compose.yml` which initializes `rs0` automatically.
+**Denormalised aggregates drift silently.** `VendorBalance`, `ClientBalance`,
+`AccessoryBalance`, `Lot.invoicedPcs` and `Lot.manualDispatchedPcs` are caches, not sources
+of truth. Every write that affects them must call its recalculation:
 
-**Env files are gitignored everywhere.**
-- `.env`, `.env.development` (root)
-- `backend/.env`
-- `frontend/.env`, `frontend/.env.production`
-- `.claude/settings.local.json`
-Don't echo their contents into responses, don't commit them. Required keys (without values):
-- Backend: `MONGO_URI`, `JWT_SECRET`, `CORS_ORIGINS`, SendGrid creds
-- Frontend: `REACT_APP_MUI_LICENSE_KEY` (paid MUI X license)
-- **The Atlas cluster hosts multiple DBs** — prod is **`gs_sales_accounting`**, plus a **`gs_dev`** on the same cluster; the root `.env` `MONGO_URI` db-name has been switched between them. **Verify which DB a seed/migration targets before running** (scripts read the URI from argv[2] or `MONGO_URI`). Source the URI from `.env` without printing it, and mask the password when showing a connection string.
+| Cache | Call after writing |
+|---|---|
+| `VendorBalance` | `vendorBalanceService.updateVendorBalance(vendorId, vendorType)` |
+| `ClientBalance` | `clientBalanceService.updateClientBalance(clientId)` |
+| `AccessoryBalance` | `accessoryService.updateAccessoryBalance(typeId)` |
+| `Lot.invoicedPcs` | `invoiceService.recalcLotInvoiced(lotId)` — for **every** affected lot, added and removed, when editing lines |
+| `Lot.manualDispatchedPcs` | `invoiceService.recalcLotManualDispatch(lotId)` |
 
-**Archived folders to leave alone:**
-- `frontendv2/` — stalled rewrite, gitignored
-- `bkp/`, `frontend/bkp/` — backups, gitignored
-- `*.zip` files — snapshots
-- `frontend/build/` — generated artifact
-Read-only is fine; don't propose edits to these unless the user explicitly asks.
+There is **no drift-detection job**. Correctness depends entirely on convention.
+
+**The stage chain is validated, not free-form.** `updateWashing` rejects unless
+`Σ washDetails.quantity` equals `stitching.quantity − stitching.quantityShort`.
+`updateFinishing` rejects unless `quantity` **exactly equals**
+`Σ(washDetails.quantity − quantityShort)` — finishing quantity cannot be set directly, only
+its short. `updateStitching` requires thread colours to re-sum to any new quantity, then
+cascades downstream via `cascadeShortageFromStitching`. **Each calls `bumpVendorLedgers`, so
+editing stage quantities moves vendor money.** Correct production from the top down.
+
+**Washing is schema-asymmetric** — `washDetails[]`, no scalar quantity/rate. See
+`vendorBalanceService.getVendorLotsDetails` for reference handling.
+
+**Two different "invoice numbers".** `Lot.invoiceNumber` = numeric upstream/maker bill.
+`Invoice.invoiceNumber` = sales-side `INV2627/29`. The lot's is shown on the invoice line as
+`lotInvoiceNumberSnapshot` for reference only.
+
+**Invoice snapshots are frozen** by design — editing a Client or Lot does not update past
+invoices. Standard accounting practice.
+
+**Duplicate `vendorPayments` key in `apiService.js`** (~line 284 and ~line 632). JS keeps the
+second; the first is dead code pointing at `/api/vendor-payment*` URLs that no longer exist
+(the real ones are under `/api/vendor-balances/*`). Package A deletes the first. Until then,
+**edit the second**.
+
+**PDF uses `Rs.`, not `₹`** — jsPDF's Helvetica has no rupee glyph.
+
+**`xlsx@0.18.5`** is the abandoned npm build (CVE-2023-30533 prototype pollution,
+CVE-2024-22363 ReDoS) and it parses an externally-fetched workbook in
+`makingsReconService`. Fixing requires the SheetJS CDN, not npm.
+
+**Never commit or echo `.env*`.** The Atlas cluster hosts more than one database — confirm
+which one a script targets before running it, and mask passwords in any connection string.
 
 ---
 
 ## 9. Quick file-jump map
 
-**When you need to find...**
-
 | Looking for | File |
 |---|---|
 | All Mongoose models | `backend/mongodb_schema.js` |
-| Server entry / route mounting / CORS / Mongo connect | `backend/server.js` |
-| LotNumber parsing & range validation | `backend/controllers/stitchingController.js` (top of file) |
-| Vendor payment business logic | `backend/controllers/vendorBalanceController.js` |
-| Vendor balance denormalization | `backend/services/vendorBalanceService.js` |
-| Sales invoice business logic (create/update/cancel + lot autocomplete) | `backend/controllers/salesInvoiceController.js` |
-| Final/remaining pcs derivation, FY counter, amount-in-words | `backend/services/invoiceService.js` |
-| Client balance denormalization (mirror of vendor service) | `backend/services/clientBalanceService.js` |
-| Client payment ledger ops | `backend/controllers/clientBalanceController.js` |
-| Company settings (issuer) singleton | `backend/controllers/companySettingsController.js` |
-| Accessory/Stock business logic (items, purchases, payments, stock, consumption) | `backend/controllers/accessoryController.js` |
-| Accessory denormalization (balance, stock aggregation, replaceConsumption, seed) | `backend/services/accessoryService.js` |
-| Stock Management UI (type selector + stats + masters + ledger) | `frontend/src/features/Stock/` |
-| Zipper consumption hook | `backend/controllers/stitchingController.js` (`prepareZipperConsumption`) + `frontend/src/features/Stitching/AddStitchingModal.js` |
-| JWT auth middleware | `backend/middleware/auth.js` |
+| Server entry / routes / CORS / Mongo connect | `backend/server.js` |
+| LotNumber parsing + range validation | `backend/controllers/stitchingController.js` (top) |
+| Zipper consumption hook | `stitchingController.js` (`prepareZipperConsumption`) |
+| Shortage cascade | `stitchingController.js` (`cascadeShortageFromStitching`) |
+| Final/remaining pcs, FY counter, amount-in-words | `backend/services/invoiceService.js` |
+| Dispatch board + manual dispatch | `invoiceService.js` (`getPendingDispatch`, `recalcLotManualDispatch`) |
+| Vendor balance denormalisation | `backend/services/vendorBalanceService.js` |
+| Client balance denormalisation | `backend/services/clientBalanceService.js` |
+| Accessory stock / balance / consumption | `backend/services/accessoryService.js` |
+| Workbook download, parse, diff | `backend/services/makingsReconService.js` |
+| Redis read-through cache | `backend/services/cache.js` |
+| JWT middleware | `backend/middleware/auth.js` |
 | Global error handler | `backend/middleware/error.js` |
 | Audit log writer | `backend/utils/logger.js` |
-| Order→Lot historical migration | `backend/migrations/migrate-orders-to-lots.js` |
-| Business requirements doc | `backend/BRD.MD` |
-| Sample customer invoice (WhiteBill-generated, layout reference) | `docs/business_core/INV2627 27 BRANDKO MART LLP.pdf` |
-| Legacy dispatch ledger format (per-client xlsx) | `docs/business_core/Dispatch Status - Adam Hills.xlsx` |
-| All frontend routes & layouts | `frontend/src/App.js` |
+| Business requirements | `backend/BRD.MD` (gitignored) |
+| All frontend routes and layouts | `frontend/src/App.js` |
 | All API calls | `frontend/src/services/apiService.js` |
 | Axios base + JWT interceptor | `frontend/src/services/axiosInstance.js` |
-| Theme variants / dark mode | `frontend/src/components/Theme/AppTheme.js` |
-| Sales invoice form (multi-line + lot autocomplete + live totals) | `frontend/src/features/Sales/InvoiceFormModal.js` |
-| Sales invoice list + cancel + PDF actions | `frontend/src/features/Sales/InvoiceManagement.js` |
-| jsPDF invoice rendering (matches WhiteBill layout) | `frontend/src/features/Sales/invoicePdfService.js` |
-| Client payment ledger UI (mirror of VendorPayments) | `frontend/src/features/ClientPayments/ClientPaymentManagement.js` |
-| Company settings admin page | `frontend/src/features/Admin/CompanySettings.js` |
-| Active vendor payments UI (~1381 lines) | `frontend/src/features/VendorPayments/VendorPaymentManagement.js` |
-| Main dashboard (~851 lines) | `frontend/src/features/Admin/Dashboard.js` |
-| Lot creation UI | `frontend/src/features/Stitching/AddStitchingModal.js` |
+| Sales invoice form / list / PDF | `frontend/src/features/Sales/` |
+| Dispatch board | `features/Sales/DispatchManagement.js` |
+| Notification bell | `components/Navbar/NotificationBell.js` |
+| Lot creation UI | `features/Stitching/AddStitchingModal.js` |
+| Mobile stitching grid | `features/Stitching/StitchingGridSx.js` |
 | Local dev stack | `docker-compose.yml` |
 
 ---
 
 ## 10. Working agreements
 
-- **Don't add an Order route** unless explicitly asked to revive it. Lot is the entry point.
-- **Don't change `maxPoolSize`, `autoIndex`, or the global connection cache** in `server.js` without discussing the Atlas M0 constraint.
-- **Don't commit or echo `.env*` files.**
-- **Don't edit `frontendv2/`, `bkp/`, or `*.zip`** without confirmation.
-- **When touching vendor-payment money flow:** call `updateVendorBalance` after the write, write to the audit history if updating an entry, and edit the **second** `vendorPayments` block in `apiService.js`.
-- **When touching invoice/client-payment money flow:** call `clientBalanceService.updateClientBalance(clientId)` after the write. If you touch invoice lines that reference a Lot, also call `invoiceService.recalcLotInvoiced(lotId)` for **every** affected lot (added AND removed when editing). Write to `ClientPaymentEntryHistory` / `InvoiceHistory` on update/delete.
-- **Never mutate invoice snapshots after issue.** `clientSnapshot`, `billTo`, `shipTo`, and `lotNumberSnapshot` are frozen by design.
-- **Never generate an invoice number manually.** Always use `invoiceService.generateInvoiceNumber(date, prefix)` so the FY-scoped Counter increments atomically.
-- **When iterating Washing records:** check for `washDetails[]` instead of scalar `quantity`/`rate`.
-- **For new lookups:** copy the `Catalogs/{Name}Catalog.js + CatalogAdd.js + CatalogSx.js` triplet.
-- **For new API endpoints:** add to `apiService.js` (don't call `axios` from components), mount under the correct `/api`, `/api/vendor-balances`, `/api/sales-invoices`, `/api/client-balances`, or `/api/company-settings` prefix.
+**Architecture**
 
----
+- Don't revive the Order route. Lot is the entry point.
+- Don't change `maxPoolSize`, `autoIndex` or the global connection cache without discussing
+  the Atlas M0 constraint.
+- Don't edit `frontendv2/`, `bkp/` or `*.zip`.
+- New lookups copy the Catalogs triplet. New endpoints go in `apiService.js` under the right
+  prefix.
+- When touching money: call the matching recalculation, write to the history collection on
+  update/delete, and edit the **second** `vendorPayments` block in `apiService.js`.
+- Never mutate invoice snapshots after issue. Never generate an invoice number by hand.
+- When iterating Washing, check `washDetails[]` rather than scalar fields.
 
-*This file is the single source of truth for cross-model agent context. Update it when the architecture shifts, the active workstream changes, or a new gotcha is discovered. Per-model memory systems (e.g. Claude's `.claude/projects/.../memory/`) may also exist but this file is authoritative for any agent that doesn't have access to those.*
+**Decisions already settled — don't re-litigate**
+
+- **Manual dispatch is pieces-only.** It never creates an `Invoice` and never calls
+  `clientBalanceService`. Money for those lots was billed outside the system and is carried
+  by `ClientBalance.openingBalance`; a balance write would double-count.
+- **Quantity corrections happen at source**, in Stitching Management, via the
+  `?search=<lotNumber>` deep link. A lot-level `finalPcs` override was built and then
+  **deliberately removed** — it created a second source of truth, and the correct fix is
+  editing production records (which rightly moves vendor money).
+- **Financial writes stay open to any authenticated user.** Only destructive operations are
+  admin-gated; locking down day-to-day recording would break staff workflow.
+- **UI:** MUI `Switch` over `ToggleButton` for boolean filters.
+
+**Open items, roughly prioritised**
+
+1. Verify package A's four follow-ups: audit `db.users.find({ role: 'admin' })` for accounts
+   created through the registration hole; rotate the MUI X licence key and the committed
+   `keyfile.txt` (both sit in 203 commits of history — untracking is not removal); set
+   `UPSTASH_REDIS_REST_URL` / `_TOKEN` or rate limiting stays silently disabled; run
+   `ensure-indexes.js --dry-run`.
+2. **No tests, no CI, no `.github/`.** Money paths first: `vendorBalanceService`,
+   `clientBalanceService`, `invoiceService.generateInvoiceNumber`, the shortage cascade.
+3. A nightly drift-detection job recomputing the denormalised aggregates from source and
+   alerting on mismatch.
+4. `xlsx` CVEs (see §8).
+5. Fat files: `dashboardController.js` (~1373 lines), `VendorPaymentManagement.js` (~1421).
+
+**Never verified against a live database.** Packages B and C were written without DB access:
+the manual-dispatch recalc round-trip, capacity guards and status transitions; the FABRIC
+diff against real workbook data; and how the new mobile layouts actually render on a phone.
+Everything compiles and the pure logic is unit-tested, but exercise one real lot end-to-end
+before trusting it.
+
+**Working style that has fit**
+
+Read the actual code before proposing anything. State assumptions explicitly rather than
+asking long question lists, but do ask when a decision is genuinely consequential and hard to
+reverse. Deliver complete replacement files in a zip mirroring the repo structure — the
+environment is **Windows PowerShell**, so no `<` redirection and no `&&`. Flag clearly what
+was verified versus reasoned. Always do mobile alongside desktop.

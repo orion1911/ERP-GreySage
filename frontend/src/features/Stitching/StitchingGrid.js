@@ -40,6 +40,8 @@ function StitchingGrid({
   onEditWashing,
   onEditFinishing,
   onAdd,
+  noZipperFilter,
+  onToggleNoZipper,
   readOnly = false
 }) {
   const theme = useTheme();
@@ -487,6 +489,8 @@ function StitchingGrid({
   return isMobile ? (
     <StitchingGridSx
       onAdd={onAdd}
+      noZipperFilter={noZipperFilter}
+      onToggleNoZipper={onToggleNoZipper}
       processedRecords={paginatedRecordsSx}
       totalCount={processedRecords ? processedRecords.length : 0}
       page={page}

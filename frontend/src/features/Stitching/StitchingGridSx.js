@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Button, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, TablePagination, ListSubheader } from '@mui/material';
+import { Box, Button, Card, CardContent, Stack, Collapse, IconButton, Chip, Typography, useTheme, Grid, Select, MenuItem, Menu, TablePagination, ListSubheader, Switch, FormControlLabel } from '@mui/material';
 import { Edit as EditIcon, ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, FilterList, LocalLaundryService, ContentCut, Add, MoreVert as MoreVertIcon, AutoAwesome } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'motion/react';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
@@ -14,6 +14,8 @@ import { MorphDateIconField } from '../../components/MuiCustom';
 
 function StitchingGridSx({
   onAdd,
+  noZipperFilter,
+  onToggleNoZipper,
   processedRecords,
   totalCount,
   page,
@@ -110,6 +112,26 @@ function StitchingGridSx({
           >
             Add
           </Button>
+        )}
+        {!readOnly && onToggleNoZipper && (
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                color="warning"
+                checked={!!noZipperFilter}
+                onChange={onToggleNoZipper}
+              />
+            }
+            label="Missing Zipper"
+            // Tight margins so the switch, Add and the sort/date controls all fit one row.
+            sx={{
+              ml: 0.5,
+              mr: 0,
+              whiteSpace: 'nowrap',
+              '& .MuiFormControlLabel-label': { fontSize: '0.75rem' }
+            }}
+          />
         )}
         <Box sx={{ ml: 'auto' }}>
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">

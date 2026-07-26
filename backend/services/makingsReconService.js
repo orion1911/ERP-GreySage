@@ -509,11 +509,15 @@ const diffRow = (row, db) => {
   // cosmetic differences don't register. Flagged only when BOTH sides have a value:
   // a blank DETAILS cell or a lot with no fabric recorded is missing data, not a
   // mismatch, and flagging those would bury the real conflicts in noise.
-  if (row.details && db.fabric) {
+  if (db.fabric) {
     if(db.fabric.trim().toLowerCase() == 'na') {
       const norm = (s) => s.replace(/\s+/g, ' ').trim().toLowerCase();
       if (norm(row.details) !== norm(db.fabric)) {
-        add('FABRIC', row.details, db.fabric);
+        if (row.details.trim() == '') {
+          add('FABRIC', '—', db.fabric);
+        } else {
+          add('FABRIC', row.details, db.fabric);
+        }
       }
     }
   }

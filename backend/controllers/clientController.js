@@ -1,6 +1,10 @@
 const { Client } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
 const { getOrSet, bumpVersion, TTL } = require('../services/cache');
+// Client-ledger namespace, owned by clientBalanceController. Toggling Client.isInternal
+// changes who appears in the receivables list, which is cached under this key — without a
+// bump the old list is served until its TTL expires.
+const CLEDGER = 'cledger';
 
 // Cache namespace + TTL for the client catalog (low write / high read).
 const CLIENTS = 'clients';
@@ -23,7 +27,7 @@ const getNextClientCodeNumber = async () => {
 };
 
 const createClient = async (req, res) => {
-  const { name, clientCodePrefix, billingName, contact, email, address, gstin, pan, billingAddress, shippingAddress, billingFirms } = req.body;
+  const { name, clientCodePrefix, billingName, contact, email, address, gstin, pan, billingAddress, shippingAddress, billingFirms, isInternal } = req.body;
 
   const normalizedName = name.replace(/\s\s+/g, ' ').trim();
 
@@ -45,6 +49,8 @@ const createClient = async (req, res) => {
     billingAddress: billingAddress || {},
     shippingAddress: shippingAddress || {},
     billingFirms: billingFirms || [],
+    // House label (e.g. GREYSAGE): owns lots, never gets billed. See ClientSchema.isInternal.
+    isInternal: !!isInternal,
     sortOrder,
     isActive: true
   });
@@ -98,7 +104,7 @@ const toggleClientActive = async (req, res) => {
 
 const updateClient = async (req, res) => {
   const { id } = req.params;
-  const { name, clientCode, billingName, contact, email, address, gstin, pan, billingAddress, shippingAddress, billingFirms } = req.body;
+  const { name, clientCode, billingName, contact, email, address, gstin, pan, billingAddress, shippingAddress, billingFirms, isInternal } = req.body;
 
   const client = await Client.findById(id);
   if (!client) return res.status(404).json({ error: 'Client not found' });
@@ -116,9 +122,14 @@ const updateClient = async (req, res) => {
   if (billingAddress !== undefined) client.billingAddress = billingAddress;
   if (shippingAddress !== undefined) client.shippingAddress = shippingAddress;
   if (billingFirms !== undefined) client.billingFirms = billingFirms;
+  // Capture before assigning — comparing after the write would always report "unchanged".
+  const internalChanged = isInternal !== undefined && !!isInternal !== !!client.isInternal;
+  if (isInternal !== undefined) client.isInternal = !!isInternal;
 
   await client.save();
   await bumpVersion(CLIENTS); // invalidate cached client lists
+  // Receivables list membership depends on isInternal and is cached separately.
+  if (internalChanged) await bumpVersion(CLEDGER);
   //await logAction(req.user.userId, 'update_client', 'Client', client._id, `Updated client: ${client.name}`);
   res.json(client);
 };

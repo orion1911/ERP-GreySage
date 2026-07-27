@@ -73,8 +73,17 @@ const collectLotIds = (lines = []) => {
  * Each line draws from either the lot's GOOD pool (finalPcs − damagedPcs) or, when
  * `isDamaged` is set, the DAMAGED pool (damagedPcs). Verifies pcs ≤ remaining for the
  * relevant pool (excluding the invoice we're editing).
+ *
+ * `invoiceClientId` is the party being BILLED. It is deliberately NOT required to match
+ * the lot's owner — full or partial qty of a lot produced for one client is routinely
+ * sold to another. What the mismatch does trigger is:
+ *   • lotClientIdSnapshot frozen onto the line/source, so the sale stays reconcilable
+ *     against production attribution forever, and
+ *   • a mandatory remark on GOOD cross-client lines, so a mis-picked lot can't be billed
+ *     to the wrong client silently. Damaged and house-label lines are exempt: both are
+ *     cross-client by design, not by exception.
  */
-const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
+const buildAndValidateLines = async (rawLines, excludeInvoiceId = null, invoiceClientId = null) => {
   if (!Array.isArray(rawLines) || rawLines.length === 0) {
     throw new Error('Invoice must have at least one line item');
   }
@@ -82,6 +91,18 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
   // Track per-lot pcs added in this single invoice, separately per pool (good vs damaged).
   const goodInThisInvoice = new Map();
   const damagedInThisInvoice = new Map();
+  // Memoised "is this lot's owner a house label?" lookups — a merged line can touch many
+  // lots and most invoices reuse the same few owners.
+  const internalByClient = new Map();
+  const isHouseClient = async (cid) => {
+    if (!cid) return false;
+    const key = String(cid);
+    if (!internalByClient.has(key)) {
+      const c = await Client.findById(cid).select('isInternal').lean();
+      internalByClient.set(key, !!c?.isInternal);
+    }
+    return internalByClient.get(key);
+  };
 
   // Reserve `pcs` from one lot's good/damaged pool, validating against what remains (excluding
   // this invoice) plus what earlier lines/sources in THIS invoice already consumed. Returns the
@@ -120,7 +141,21 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
       }
       goodInThisInvoice.set(String(lot._id), already + pcs);
     }
-    return { lotId: lot._id, lotNumberSnapshot: lot.lotNumber, lotInvoiceNumberSnapshot: lot.invoiceNumber };
+
+    // Cross-client = the lot was produced for someone else and this is NOT a house-label
+    // lot (which is common stock) and NOT a damaged line (already a third-party sale by
+    // definition). Computed here, from the DB, so the caller can never assert it itself.
+    const ownerId = String(lot.clientId || '');
+    const differs = !!invoiceClientId && ownerId !== String(invoiceClientId);
+    const needsJustification = differs && !isDamaged && !(await isHouseClient(lot.clientId));
+
+    return {
+      lotId: lot._id,
+      lotNumberSnapshot: lot.lotNumber,
+      lotInvoiceNumberSnapshot: lot.invoiceNumber,
+      lotClientIdSnapshot: lot.clientId || null,
+      needsJustification
+    };
   };
 
   for (let i = 0; i < rawLines.length; i++) {
@@ -138,11 +173,16 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
 
     const isMerged = !isSample && Array.isArray(raw.sources) && raw.sources.length > 0;
     const isDamaged = !isSample && !!raw.isDamaged;
+    // Set by consumeFromLot when this line (or any of a merged line's sources) draws from
+    // another client's lot. Checked after the pools are validated so the operator gets the
+    // availability error first when both are wrong.
+    let crossClientLine = false;
 
     const line = {
       lineNo: i + 1,
       description: String(raw.description).trim(),
       remark: raw.remark ? String(raw.remark).trim() : undefined,
+      internalNote: raw.internalNote ? String(raw.internalNote).trim() : undefined,
       hsnSac: raw.hsnSac ? String(raw.hsnSac).trim() : undefined,
       unit: raw.unit ? String(raw.unit).trim() : '',
       rate
@@ -175,7 +215,8 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
           throw new Error(`${sLabel}: pcs must be a positive integer`);
         }
         if (!s.lotId) throw new Error(`${sLabel}: lotId is required`);
-        const snap = await consumeFromLot(s.lotId, sPcs, isDamaged, sLabel);
+        const { needsJustification, ...snap } = await consumeFromLot(s.lotId, sPcs, isDamaged, sLabel);
+        if (needsJustification) crossClientLine = true;
         builtSources.push({ ...snap, pcs: sPcs });
         total += sPcs;
       }
@@ -199,8 +240,21 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
         line.lotId = snap.lotId;
         line.lotNumberSnapshot = snap.lotNumberSnapshot;
         line.lotInvoiceNumberSnapshot = snap.lotInvoiceNumberSnapshot;
+        line.lotClientIdSnapshot = snap.lotClientIdSnapshot;
         line.isDamaged = isDamaged;
+        if (snap.needsJustification) crossClientLine = true;
       }
+    }
+
+    // Billing another client's goods is allowed but never accidental: without a note there
+    // is nothing explaining why ADAM HILL's lot went out on GLOBUS's bill, and a mis-picked
+    // lot looks identical to a deliberate reassignment. internalNote — NOT remark — because
+    // remark prints on the PDF and the buyer must not see the other client's name.
+    if (crossClientLine && !line.internalNote) {
+      throw new Error(
+        `${label}: this lot was produced for another client. Add an internal note explaining ` +
+        `the reassignment (not printed on the invoice).`
+      );
     }
 
     line.amount = line.pcs * rate;
@@ -212,11 +266,14 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null) => {
 // ─── ROUTES ──────────────────────────────────────────────────────────────────
 
 /**
- * GET /api/sales-invoices/lots-available?clientId=&search=
+ * GET /api/sales-invoices/lots-available?clientId=&search=&crossClient=
+ * crossClient=true widens the pool to every client's lots (a lot produced for one client
+ * being billed to another). clientId still ranks the results — own lots first.
  */
 const getLotsAvailable = async (req, res) => {
   const { clientId, search } = req.query;
-  const lots = await getLotsAvailableForDispatch({ clientId, search });
+  const crossClient = req.query.crossClient === 'true' || req.query.crossClient === '1';
+  const lots = await getLotsAvailableForDispatch({ clientId, search, crossClient });
   res.json(lots);
 };
 
@@ -313,12 +370,20 @@ const createInvoice = async (req, res) => {
 
   const client = await Client.findById(clientId);
   if (!client) return res.status(404).json({ error: 'Client not found' });
+  // A house label (GREYSAGE) owns lots but is not a customer — there is nobody to bill and
+  // no receivable to raise. Its stock is sold BY selecting its lots on a real client's invoice.
+  if (client.isInternal) {
+    return res.status(400).json({
+      error: `${client.name} is an in-house label, not a billable client. ` +
+        `Raise the invoice against the buying client and pick ${client.name}'s lots on the lines.`
+    });
+  }
 
   // Resolve the chosen billing firm (sub-biller). null = client default identity.
   const firm = billingFirmId ? client.billingFirms.id(billingFirmId) : null;
   if (billingFirmId && !firm) return res.status(400).json({ error: 'Billing firm not found on client' });
 
-  const builtLines = await buildAndValidateLines(lines);
+  const builtLines = await buildAndValidateLines(lines, null, clientId);
 
   const settings = await CompanySettings.findOne();
   const prefix = settings?.defaultInvoicePrefix || 'INV';
@@ -389,7 +454,9 @@ const updateInvoice = async (req, res) => {
   } = req.body;
 
   if (Array.isArray(lines)) {
-    existing.lines = await buildAndValidateLines(lines, existing._id);
+    // existing.clientId, not the request — the bill-to party is frozen at issue and an edit
+    // must be judged cross-client against the same client the invoice was raised for.
+    existing.lines = await buildAndValidateLines(lines, existing._id, existing.clientId);
   }
   if (date) existing.date = new Date(date);
   if (placeOfSupply) existing.placeOfSupply = placeOfSupply;
@@ -560,6 +627,120 @@ const getInvoiceById = async (req, res) => {
 const getInvoiceChangeHistory = async (req, res) => {
   const history = await getInvoiceHistory(req.params.id);
   res.json(history);
+};
+
+/**
+ * GET /api/sales-invoices/cross-client?fromDate=&toDate=&producedForClientId=&billedToClientId=
+ *
+ * Every invoice line whose source lot was produced for one client but billed to another —
+ * the reconciliation between the two attributions the system now keeps apart:
+ *   "produced for" = Lot.clientId   → production dashboards, vendor cost, makings recon
+ *   "billed to"    = Invoice.clientId → revenue, ClientBalance, receivables
+ * Without this view those two totals diverge with no way to explain the gap.
+ *
+ * Reads the FROZEN lotClientIdSnapshot, not a live join on Lot — a lot's owner may have been
+ * corrected since, and the invoice must report what was true when it was issued.
+ * Merged lines are exploded to their per-lot sources so a part-cross-client merged line is
+ * attributed correctly rather than counted whole against one side.
+ */
+const getCrossClientSales = async (req, res) => {
+  const { fromDate, toDate, producedForClientId, billedToClientId } = req.query;
+
+  const match = { status: { $ne: 'cancelled' } };
+  if (fromDate || toDate) {
+    match.date = {};
+    if (fromDate) match.date.$gte = new Date(fromDate);
+    if (toDate) match.date.$lte = new Date(toDate);
+  }
+
+  const pipeline = [
+    { $match: match },
+    { $unwind: '$lines' },
+    // Normalise both line shapes to a `parts` array so one code path handles single-lot
+    // and merged lines. A merged line's sources each carry their own owner snapshot.
+    {
+      $project: {
+        invoiceNumber: 1,
+        date: 1,
+        clientId: 1,
+        billedToName: '$clientSnapshot.name',
+        rate: '$lines.rate',
+        isDamaged: { $ifNull: ['$lines.isDamaged', false] },
+        description: '$lines.description',
+        internalNote: '$lines.internalNote',
+        parts: {
+          $cond: [
+            { $gt: [{ $size: { $ifNull: ['$lines.sources', []] } }, 0] },
+            '$lines.sources',
+            [{
+              lotId: '$lines.lotId',
+              lotNumberSnapshot: '$lines.lotNumberSnapshot',
+              lotClientIdSnapshot: '$lines.lotClientIdSnapshot',
+              pcs: '$lines.pcs'
+            }]
+          ]
+        }
+      }
+    },
+    { $unwind: '$parts' },
+    // Sample and legacy lines have no lot and no owner — nothing to reconcile.
+    { $match: { 'parts.lotClientIdSnapshot': { $ne: null } } },
+    { $match: { $expr: { $ne: ['$parts.lotClientIdSnapshot', '$clientId'] } } }
+  ];
+
+  if (producedForClientId && mongoose.isValidObjectId(producedForClientId)) {
+    pipeline.push({ $match: { 'parts.lotClientIdSnapshot': new mongoose.Types.ObjectId(producedForClientId) } });
+  }
+  if (billedToClientId && mongoose.isValidObjectId(billedToClientId)) {
+    pipeline.push({ $match: { clientId: new mongoose.Types.ObjectId(billedToClientId) } });
+  }
+
+  pipeline.push(
+    { $lookup: { from: 'clients', localField: 'parts.lotClientIdSnapshot', foreignField: '_id', as: 'owner' } },
+    {
+      $project: {
+        _id: 0,
+        invoiceId: '$_id',
+        invoiceNumber: 1,
+        date: 1,
+        billedToClientId: '$clientId',
+        billedToName: 1,
+        producedForClientId: '$parts.lotClientIdSnapshot',
+        producedForName: { $ifNull: [{ $arrayElemAt: ['$owner.name', 0] }, 'Unknown'] },
+        producedForIsHouse: { $ifNull: [{ $arrayElemAt: ['$owner.isInternal', 0] }, false] },
+        lotId: '$parts.lotId',
+        lotNumber: '$parts.lotNumberSnapshot',
+        pcs: '$parts.pcs',
+        rate: 1,
+        amount: { $multiply: ['$parts.pcs', { $ifNull: ['$rate', 0] }] },
+        isDamaged: 1,
+        description: 1,
+        internalNote: 1
+      }
+    },
+    { $sort: { date: -1, invoiceNumber: -1 } }
+  );
+
+  const rows = await Invoice.aggregate(pipeline);
+
+  // House-label movement is expected traffic, not an exception, so it's totalled separately —
+  // otherwise GREYSAGE's normal sales would swamp the genuine reassignments this report exists
+  // to surface.
+  const reassigned = rows.filter((r) => !r.producedForIsHouse);
+  const summarise = (set) => ({
+    lines: set.length,
+    pcs: set.reduce((a, r) => a + (r.pcs || 0), 0),
+    amount: set.reduce((a, r) => a + (r.amount || 0), 0)
+  });
+
+  res.json({
+    rows,
+    totals: {
+      all: summarise(rows),
+      reassigned: summarise(reassigned),                              // another client's lot
+      houseLabel: summarise(rows.filter((r) => r.producedForIsHouse))  // in-house stock sold on
+    }
+  });
 };
 
 /**
@@ -792,6 +973,7 @@ const deleteManualDispatch = async (req, res) => {
 };
 
 module.exports = {
+  getCrossClientSales,
   getLotsAvailable,
   getLotsDamagedAvailable,
   getPendingDispatchList,

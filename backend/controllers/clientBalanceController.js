@@ -23,7 +23,9 @@ const CLEDGER_TTL = TTL.ledger; // env CACHE_TTL_LEDGER; write paths bump the ve
  */
 const getClientsWithBalance = async (req, res) => {
   const withBalance = await getOrSet(CLEDGER, ['all'], CLEDGER_TTL, async () => {
-    const clients = await Client.find({ isActive: true }).sort({ name: 1 });
+    // House labels (Client.isInternal) are excluded: they own lots but are never billed,
+    // so their balance is structurally zero and would only pad the receivables list.
+    const clients = await Client.find({ isActive: true, isInternal: { $ne: true } }).sort({ name: 1 });
     return Promise.all(
       clients.map(async (c) => {
         const balance = await getClientBalance(c._id);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Switch, useTheme } from '@mui/material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, TextField, Button, IconButton, Typography, Box, Stack, Chip, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Switch, useTheme } from '@mui/material';
 import { PersonAdd, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon, SwapVert } from '@mui/icons-material';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import apiService from '../../services/apiService';
@@ -98,7 +98,16 @@ function ClientCatalog() {
     {
       accessorKey: 'name',
       header: 'Name',
-      enableSorting: true
+      enableSorting: true,
+      cell: ({ row }) => (
+        <Stack direction="row" spacing={0.75} alignItems="center" justifyContent="center">
+          <span>{row.original.name}</span>
+          {row.original.isInternal && (
+            <Chip size="small" color="info" variant="outlined" label="in-house"
+              sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+          )}
+        </Stack>
+      )
     },
     {
       accessorKey: 'clientCode',

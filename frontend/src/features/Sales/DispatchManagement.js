@@ -98,7 +98,12 @@ function DispatchManagement() {
   // ── Create invoice prefilled with this lot (good dispatch) ────────────────
   const handleCreateInvoice = (row) => {
     setPreset({
-      client: { _id: row.clientId, name: row.clientName, clientCode: row.clientCode },
+      // A house-label lot has no buyer — prefilling its owner would put a non-billable
+      // client in the form (the server rejects it, and it isn't even selectable). Leave
+      // the client blank so the operator picks who is actually buying.
+      client: row.isHouseLot
+        ? null
+        : { _id: row.clientId, name: row.clientName, clientCode: row.clientCode },
       lot: row
     });
     setModalOpen(true);

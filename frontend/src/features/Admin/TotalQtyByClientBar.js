@@ -12,6 +12,9 @@ export default function TotalQtyByClientBar({ dateRange }) {
   const theme = useTheme();
   const [interval, setInterval] = useState('monthly');
   const [totalQuantity, setTotalQuantity] = useState(0);
+  // In-house production (GREYSAGE-style labels) is included in the headline but has no buyer
+  // behind it, so it is called out separately rather than silently inflating "by client".
+  const [houseQuantity, setHouseQuantity] = useState(0);
   const [trend, setTrend] = useState('neutral');
   const [chartData, setChartData] = useState([]);
   const [labels, setLabels] = useState([]);
@@ -31,6 +34,7 @@ export default function TotalQtyByClientBar({ dateRange }) {
         setTimeout(() => setChartData(response.series), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
 
         setTotalQuantity(response.totalQuantity);
+        setHouseQuantity(response.houseQuantity || 0);
         setTrend(response.trend);
         // setChartData(response.series);
         setLabels(response.labels);
@@ -88,6 +92,7 @@ export default function TotalQtyByClientBar({ dateRange }) {
             </Stack>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {labels.length > 0 ? `Total Quantity ${labels[0]} - ${labels[labels.length - 1]}` : 'Total Quantity for the selected period'}
+              {houseQuantity > 0 ? ` · incl. ${houseQuantity.toLocaleString()} in-house (no buyer assigned)` : ''}
             </Typography>
           </Stack>
           <BarChart

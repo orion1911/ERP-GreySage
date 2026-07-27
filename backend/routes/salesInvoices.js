@@ -4,6 +4,7 @@ const {
   getLotsAvailable,
   getLotsDamagedAvailable,
   getPendingDispatchList,
+  getCrossClientSales,
   updateLotDamaged,
   getManualDispatchForLot,
   createManualDispatch,
@@ -24,6 +25,8 @@ const { authenticateToken, restrictTo } = require('../middleware/auth');
 router.get('/lots-available', authenticateToken, getLotsAvailable);
 router.get('/lots-damaged-available', authenticateToken, getLotsDamagedAvailable);
 router.get('/pending-dispatch', authenticateToken, getPendingDispatchList);
+// Reconciliation of "produced for" vs "billed to". Must stay above '/:id' (declaration order).
+router.get('/cross-client', authenticateToken, getCrossClientSales);
 router.patch('/lots/:lotId/damaged', authenticateToken, updateLotDamaged);
 
 // ─── Manual dispatch (legacy lots) ───────────────────────────────────────────

@@ -72,6 +72,13 @@ const ClientSchema = new mongoose.Schema({
   billingAddress: { type: AddressSchema, default: () => ({}) },
   shippingAddress: { type: AddressSchema, default: () => ({}) },
   billingFirms: { type: [BillingFirmSchema], default: [] }, // optional additional billing firms (sub-billers)
+  // HOUSE LABEL. true = not a real external customer but an in-house brand (e.g. GREYSAGE).
+  // Lots are still created against it so production/vendor/dashboard attribution keeps working
+  // unchanged, but on the sales side an internal client:
+  //   • has its lots offered in EVERY client's dispatch picker (getLotsAvailableForDispatch)
+  //   • can never be the bill-to party on an Invoice (rejected in createInvoice)
+  //   • is excluded by default from receivables screens — it is never owed money
+  isInternal: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
   sortOrder: { type: Number, default: 0 }, // user-defined display order for dropdowns/catalog (lower = first)
   createdAt: { type: Date, default: Date.now }
@@ -382,6 +389,9 @@ const InvoiceLineSourceSchema = new mongoose.Schema({
   lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot', required: true },
   lotNumberSnapshot: { type: String, trim: true },     // frozen lot # (audit only; not printed)
   lotInvoiceNumberSnapshot: { type: Number },          // frozen upstream invoice #
+  // Frozen owner of the source lot ("produced for"). Differs from Invoice.clientId on a
+  // cross-client sale. See the note on InvoiceLineSchema.lotClientIdSnapshot.
+  lotClientIdSnapshot: { type: mongoose.Schema.Types.ObjectId, ref: 'Client' },
   pcs: { type: Number, required: true, min: 1, validate: { validator: Number.isInteger, message: 'pcs must be integer' } }
 }, { _id: false });
 
@@ -395,11 +405,23 @@ const InvoiceLineSchema = new mongoose.Schema({
   lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot' }, // null allowed for legacy + merged lines
   lotNumberSnapshot: { type: String, trim: true },     // frozen lot # for printing
   lotInvoiceNumberSnapshot: { type: Number },          // frozen upstream invoice #
+  // Frozen owner of the source lot at issue time — the client the goods were PRODUCED FOR,
+  // which is not always the client being BILLED. A line is a cross-client sale iff
+  //   lotClientIdSnapshot != Invoice.clientId
+  // so no separate boolean is stored; the flag is always derivable and can never drift.
+  // Set server-side in buildAndValidateLines from Lot.clientId — never accepted from the
+  // request. Frozen like the other lot snapshots: reassigning a Lot later must not rewrite
+  // history. Null on sample/legacy lines and on merged lines (each source carries its own).
+  lotClientIdSnapshot: { type: mongoose.Schema.Types.ObjectId, ref: 'Client' },
   // Per-lot breakdown for a MERGED line (empty for single-lot/legacy lines). pcs across
   // sources sums to the line's pcs; each source's pcs is what subtracts from that lot.
   sources: { type: [InvoiceLineSourceSchema], default: [] },
   description: { type: String, required: true, trim: true }, // free-form; prefilled from lot
   remark: { type: String, trim: true }, // optional secondary line printed under description in PDF
+  // NEVER PRINTED. Internal justification/context for the line — invoicePdfService renders
+  // only `description` and `remark`, and this must stay that way: its main use is recording
+  // WHY another client's lot was billed here, which the buyer must not see.
+  internalNote: { type: String, trim: true },
   hsnSac: { type: String, trim: true },
   pcs: { type: Number, required: true, min: 1, validate: { validator: Number.isInteger, message: 'pcs must be integer' } },
   unit: { type: String, trim: true, default: '' },
@@ -454,6 +476,10 @@ InvoiceSchema.index({ date: 1 });
 InvoiceSchema.index({ status: 1, date: -1 });
 InvoiceSchema.index({ 'lines.lotId': 1 }); // "which invoices reference this lot"
 InvoiceSchema.index({ 'lines.sources.lotId': 1 }); // same, for merged-line source lots
+// "which invoices sold goods produced for client X" — drives the cross-client sales report,
+// where the answer is the set of lines whose lotClientIdSnapshot != the invoice's clientId.
+InvoiceSchema.index({ 'lines.lotClientIdSnapshot': 1 });
+InvoiceSchema.index({ 'lines.sources.lotClientIdSnapshot': 1 });
 
 // InvoiceHistory: audit log mirror of VendorPaymentEntryHistory
 // ─── Manual Dispatch ─────────────────────────────────────────────────────────

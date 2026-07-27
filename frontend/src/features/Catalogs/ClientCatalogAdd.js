@@ -1,7 +1,7 @@
 import React from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useForm, Controller, useFieldArray } from 'react-hook-form';
-import { Box, Grid, Modal, Typography, TextField, Button, IconButton, Divider, FormControlLabel, Checkbox, Paper } from '@mui/material';
+import { Box, Grid, Modal, Typography, TextField, Button, IconButton, Divider, FormControlLabel, Checkbox, Switch, Paper, Alert } from '@mui/material';
 import { Close as CloseIcon, Save as SaveIcon, Publish as PublishIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 
@@ -26,7 +26,8 @@ function ClientCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess, ed
       pan: '',
       billingAddress: { ...emptyAddress },
       shippingAddress: { ...emptyAddress },
-      billingFirms: []
+      billingFirms: [],
+      isInternal: false
     },
     mode: 'onChange'
   });
@@ -34,6 +35,9 @@ function ClientCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess, ed
 
   const nameValue = watch('name');
   const billingAddress = watch('billingAddress');
+  // House label (e.g. GREYSAGE): owns lots, is never invoiced. Relaxes the contact
+  // requirement below and hides the billing identity, none of which applies to it.
+  const isInternal = watch('isInternal');
 
   const generateClientCodePrefix = (name) => {
     if (!name) return '';
@@ -64,6 +68,7 @@ function ClientCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess, ed
       setValue('address', editClient.address || '');
       setValue('gstin', editClient.gstin || '');
       setValue('pan', editClient.pan || '');
+      setValue('isInternal', !!editClient.isInternal);
       setValue('billingAddress', { ...emptyAddress, ...(editClient.billingAddress || {}) });
       setValue('shippingAddress', { ...emptyAddress, ...(editClient.shippingAddress || {}) });
       const firms = (editClient.billingFirms || []).map((f) => ({
@@ -83,7 +88,8 @@ function ClientCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess, ed
         gstin: '', pan: '',
         billingAddress: { ...emptyAddress },
         shippingAddress: { ...emptyAddress },
-        billingFirms: []
+        billingFirms: [],
+        isInternal: false
       });
       setShipSameAsBill(true);
       setFirmShipSame({});
@@ -270,9 +276,14 @@ function ClientCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess, ed
               <Controller
                 name="contact"
                 control={control}
-                rules={{ required: 'Contact is required', pattern: { value: /^\d+$/, message: 'Only numbers' } }}
+                rules={{
+                  required: isInternal ? false : 'Contact is required',
+                  pattern: { value: /^\d+$/, message: 'Only numbers' }
+                }}
                 render={({ field, fieldState: { error } }) => (
-                  <TextField {...field} label="Contact" fullWidth margin="dense" variant="standard" error={!!error} helperText={error ? error.message : ''} />
+                  <TextField {...field} label={isInternal ? 'Contact (optional)' : 'Contact'}
+                    fullWidth margin="dense" variant="standard"
+                    error={!!error} helperText={error ? error.message : ''} />
                 )}
               />
             </Grid>
@@ -308,17 +319,57 @@ function ClientCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess, ed
             </Grid>
 
             <Grid size={{ xs: 12 }}>
-              <Divider sx={{ mt: 1 }}><Typography variant="caption">DEFAULT BILLING ADDRESS</Typography></Divider>
-            </Grid>
-            {addressFields('billingAddress')}
-
-            <Grid size={{ xs: 12 }}>
-              <FormControlLabel
-                control={<Checkbox checked={shipSameAsBill} onChange={(e) => setShipSameAsBill(e.target.checked)} />}
-                label="Shipping address is the same as billing address"
+              <Controller
+                name="isInternal"
+                control={control}
+                render={({ field }) => (
+                  <FormControlLabel
+                    control={<Switch checked={!!field.value} onChange={(e) => field.onChange(e.target.checked)} color="info" />}
+                    label={(
+                      <Typography variant="body2">
+                        In-house label
+                        <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                          (not a real customer — e.g. GREYSAGE)
+                        </Typography>
+                      </Typography>
+                    )}
+                  />
+                )}
               />
             </Grid>
-            {!shipSameAsBill && (
+            {isInternal && (
+              <Grid size={{ xs: 12 }}>
+                <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+                  <Typography variant="caption" component="div">
+                    Lots can be created against this label as normal, and its stock is offered on
+                    <b> every</b> client&apos;s invoice without needing the cross-client toggle.
+                    It cannot itself be billed, so it has no receivable and is hidden from Client
+                    Payments. Billing details below are not used.
+                  </Typography>
+                </Alert>
+              </Grid>
+            )}
+
+            {/* A house label is never invoiced, so its billing identity is dead weight —
+                hidden rather than disabled to keep the form short and unambiguous. */}
+            {!isInternal && (
+              <>
+                <Grid size={{ xs: 12 }}>
+                  <Divider sx={{ mt: 1 }}><Typography variant="caption">DEFAULT BILLING ADDRESS</Typography></Divider>
+                </Grid>
+                {addressFields('billingAddress')}
+              </>
+            )}
+
+            {!isInternal && (
+              <Grid size={{ xs: 12 }}>
+                <FormControlLabel
+                  control={<Checkbox checked={shipSameAsBill} onChange={(e) => setShipSameAsBill(e.target.checked)} />}
+                  label="Shipping address is the same as billing address"
+                />
+              </Grid>
+            )}
+            {!isInternal && !shipSameAsBill && (
               <>
                 <Grid size={{ xs: 12 }}>
                   <Divider><Typography variant="caption">DEFAULT SHIPPING ADDRESS</Typography></Divider>
@@ -327,6 +378,7 @@ function ClientCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess, ed
               </>
             )}
 
+            {!isInternal && (<>
             <Grid size={{ xs: 12 }}>
               <Divider sx={{ mt: 2 }}>
                 <Typography variant="caption">ADDITIONAL BILLING FIRMS (SUB-BILLERS)</Typography>
@@ -431,6 +483,7 @@ function ClientCatalogAdd({ open, onClose, loading, setLoading, onAddSuccess, ed
                 Add Firm
               </Button>
             </Grid>
+            </>)}
 
             <Grid size={{ xs: 12 }}>
               <Controller

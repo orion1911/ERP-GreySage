@@ -161,6 +161,9 @@ All models live in **`backend/mongodb_schema.js`**.
 - `damagedPcs` — pcs held back from the client, still sellable, later sold combined to a
   third party. `clientDispatchableGood = finalPcs − damagedPcs`
 - `damagedSoldPcs` — cached sum of issued **damaged** invoice-line pcs
+- `clientId` is **"produced for", not "billed to"**. The two are independent — see §Sales.
+  Never rewrite it to record a sale; it drives production dashboards, vendor cost
+  attribution and the makings recon.
 
 `finalPcs` is **derived, never stored** — `invoiceService.getFinalPcsForLot(s)` walks
 Finishing → Washing → Stitching, taking `quantity − quantityShort`. Presence of any doc in a
@@ -191,6 +194,21 @@ snapshots), `VendorBalance` (denormalised aggregate).
 - **Frozen snapshots**: `clientSnapshot`, `billTo`, `shipTo`, `lines[].lotNumberSnapshot`,
   `lines[].lotInvoiceNumberSnapshot` — copied at issue time, never refreshed.
 - `lines[].isDamaged` marks a damaged-stock sale line.
+- **`Invoice.clientId` (billed to) and `Lot.clientId` (produced for) are independent.**
+  Full or partial qty of a lot produced for one client is routinely sold to another, so the
+  dispatch lot picker is deliberately **not** filtered to the billed client. If you find
+  yourself "fixing" that missing filter, read this first.
+  - `lines[].lotClientIdSnapshot` (+ the same on `sources[]`) freezes the lot's owner at
+    issue time. Cross-client is **derived** (`snapshot ≠ Invoice.clientId`), never stored as
+    a boolean, so it cannot drift.
+  - `lines[].internalNote` is **never printed** — `invoicePdfService` renders only
+    `description` and `remark`. It is mandatory on a cross-client *good* line, and it must
+    stay unprinted: it names the other client, which the buyer must not see. For the same
+    reason the description prefill drops the lot number on cross-client lines.
+  - `GET /api/sales-invoices/cross-client` reconciles the two attributions.
+- **`Client.isInternal`** marks a house label (GREYSAGE): owns lots, is never billed. Its
+  lots appear in **every** client's picker without the cross-client toggle; it is rejected
+  as an invoice's bill-to party and excluded from receivables.
 - `lines[].sources[]` — per-lot breakdown for a **merged** line drawing from several lots
   (added `759150d`). Source pcs sum to the line's pcs; each source's pcs is what subtracts
   from that lot. Empty for single-lot and legacy lines.
@@ -462,6 +480,12 @@ which one a script targets before running it, and mask passwords in any connecti
   editing production records (which rightly moves vendor money).
 - **Financial writes stay open to any authenticated user.** Only destructive operations are
   admin-gated; locking down day-to-day recording would break staff workflow.
+- **Cross-client sales live on the invoice line, not the Lot.** Reassigning by rewriting
+  `Lot.clientId` was considered and rejected: it cannot express a *partial* reassignment at
+  all, it rewrites history for lots already part-dispatched to the original client, and it
+  corrupts every dashboard aggregation keyed on `lot.clientId`. Splitting the lot was also
+  rejected — Stitching/Washing/Finishing all hang off `lotId`, so it needs production
+  surgery to record a sale.
 - **UI:** MUI `Switch` over `ToggleButton` for boolean filters.
 
 **Open items, roughly prioritised**

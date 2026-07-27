@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Typography, useTheme, Grid, Select, MenuItem, Tooltip, TablePagination } from '@mui/material';
+import { Box, Card, CardContent, Stack, Collapse, Button, IconButton, Typography, useTheme, Grid, Chip, Select, MenuItem, Tooltip, TablePagination } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon, ArrowUpward, ArrowDownward, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon, SwapVert } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { motion, AnimatePresence } from 'motion/react';
@@ -118,9 +118,15 @@ function ClientCatalogSx({
                   <Stack>
                     <Grid container spacing={1} sx={{ textAlign: 'center' }}>
                       <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'left' }}>
-                        <Typography variant="subtitle1" fontWeight="bold">
-                          {client.name || 'N/A'}
-                        </Typography>
+                        <Stack direction="row" spacing={0.75} alignItems="center">
+                          <Typography variant="subtitle1" fontWeight="bold">
+                            {client.name || 'N/A'}
+                          </Typography>
+                          {client.isInternal && (
+                            <Chip size="small" color="info" variant="outlined" label="in-house"
+                              sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+                          )}
+                        </Stack>
                       </Grid>
                       <Grid size={{ xs: 6, sm: 6 }} sx={{ textAlign: 'right' }}>
                         <Stack direction="row" spacing={1} justifyContent="flex-end">

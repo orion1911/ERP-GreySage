@@ -298,10 +298,28 @@ const getRemainingPcsForLot = async (lotId, excludeInvoiceId = null) => {
  * List lots available for dispatch (autocomplete data source).
  * Filters: clientId (optional), search (lotNumber or upstream invoiceNumber substring).
  * Returns lots with finalPcs > invoicedPcs (i.e. remainingPcs > 0).
+ *
+ * clientId is a PRIORITY, not a hard filter. Lots are routinely billed to a client other
+ * than the one they were produced for (full or partial qty), so restricting the picker to
+ * `Lot.clientId === clientId` would make a legitimate, common sale impossible to record.
+ * Instead:
+ *   • crossClient=false (default) → only the client's own lots + any HOUSE-LABEL lots
+ *     (Client.isInternal, e.g. GREYSAGE), which are sellable to anyone by definition.
+ *   • crossClient=true            → every lot with pcs remaining, any owner.
+ * Either way each row carries `isOwnLot` / `isHouseLot` / `clientName` so the UI can rank
+ * and visibly flag a foreign lot rather than letting one be picked by accident.
  */
-const getLotsAvailableForDispatch = async ({ clientId, search, limit = 50 } = {}) => {
+const getLotsAvailableForDispatch = async ({ clientId, search, crossClient = false, limit = 50 } = {}) => {
   const query = {};
-  if (clientId) query.clientId = clientId;
+
+  // House-label clients: their lots are always offered, whoever is being billed.
+  const houseClientIds = (await Client.find({ isInternal: true }).select('_id').lean()).map((c) => c._id);
+  const houseIdSet = new Set(houseClientIds.map(String));
+
+  if (clientId && !crossClient) {
+    // Own lots OR house-label lots. Anything else needs the explicit cross-client opt-in.
+    query.clientId = { $in: [new mongoose.Types.ObjectId(clientId), ...houseClientIds] };
+  }
   if (search && search.trim()) {
     const re = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     const orClauses = [{ lotNumber: re }];
@@ -310,11 +328,16 @@ const getLotsAvailableForDispatch = async ({ clientId, search, limit = 50 } = {}
     query.$or = orClauses;
   }
 
+  // Overfetch, because `remainingPcs > 0` can only be evaluated after the production
+  // rollup below. In cross-client mode the candidate set is every client's lots, so a
+  // 3× cushion would let fully-dispatched recent lots crowd the target client's older
+  // open ones off the list entirely — widen it to 10×.
+  const overfetch = (crossClient && !query.clientId) ? limit * 10 : limit * 3;
   const lots = await Lot.find(query)
-    .populate('clientId', 'name clientCode')
+    .populate('clientId', 'name clientCode isInternal')
     .populate('fitStyleId', 'name')
     .sort({ createdAt: -1 })
-    .limit(limit * 3); // overfetch; we filter remaining > 0 below
+    .limit(overfetch);
 
   // One batched read for all fetched lots (3 aggregations) instead of 1–3 sequential
   // queries per lot. The loop below is now pure in-memory — no awaits.
@@ -338,6 +361,8 @@ const getLotsAvailableForDispatch = async ({ clientId, search, limit = 50 } = {}
     // pcs that physically left the building years ago.
     const remainingPcs = Math.max(0, finalPcs - damagedPcs - invoicedPcs - manualDispatchedPcs);
     if (remainingPcs <= 0) continue;
+    const ownerId = String(lot.clientId?._id || '');
+    const isHouseLot = houseIdSet.has(ownerId);
     results.push({
       _id: lot._id,
       lotId: lot.lotId,
@@ -346,6 +371,12 @@ const getLotsAvailableForDispatch = async ({ clientId, search, limit = 50 } = {}
       clientId: lot.clientId?._id,
       clientName: lot.clientId?.name,
       clientCode: lot.clientId?.clientCode,
+      // Ownership vs the client being billed. The picker shows all three kinds together,
+      // so the UI needs to tell them apart: own lots are the normal case, house lots are
+      // free stock, and anything else is a cross-client sale that must be flagged.
+      isHouseLot,                                                    // GREYSAGE-style label
+      isOwnLot: !!clientId && ownerId === String(clientId),           // produced for the billed client
+      isCrossClient: !!clientId && !isHouseLot && ownerId !== String(clientId),
       fitStyleId: lot.fitStyleId?._id,
       fitStyleName: lot.fitStyleId?.name,
       fabric: lot.fabric,
@@ -358,9 +389,19 @@ const getLotsAvailableForDispatch = async ({ clientId, search, limit = 50 } = {}
       remainingPcs,
       notFinished: !finishedLotIds.has(String(lot._id)) // no Finishing record yet → warn, don't block
     });
-    if (results.length >= limit) break;
   }
-  return results;
+
+  // Rank before truncating, so the target client's own lots are never pushed off the end
+  // of the list by another client's newer stock. Own → house → foreign, newest first
+  // within each band. Mongo can't express this ordering (it depends on the requesting
+  // client), hence the in-memory pass.
+  const OWNER_RANK = (r) => (r.isOwnLot ? 0 : (r.isHouseLot ? 1 : 2));
+  results.sort((a, b) => {
+    const rank = OWNER_RANK(a) - OWNER_RANK(b);
+    if (rank !== 0) return rank;
+    return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
+  });
+  return results.slice(0, limit);
 };
 
 /**
@@ -435,7 +476,7 @@ const getPendingDispatch = async ({ search, status, page = 0, limit = 25 } = {})
 
   const lots = await Lot.find(query)
     .select('lotId lotNumber invoiceNumber clientId fitStyleId fabric waistSize date damagedPcs invoicedPcs damagedSoldPcs manualDispatchedPcs manualDamagedSoldPcs createdAt')
-    .populate('clientId', 'name clientCode')
+    .populate('clientId', 'name clientCode isInternal')
     .populate('fitStyleId', 'name')
     .sort({ date: 1, createdAt: 1 }) // oldest first — this board is a backlog to work down
     .lean();
@@ -474,6 +515,9 @@ const getPendingDispatch = async ({ search, status, page = 0, limit = 25 } = {})
       clientId: lot.clientId?._id,
       clientName: lot.clientId?.name,
       clientCode: lot.clientId?.clientCode,
+      // House label (GREYSAGE): the lot has no buyer yet, so the invoice this row launches
+      // must ask who is buying rather than assuming the lot's owner.
+      isHouseLot: !!lot.clientId?.isInternal,
       fitStyleId: lot.fitStyleId?._id,
       fitStyleName: lot.fitStyleId?.name,
       fabric: lot.fabric,

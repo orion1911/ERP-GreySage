@@ -26,7 +26,12 @@ const getDateRangeFilter = (query) => {
 const isValidObjectId = (id) => mongoose.isValidObjectId(id);
 
 // Helper function to get monthly trend data
-const getMonthlyTrendData = async (fromDate, toDate, category, clientId) => {
+// `houseClientIds` are Client._id values flagged isInternal (house labels such as GREYSAGE).
+// They own lots but have no buyer, so the Completed series is scoped by `category.ownerScope`:
+//   'assigned' → lots produced for a real customer
+//   'house'    → in-house stock with no committed buyer
+//   undefined  → both (used when a single client is already selected, which pins ownership)
+const getMonthlyTrendData = async (fromDate, toDate, category, clientId, houseClientIds = []) => {
   const matchStage = {};
   if (fromDate && toDate) {
     matchStage.date = {
@@ -36,7 +41,7 @@ const getMonthlyTrendData = async (fromDate, toDate, category, clientId) => {
   }
 
   let trendData = [];
-  if (category.title === 'Active Lots') {
+  if (category.key === 'activeLots') {
     matchStage.status = { $in: [2, 3, 4] };
     if (clientId && isValidObjectId(clientId)) {
       matchStage.clientId = new mongoose.Types.ObjectId(clientId);
@@ -63,7 +68,7 @@ const getMonthlyTrendData = async (fromDate, toDate, category, clientId) => {
       },
       { $sort: { '_id.year': 1, '_id.month': 1 } }
     ]);
-  } else if (category.title === 'In Stitching') {
+  } else if (category.key === 'inStitching') {
     if (clientId && isValidObjectId(clientId)) {
       trendData = await Stitching.aggregate([
         { $match: matchStage },
@@ -103,7 +108,7 @@ const getMonthlyTrendData = async (fromDate, toDate, category, clientId) => {
         { $sort: { '_id.year': 1, '_id.month': 1 } }
       ]);
     }
-  } else if (category.title === 'In Washing') {
+  } else if (category.key === 'inWashing') {
     const washMatch = clientId && isValidObjectId(clientId)
       ? [
           { $lookup: { from: Lot.collection.collectionName, localField: 'lotId', foreignField: '_id', as: 'lot' } },
@@ -126,7 +131,7 @@ const getMonthlyTrendData = async (fromDate, toDate, category, clientId) => {
       },
       { $sort: { '_id.year': 1, '_id.month': 1 } }
     ]);
-  } else if (category.title === 'In Finishing') {
+  } else if (category.key === 'inFinishing') {
     const finMatch = clientId && isValidObjectId(clientId)
       ? [
           { $lookup: { from: Lot.collection.collectionName, localField: 'lotId', foreignField: '_id', as: 'lot' } },
@@ -148,10 +153,14 @@ const getMonthlyTrendData = async (fromDate, toDate, category, clientId) => {
       },
       { $sort: { '_id.year': 1, '_id.month': 1 } }
     ]);
-  } else if (category.title === 'Completed') {
+  } else if (category.key === 'completed') {
     matchStage.status = 5;
     if (clientId && isValidObjectId(clientId)) {
       matchStage.clientId = new mongoose.Types.ObjectId(clientId);
+    } else if (category.ownerScope === 'house') {
+      matchStage.clientId = { $in: houseClientIds };   // empty list ⇒ no lots, card reads 0
+    } else if (category.ownerScope === 'assigned') {
+      matchStage.clientId = { $nin: houseClientIds };  // empty list ⇒ every lot, i.e. old behaviour
     }
     trendData = await Lot.aggregate([
       { $match: matchStage },
@@ -205,7 +214,7 @@ const getMonthlyTrendData = async (fromDate, toDate, category, clientId) => {
 // Lot Status Summary (replaces Order Status Summary)
 const getOrderStatusSummary = async (req, res) => {
   try {
-    const payload = await getOrSet(DASH, ['orderStatusSummary', req.query.fromDate, req.query.toDate, req.query.clientId], DASH_TTL, async () => {
+    const payload = await getOrSet(DASH, ['orderStatusSummary-v2', req.query.fromDate, req.query.toDate, req.query.clientId], DASH_TTL, async () => {
     const dateFilter = getDateRangeFilter(req.query);
     const { fromDate, toDate } = req.query;
     const clientId = req.query.clientId;
@@ -214,19 +223,38 @@ const getOrderStatusSummary = async (req, res) => {
       ? `${new Date(fromDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} - ${new Date(toDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
       : 'Custom Range';
 
+    // House labels (Client.isInternal) own lots that have no committed buyer. Resolved once
+    // per request and threaded through the Completed aggregations below.
+    const houseClientIds = (await Client.find({ isInternal: true }).select('_id').lean()).map((c) => c._id);
+
+    const productionCategories = [
+      { key: 'activeLots', title: 'Active Lots', statusFilter: { $in: [2, 3, 4] }, trend: 'up' },
+      { key: 'inStitching', title: 'In Stitching', statusFilter: 2, trend: 'down' },
+      { key: 'inWashing', title: 'In Washing', statusFilter: 3, trend: 'neutral' },
+      { key: 'inFinishing', title: 'In Finishing', statusFilter: 4, trend: 'neutral' }
+    ];
+
+    // Status 5 (Finished/Ready) used to imply "ready to ship to a known client", because every
+    // lot had a buyer. House labels break that: some finished lots are unsold stock. Those are
+    // two different questions — one logistics, one working capital — so they get two cards.
     const statusCategories = [
-      { title: 'Active Lots', statusFilter: { $in: [2, 3, 4] }, trend: 'up' },
-      { title: 'In Stitching', statusFilter: 2, trend: 'down' },
-      { title: 'In Washing', statusFilter: 3, trend: 'neutral' },
-      { title: 'In Finishing', statusFilter: 4, trend: 'neutral' },
-      { title: 'Completed', statusFilter: 5, trend: 'up' }
+      ...productionCategories,
+      { key: 'completed', title: 'Completed', statusFilter: 5, trend: 'up', ownerScope: 'assigned' },
+      { key: 'completed', title: 'Completed · In-house', statusFilter: 5, trend: 'neutral', ownerScope: 'house' }
+    ];
+
+    // Selecting one client already pins ownership, so the split would be one populated card and
+    // one permanent zero. Collapse back to a single unscoped Completed card for that view.
+    const clientCategories = [
+      ...productionCategories,
+      { key: 'completed', title: 'Completed', statusFilter: 5, trend: 'up' }
     ];
 
     // Overall quantities and counts by status
     const overallData = await Promise.all(statusCategories.map(async category => {
       let totalQuantity = 0;
       let count = 0;
-      if (category.title === 'Active Lots') {
+      if (category.key === 'activeLots') {
         const stats = await Lot.aggregate([
           { $match: { ...dateFilter, status: { $in: [2, 3, 4] } } },
           {
@@ -248,7 +276,7 @@ const getOrderStatusSummary = async (req, res) => {
         ]);
         totalQuantity = stats[0]?.totalQuantity || 0;
         count = stats[0]?.count || 0;
-      } else if (category.title === 'In Stitching') {
+      } else if (category.key === 'inStitching') {
         const stats = await Stitching.aggregate([
           { $match: dateFilter },
           {
@@ -261,7 +289,7 @@ const getOrderStatusSummary = async (req, res) => {
         ]);
         totalQuantity = stats[0]?.totalQuantity || 0;
         count = stats[0]?.count || 0;
-      } else if (category.title === 'In Washing') {
+      } else if (category.key === 'inWashing') {
         const stats = await Washing.aggregate([
           { $match: dateFilter },
           { $unwind: '$washDetails' },
@@ -275,7 +303,7 @@ const getOrderStatusSummary = async (req, res) => {
         ]);
         totalQuantity = stats[0]?.totalQuantity || 0;
         count = stats[0]?.count || 0;
-      } else if (category.title === 'In Finishing') {
+      } else if (category.key === 'inFinishing') {
         const stats = await Finishing.aggregate([
           { $match: dateFilter },
           {
@@ -288,9 +316,14 @@ const getOrderStatusSummary = async (req, res) => {
         ]);
         totalQuantity = stats[0]?.totalQuantity || 0;
         count = stats[0]?.count || 0;
-      } else if (category.title === 'Completed') {
+      } else if (category.key === 'completed') {
+        const ownerMatch = category.ownerScope === 'house'
+          ? { clientId: { $in: houseClientIds } }
+          : category.ownerScope === 'assigned'
+            ? { clientId: { $nin: houseClientIds } }
+            : {};
         const stats = await Lot.aggregate([
-          { $match: { ...dateFilter, status: 5 } },
+          { $match: { ...dateFilter, ...ownerMatch, status: 5 } },
           {
             $lookup: {
               from: Stitching.collection.collectionName,
@@ -311,7 +344,7 @@ const getOrderStatusSummary = async (req, res) => {
         totalQuantity = stats[0]?.totalQuantity || 0;
         count = stats[0]?.count || 0;
       }
-      const trend = await getMonthlyTrendData(fromDate, toDate, category);
+      const trend = await getMonthlyTrendData(fromDate, toDate, category, null, houseClientIds);
       return {
         title: `${category.title} / (${count} lots)`,
         value: totalQuantity >= 1000 ? `${(totalQuantity / 1000).toFixed(1)}k` : totalQuantity.toString(),
@@ -328,10 +361,10 @@ const getOrderStatusSummary = async (req, res) => {
       const client = await Client.findById(clientId).lean();
       const clientName = client ? client.name : 'Unknown Client';
 
-      clientData = await Promise.all(statusCategories.map(async category => {
+      clientData = await Promise.all(clientCategories.map(async category => {
         let totalQuantity = 0;
         let count = 0;
-        if (category.title === 'Active Lots') {
+        if (category.key === 'activeLots') {
           const stats = await Lot.aggregate([
             { $match: { ...dateFilter, clientId: new mongoose.Types.ObjectId(clientId), status: { $in: [2, 3, 4] } } },
             {
@@ -353,7 +386,7 @@ const getOrderStatusSummary = async (req, res) => {
           ]);
           totalQuantity = stats[0]?.totalQuantity || 0;
           count = stats[0]?.count || 0;
-        } else if (category.title === 'In Stitching') {
+        } else if (category.key === 'inStitching') {
           const stats = await Stitching.aggregate([
             { $match: dateFilter },
             {
@@ -376,7 +409,7 @@ const getOrderStatusSummary = async (req, res) => {
           ]) || [{ _id: null, totalQuantity: 0, count: 0 }];
           totalQuantity = stats[0]?.totalQuantity || 0;
           count = stats[0]?.count || 0;
-        } else if (category.title === 'In Washing') {
+        } else if (category.key === 'inWashing') {
           const stats = await Washing.aggregate([
             { $match: dateFilter },
             { $unwind: '$washDetails' },
@@ -400,7 +433,7 @@ const getOrderStatusSummary = async (req, res) => {
           ]) || [{ _id: null, totalQuantity: 0, count: 0 }];
           totalQuantity = stats[0]?.totalQuantity || 0;
           count = stats[0]?.count || 0;
-        } else if (category.title === 'In Finishing') {
+        } else if (category.key === 'inFinishing') {
           const stats = await Finishing.aggregate([
             { $match: dateFilter },
             {
@@ -423,7 +456,7 @@ const getOrderStatusSummary = async (req, res) => {
           ]) || [{ _id: null, totalQuantity: 0, count: 0 }];
           totalQuantity = stats[0]?.totalQuantity || 0;
           count = stats[0]?.count || 0;
-        } else if (category.title === 'Completed') {
+        } else if (category.key === 'completed') {
           const stats = await Lot.aggregate([
             { $match: { ...dateFilter, clientId: new mongoose.Types.ObjectId(clientId), status: 5 } },
             {
@@ -558,36 +591,38 @@ const getOrderStatusSummary = async (req, res) => {
       const clientIds = Object.keys(clientGroups).filter(isValidObjectId);
       const clients = await Client.find({ _id: { $in: clientIds.map(id => new mongoose.Types.ObjectId(id)) } }).lean();
       const clientNameMap = clients.reduce((acc, client) => {
-        acc[client._id.toString()] = client.name;
+        // House labels are kept in this breakdown — the production is real and consumed real
+        // capacity — but marked, so nobody reads GREYSAGE as a customer.
+        acc[client._id.toString()] = client.isInternal ? `${client.name} (in-house)` : client.name;
         return acc;
       }, {});
 
       clientData = await Promise.all(clientIds.flatMap(clientId => {
         const clientGroup = clientGroups[clientId];
         const clientName = clientNameMap[clientId] || 'Unknown Client';
-        return statusCategories.map(async category => {
+        return clientCategories.map(async category => {
           let totalQuantity = 0;
           let count = 0;
-          if (category.title === 'Active Lots') {
+          if (category.key === 'activeLots') {
             totalQuantity = clientGroup.statuses
               .filter(item => [2, 3, 4].includes(item.status))
               .reduce((sum, item) => sum + item.totalQuantity, 0);
             count = clientGroup.statuses
               .filter(item => [2, 3, 4].includes(item.status))
               .reduce((sum, item) => sum + item.count, 0);
-          } else if (category.title === 'In Stitching') {
+          } else if (category.key === 'inStitching') {
             const statusMatch = clientGroup.statuses.find(item => item.status === 2);
             totalQuantity = statusMatch ? statusMatch.totalQuantity : 0;
             count = statusMatch ? statusMatch.count : 0;
-          } else if (category.title === 'In Washing') {
+          } else if (category.key === 'inWashing') {
             const statusMatch = clientGroup.statuses.find(item => item.status === 3);
             totalQuantity = statusMatch ? statusMatch.totalQuantity : 0;
             count = statusMatch ? statusMatch.count : 0;
-          } else if (category.title === 'In Finishing') {
+          } else if (category.key === 'inFinishing') {
             const statusMatch = clientGroup.statuses.find(item => item.status === 4);
             totalQuantity = statusMatch ? statusMatch.totalQuantity : 0;
             count = statusMatch ? statusMatch.count : 0;
-          } else if (category.title === 'Completed') {
+          } else if (category.key === 'completed') {
             const statusMatch = clientGroup.statuses.find(item => item.status === 5);
             totalQuantity = statusMatch ? statusMatch.totalQuantity : 0;
             count = statusMatch ? statusMatch.count : 0;
@@ -653,7 +688,7 @@ const getOrderStatusSummary = async (req, res) => {
 
 const getAllClientCompletedQuantities = async (req, res) => {
   try {
-    const payload = await getOrSet(DASH, ['clientCompletedQty', req.query.fromDate, req.query.toDate, req.query.interval || 'monthly'], DASH_TTL, async () => {
+    const payload = await getOrSet(DASH, ['clientCompletedQty-v2', req.query.fromDate, req.query.toDate, req.query.interval || 'monthly'], DASH_TTL, async () => {
     const dateFilter = getDateRangeFilter(req.query);
     const { fromDate, toDate, interval = 'monthly' } = req.query;
 
@@ -682,6 +717,9 @@ const getAllClientCompletedQuantities = async (req, res) => {
         $group: {
           _id: {
             clientName: '$clientDetails.name',
+            // House labels stay in the chart — the capacity was really consumed — but are
+            // flagged so "Total Quantity by Client" can't be misread as customer demand.
+            isHouse: { $ifNull: ['$clientDetails.isInternal', false] },
             year: { $year: '$date' },
             ...(interval === 'monthly' && { month: { $month: '$date' } }),
             ...(interval === 'quarterly' && { quarter: { $concat: [{ $substr: [{ $toString: { $ceil: { $divide: [{ $month: '$date' }, 3] } } }, 0, 1] }, 'Q'] } }),
@@ -692,6 +730,7 @@ const getAllClientCompletedQuantities = async (req, res) => {
       {
         $project: {
           clientName: '$_id.clientName',
+          isHouse: '$_id.isHouse',
           year: '$_id.year',
           month: '$_id.month',
           quarter: '$_id.quarter',
@@ -744,21 +783,29 @@ const getAllClientCompletedQuantities = async (req, res) => {
       const index = labels.indexOf(key);
       if (index !== -1) {
         if (!clientMap[item.clientName]) {
-          clientMap[item.clientName] = Array(labels.length).fill(0);
+          clientMap[item.clientName] = { isHouse: !!item.isHouse, data: Array(labels.length).fill(0) };
         }
-        clientMap[item.clientName][index] = (clientMap[item.clientName][index] || 0) + item.totalQuantity;
+        clientMap[item.clientName].data[index] += item.totalQuantity;
       }
     });
 
     const barChartSeries = Object.keys(clientMap).map(clientName => ({
       id: clientName.replace(' ', '-').toLowerCase(),
-      label: clientName,
-      data: clientMap[clientName],
+      // The chart legend is hidden, so the series label IS the tooltip text — the marker has
+      // to live in the label itself to be visible anywhere.
+      label: clientMap[clientName].isHouse ? `${clientName} (in-house)` : clientName,
+      isHouse: clientMap[clientName].isHouse,
+      data: clientMap[clientName].data,
       stack: 'A',
     }));
 
     // Calculate total quantity and trend
     const totalQuantity = clientMonthlyData.reduce((sum, item) => sum + item.totalQuantity, 0);
+    // Split out so the card can say what share of the headline has no buyer behind it.
+    const houseQuantity = clientMonthlyData
+      .filter(item => item.isHouse)
+      .reduce((sum, item) => sum + item.totalQuantity, 0);
+    const customerQuantity = totalQuantity - houseQuantity;
     const trend = totalQuantity > 0 ? 'up' : 'neutral';
 
     // Format interval string
@@ -770,6 +817,8 @@ const getAllClientCompletedQuantities = async (req, res) => {
 
     return {
       totalQuantity,
+      customerQuantity,
+      houseQuantity,
       trend,
       interval: intervalText,
       series: barChartSeries,

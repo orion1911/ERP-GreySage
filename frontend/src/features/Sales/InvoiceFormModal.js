@@ -41,6 +41,19 @@ const computeFifoSources = (mergeLots, total) => {
   return out;
 };
 
+// Owner of a SAVED line's lot when it differs from the invoice's client, read from the frozen
+// snapshots so an edit is judged against what was true at issue time (the server does the same).
+// Merged lines keep the snapshot per source; any foreign source makes the line cross-client.
+// Returns a placeholder — the owner's real name is filled in by the effect below once the
+// client list has loaded, which also clears house-label owners (never a cross-client sale).
+const crossClientOwnerOf = (line, invoice) => {
+  const billed = String(invoice?.clientId?._id || invoice?.clientId || '');
+  const owners = (Array.isArray(line.sources) && line.sources.length > 0)
+    ? line.sources.map((s) => s.lotClientIdSnapshot)
+    : [line.lotClientIdSnapshot];
+  return owners.some((o) => o && String(o) !== billed) ? 'another client' : '';
+};
+
 const emptyLine = {
   lotId: null,
   lotNumber: '',
@@ -50,6 +63,7 @@ const emptyLine = {
   sources: [],        // saved per-lot split [{lotId, lotNumber, pcs}] — used to lock merged lines on edit
   description: '',
   remark: '',
+  internalNote: '',   // NOT printed — justification for a cross-client line
   hsnSac: '',
   pcs: '',
   unit: '',
@@ -57,6 +71,9 @@ const emptyLine = {
   remainingPcs: null,
   finalPcs: null,
   notFinished: false,
+  // Owner of the picked lot when it isn't the client being billed. Drives the amber
+  // cross-client warning and makes the internal note mandatory before submit.
+  crossClientOwner: '',
   isSample: false
 };
 
@@ -78,6 +95,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
       billingFirmId: '',
       documentType: 'BILL_OF_SUPPLY',
       damagedMode: false,
+      crossClient: false,
       roundOff: 0,
       lines: [{ ...emptyLine }]
     }
@@ -89,6 +107,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
   const client = watch('client');
   const billingFirmId = watch('billingFirmId');
   const damagedMode = watch('damagedMode');
+  const crossClient = watch('crossClient');
   const roundOff = Number(useWatch({ control, name: 'roundOff' })) || 0;
 
   // Combined Damaged Sale draws from a cross-client pool; otherwise client-filtered good lots.
@@ -106,6 +125,10 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
     if (!client?._id) return null;
     return clients.find((c) => c._id === client._id) || null;
   }, [client?._id, clients]);
+
+  // House labels own lots but are never billed, so they must not be selectable as the bill-to
+  // party. The server rejects them too; this just stops the operator finding out at submit time.
+  const billableClients = useMemo(() => clients.filter((c) => !c.isInternal), [clients]);
 
   const billingFirms = useMemo(() => selectedClientFull?.billingFirms || [], [selectedClientFull]);
   const selectedFirm = useMemo(
@@ -148,6 +171,11 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
         // Preserve the invoice's nature on edit (a combined-damaged sale has isDamaged lines).
         // The toggle is hidden when editing, so this stays fixed at the hydrated value.
         damagedMode: (editInvoice.lines || []).some((l) => l.isDamaged),
+        // An invoice that already contains another client's lots keeps the wider pool open
+        // on edit — otherwise removing and re-adding the same line would be impossible.
+        crossClient: (editInvoice.lines || []).some((l) => (
+          l.lotClientIdSnapshot && String(l.lotClientIdSnapshot) !== String(editInvoice.clientId?._id || editInvoice.clientId)
+        )),
         roundOff: editInvoice.roundOff || 0,
         lines: (editInvoice.lines || []).map((l) => {
           const merged = Array.isArray(l.sources) && l.sources.length > 0;
@@ -167,25 +195,34 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
             })) : [],
             description: l.description || '',
             remark: l.remark || '',
+            internalNote: l.internalNote || '',
             hsnSac: l.hsnSac || '',
             pcs: l.pcs,
             unit: l.unit || '',
             rate: l.rate,
             remainingPcs: null,
             finalPcs: null,
+            // Recomputed from the frozen snapshots, not refetched — an edit must be judged
+            // against the owner recorded at issue time, exactly as the server does.
+            crossClientOwner: crossClientOwnerOf(l, editInvoice),
             isSample: !!l.isSample
           };
         })
       });
-    } else if (preset?.client) {
-      // Prefilled from the Pending Dispatch page: client + one good-dispatch line for the lot.
+    } else if (preset?.client || preset?.lot) {
+      // Prefilled from the Pending Dispatch page: one good-dispatch line for the lot, plus the
+      // client when there is one. House-label lots arrive with client null — the line is still
+      // prefilled, and the buyer is chosen in the form.
       const lot = preset.lot;
       reset({
         date: dayjs(),
-        client: { _id: preset.client._id, name: preset.client.name, clientCode: preset.client.clientCode },
+        client: preset.client
+          ? { _id: preset.client._id, name: preset.client.name, clientCode: preset.client.clientCode }
+          : null,
         billingFirmId: '',
         documentType: 'BILL_OF_SUPPLY',
         damagedMode: false,
+        crossClient: false,
         roundOff: 0,
         lines: [lot ? {
           ...emptyLine,
@@ -205,6 +242,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
         billingFirmId: '',
         documentType: 'BILL_OF_SUPPLY',
         damagedMode: false,
+        crossClient: false,
         roundOff: 0,
         lines: [{ ...emptyLine }]
       });
@@ -219,11 +257,34 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
       return;
     }
     setLotsLoading(true);
-    apiService.salesInvoices.getLotsAvailable({ clientId: client._id })
+    // crossClient widens the pool to every client's lots. House-label lots (GREYSAGE) come
+    // back either way — they're common stock, not an exception needing a toggle.
+    apiService.salesInvoices.getLotsAvailable({ clientId: client._id, crossClient: crossClient ? 'true' : undefined })
       .then((data) => setLotsForClient(data))
       .catch((e) => showSnackbar(e))
       .finally(() => setLotsLoading(false));
-  }, [open, client?._id]);
+  }, [open, client?._id, crossClient]);
+
+  // Resolve the placeholder set by crossClientOwnerOf into real names, once the client list
+  // is available. Also clears the flag where the owner turns out to be a house label — that
+  // is ordinary stock movement, not a reassignment, and must not demand a justification.
+  useEffect(() => {
+    if (!open || !editInvoice || !clients.length) return;
+    const byId = new Map(clients.map((c) => [String(c._id), c]));
+    const billed = String(editInvoice.clientId?._id || editInvoice.clientId || '');
+    (editInvoice.lines || []).forEach((l, i) => {
+      const owners = (Array.isArray(l.sources) && l.sources.length > 0)
+        ? l.sources.map((s) => s.lotClientIdSnapshot)
+        : [l.lotClientIdSnapshot];
+      const foreign = owners
+        .filter((o) => o && String(o) !== billed)
+        .map((o) => byId.get(String(o)))
+        .filter((c) => c && !c.isInternal);
+      setValue(`lines.${i}.crossClientOwner`,
+        foreign.length ? [...new Set(foreign.map((c) => c.name))].join(', ') : '');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editInvoice, clients]);
 
   // Load the cross-client damaged pool when Combined Damaged Sale is toggled on
   useEffect(() => {
@@ -258,6 +319,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
       setValue(`lines.${idx}.remainingPcs`, null);
       setValue(`lines.${idx}.finalPcs`, null);
       setValue(`lines.${idx}.notFinished`, false);
+      setValue(`lines.${idx}.crossClientOwner`, '');
       return;
     }
     // In damaged mode the available qty is the lot's damaged pool, not the good remaining.
@@ -270,7 +332,15 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
     setValue(`lines.${idx}.finalPcs`, finalRef);
     // Only meaningful for good dispatch; damaged-pool rows don't carry the flag.
     setValue(`lines.${idx}.notFinished`, !damagedMode && !!lotOption.notFinished);
-    const desc = `${lotOption.fitStyleName || ''}${lotOption.fabric ? ` (${lotOption.fabric})` : ''} - LOT ${lotOption.lotNumber}${damagedMode ? ' (DAMAGED)' : ''}`.trim();
+    // Cross-client = produced for someone else, excluding house-label stock (sellable to
+    // anyone by design) and damaged lines (already third-party sales by definition).
+    const isCross = !damagedMode && !!lotOption.isCrossClient && !lotOption.isHouseLot;
+    setValue(`lines.${idx}.crossClientOwner`, isCross ? (lotOption.clientName || 'another client') : '');
+    // Deliberately omit the lot number on a cross-client line: the description is printed,
+    // and our lot numbering is per-client — showing GLOBUS a lot raised for ADAM HILL leaks
+    // the origin. Operators can still type it back in if a given buyer expects it.
+    const lotRef = isCross ? '' : ` - LOT ${lotOption.lotNumber}`;
+    const desc = `${lotOption.fitStyleName || ''}${lotOption.fabric ? ` (${lotOption.fabric})` : ''}${lotRef}${damagedMode ? ' (DAMAGED)' : ''}`.trim();
     if (!getValues(`lines.${idx}.description`)) setValue(`lines.${idx}.description`, desc);
     if (!getValues(`lines.${idx}.pcs`)) setValue(`lines.${idx}.pcs`, avail);
   }, [setValue, getValues, damagedMode]);
@@ -286,6 +356,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
     setValue(`lines.${idx}.remainingPcs`, null);
     setValue(`lines.${idx}.finalPcs`, null);
     setValue(`lines.${idx}.notFinished`, false);
+    setValue(`lines.${idx}.crossClientOwner`, '');
   }, [setValue]);
 
   // Pick/clear the lots that make up a merged line. remainingPcs caps the line's total; the
@@ -294,6 +365,10 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
     setValue(`lines.${idx}.mergeLots`, lots || []);
     setValue(`lines.${idx}.remainingPcs`, sumRemaining(lots));
     setValue(`lines.${idx}.notFinished`, (lots || []).some((l) => l.notFinished));
+    // A merged line can mix owners; ANY foreign lot makes the whole line cross-client.
+    const foreign = (lots || []).filter((l) => l.isCrossClient && !l.isHouseLot);
+    setValue(`lines.${idx}.crossClientOwner`,
+      foreign.length ? [...new Set(foreign.map((l) => l.clientName || 'another client'))].join(', ') : '');
     if (!getValues(`lines.${idx}.description`) && (lots || []).length) {
       const first = lots[0];
       const label = lots.map((l) => l.lotNumber).join(' + ');
@@ -306,6 +381,19 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
   // live FIFO allocation of the typed total across the selected lots.
   const lineSources = (cur) =>
     (editInvoice && cur.merged) ? (cur.sources || []) : computeFifoSources(cur.mergeLots, cur.pcs);
+
+  // Band a lot option falls into. Also the Autocomplete groupBy label, so the operator sees
+  // their own stock first and has to scroll past a header to reach someone else's.
+  const lotGroup = (o) => (o?.isHouseLot ? 'In-house stock' : (o?.isCrossClient ? "Other clients' lots" : 'This client'));
+
+  // Amber "belongs to X" chip. Rendered for foreign lots only — house stock is normal traffic.
+  const ownerChip = (o) => (o?.isCrossClient && !o?.isHouseLot ? (
+    <Chip size="small" color="warning" variant="filled" label={o.clientName || 'Other client'}
+      sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem', fontWeight: 700 } }} />
+  ) : (o?.isHouseLot ? (
+    <Chip size="small" color="info" variant="outlined" label={o.clientName || 'In-house'}
+      sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+  ) : null));
 
   // Lot picker cell shared by mobile + desktop. `options` is the single-lot list for that layout
   // (mobile passes the good/damaged pool, desktop the good pool). The merged multi-select always
@@ -324,6 +412,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                 multiple
                 size="small"
                 options={lotsForClient}
+                groupBy={lotGroup}
                 getOptionLabel={(o) => o ? `${o.lotNumber} (Inv ${o.invoiceNumber})` : ''}
                 isOptionEqualToValue={(o, v) => o?._id === v?._id}
                 loading={lotsLoading}
@@ -335,6 +424,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                     <Box>
                       <Stack direction="row" spacing={0.5} alignItems="center">
                         <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
+                        {ownerChip(option)}
                         {option.notFinished && (
                           <Chip size="small" color="warning" variant="outlined" icon={<WarningAmberIcon />}
                             label="Not finished" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' }, '& .MuiChip-icon': { fontSize: 14, ml: 0.5 } }} />
@@ -360,6 +450,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
               <Autocomplete
                 size="small"
                 options={options}
+                groupBy={damagedMode ? undefined : lotGroup}
                 getOptionLabel={(o) => o ? `${o.lotNumber} (Inv ${o.invoiceNumber})` : ''}
                 isOptionEqualToValue={(o, v) => o?._id === v?._id}
                 loading={lotsLoading}
@@ -371,6 +462,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                     <Box>
                       <Stack direction="row" spacing={0.5} alignItems="center">
                         <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
+                        {!damagedMode && ownerChip(option)}
                         {!damagedMode && option.notFinished && (
                           <Chip size="small" color="warning" variant="outlined" icon={<WarningAmberIcon />}
                             label="Not finished" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' }, '& .MuiChip-icon': { fontSize: 14, ml: 0.5 } }} />
@@ -415,6 +507,26 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
             <WarningAmberIcon sx={{ fontSize: 14 }} />
             {cur.merged ? 'One or more lots are not yet in finishing' : 'Lot not yet in finishing'} — dispatch allowed, verify pcs
           </Typography>
+        )}
+
+        {!damagedMode && cur.crossClientOwner && (
+          <Box sx={{ mt: 0.75 }}>
+            <Typography variant="caption" color="warning.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <WarningAmberIcon sx={{ fontSize: 14 }} />
+              Produced for <b>{cur.crossClientOwner}</b> — billing to {client?.name || 'this client'}
+            </Typography>
+            <Controller
+              name={`lines.${idx}.internalNote`}
+              control={control}
+              render={({ field }) => (
+                <TextField {...field} variant="standard" size="small" fullWidth
+                  placeholder="Why? (internal — not printed on the invoice)"
+                  sx={{ mt: 0.25 }}
+                  slotProps={{ htmlInput: { style: { fontSize: '0.75rem' } } }}
+                />
+              )}
+            />
+          </Box>
         )}
 
         {canCombine && (
@@ -474,9 +586,13 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
             return showSnackbar(`Line ${i + 1}: total ${total} exceeds ${allocated} available across the selected lots`);
           }
         }
+        if (l.crossClientOwner && !String(l.internalNote || '').trim()) {
+          return showSnackbar(`Line ${i + 1}: add an internal note — this line uses ${l.crossClientOwner}'s lot`);
+        }
         outLines.push({
           description: l.description,
           remark: l.remark,
+          internalNote: l.internalNote,
           hsnSac: l.hsnSac,
           unit: l.unit,
           rate: Number(l.rate),
@@ -484,10 +600,14 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
           sources: split.map((s) => ({ lotId: s.lotId, pcs: s.pcs }))
         });
       } else {
+        if (l.crossClientOwner && !String(l.internalNote || '').trim()) {
+          return showSnackbar(`Line ${i + 1}: add an internal note — this line uses ${l.crossClientOwner}'s lot`);
+        }
         outLines.push({
           lotId: l.lotId || null,
           description: l.description,
           remark: l.remark,
+          internalNote: l.internalNote,
           hsnSac: l.hsnSac,
           pcs: parseInt(l.pcs, 10),
           unit: l.unit,
@@ -583,7 +703,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                   rules={{ required: 'Client is required' }}
                   render={({ field, fieldState: { error } }) => (
                     <Autocomplete
-                      options={clients}
+                      options={billableClients}
                       getOptionLabel={(o) => o ? `${o.name} (${o.clientCode})` : ''}
                       isOptionEqualToValue={(o, v) => o?._id === v?._id}
                       value={field.value}
@@ -685,6 +805,38 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                             Combined Damaged Sale
                             <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
                               (sell damaged pcs across lots to a third-party buyer)
+                            </Typography>
+                          </Typography>
+                        )}
+                      />
+                    )}
+                  />
+                </Grid>
+              )}
+              {!editInvoice && !damagedMode && (
+                <Grid size={{ xs: 12, md: 12 }}>
+                  <Controller
+                    name="crossClient"
+                    control={control}
+                    render={({ field }) => (
+                      <FormControlLabel
+                        control={(
+                          <Switch
+                            checked={!!field.value}
+                            onChange={(e) => {
+                              field.onChange(e.target.checked);
+                              // The option list is about to change underneath the pickers;
+                              // clear every lot selection so nothing points at a stale option.
+                              (getValues('lines') || []).forEach((_, i) => toggleMerge(i, false));
+                            }}
+                            color="warning"
+                          />
+                        )}
+                        label={(
+                          <Typography variant="body2">
+                            Include other clients&apos; lots
+                            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                              (bill stock produced for a different client — each such line needs an internal note)
                             </Typography>
                           </Typography>
                         )}

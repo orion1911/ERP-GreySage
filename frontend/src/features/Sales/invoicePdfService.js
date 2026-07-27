@@ -155,14 +155,59 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   // Greyish border color used throughout (matches sample's light borders, not pure black)
   const BORDER = [170, 170, 170];
 
-  // Helper: draw a "label normal + value bold" pair on one line, returns total width drawn.
-  const drawLabelValue = (label, value, x, y, size) => {
+  // Usable text width inside either half-width box (issuer, Bill To, Ship To,
+  // bank details) — box edge to box edge, less the 2mm inner padding each side.
+  const COL_INNER_W = (COL_SPLIT - 2) - (M + 2);
+
+  // ── Text fitting ───────────────────────────────────────────────────────────
+  // Everything printed on this document is user-supplied (client addresses,
+  // company settings), so nothing may be drawn at its natural width: an
+  // over-long value has to wrap or shrink inside its box rather than run across
+  // the column divider or off the page edge.
+
+  // Wrap to a max width and return the lines. Leaves font + size set.
+  const wrap = (text, maxW, size, style = 'normal') => {
+    doc.setFont(F, style);
+    doc.setFontSize(size);
+    return doc.splitTextToSize(String(text ?? ''), maxW);
+  };
+
+  // Single-line fields in fixed-height cells (invoice no., date, place of
+  // supply, signatory name) — wrapping would burst the cell, so shrink instead.
+  const drawFitted = (text, x, y, maxW, size, style, opts = {}, minSize = 6) => {
+    const s = String(text ?? '');
+    doc.setFont(F, style);
+    let fs = size;
+    doc.setFontSize(fs);
+    while (fs > minSize && doc.getTextWidth(s) > maxW) {
+      fs -= 0.25;
+      doc.setFontSize(fs);
+    }
+    doc.text(s, x, y, opts);
+  };
+
+  // Measure a "label normal + value bold" pair: the value wraps into whatever
+  // width the label leaves, continuation lines hanging-indented to line up
+  // under the value.
+  const labelValueLines = (label, value, maxW, size) => {
+    doc.setFont(F, 'normal');
+    doc.setFontSize(size);
+    const labelW = doc.getTextWidth(label);
+    doc.setFont(F, 'bold');
+    const lines = doc.splitTextToSize(String(value ?? ''), Math.max(maxW - labelW, 12));
+    return { labelW, lines };
+  };
+
+  // Draw a label/value pair. Returns the number of lines it occupied so callers
+  // can advance their cursor and size their box correctly.
+  const drawLabelValue = (label, value, x, y, size, maxW, lineH) => {
+    const { labelW, lines } = labelValueLines(label, value, maxW, size);
     doc.setFont(F, 'normal');
     doc.setFontSize(size);
     doc.text(label, x, y);
-    const labelW = doc.getTextWidth(label);
     doc.setFont(F, 'bold');
-    doc.text(String(value), x + labelW, y);
+    lines.forEach((l, i) => doc.text(l, x + labelW, y + i * lineH));
+    return lines.length;
   };
 
   // ── Top title strip ────────────────────────────────────────────────────────
@@ -203,7 +248,18 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   const ISSUER_PAD_B = 0;
   const BILL_PAD_T = 5; // gap above the biller name — matches the company name's top padding (ISSUER_PAD_T)
   const BILL_PAD_B = 0;
-  const issuerContentH = issuerBlocks.reduce((sum, b) => sum + b.lineH, 0);
+  // Measuring pass: expand every block to the lines that will actually be
+  // drawn, so a wrapped address line grows the box instead of running past it.
+  issuerBlocks.forEach((b) => {
+    if (b.spacer) { b.count = 1; return; }
+    if (b.label !== undefined) {
+      b.count = labelValueLines(b.label, b.value, COL_INNER_W, b.size).lines.length;
+      return;
+    }
+    b.wrapped = wrap(b.text, COL_INNER_W, b.size, b.bold ? 'bold' : 'normal');
+    b.count = b.wrapped.length;
+  });
+  const issuerContentH = issuerBlocks.reduce((sum, b) => sum + b.lineH * b.count, 0);
   const META_ROW_H = 13;
   const META_ROWS = 3;
   const metaContentH = META_ROW_H * META_ROWS;
@@ -220,14 +276,13 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   issuerBlocks.forEach((b) => {
     if (b.spacer) { ly += b.lineH; return; }
     if (b.label !== undefined) {
-      drawLabelValue(b.label, b.value, M + 2, ly, b.size);
-      ly += b.lineH;
+      const n = drawLabelValue(b.label, b.value, M + 2, ly, b.size, COL_INNER_W, b.lineH);
+      ly += b.lineH * n;
       return;
     }
     doc.setFont(F, b.bold ? 'bold' : 'normal');
     doc.setFontSize(b.size);
-    doc.text(b.text, M + 2, ly);
-    ly += b.lineH;
+    b.wrapped.forEach((l) => { doc.text(l, M + 2, ly); ly += b.lineH; });
   });
 
   // Right column — 3 stacked rows: (Invoice No | Date), (Place of Supply), (filler)
@@ -244,31 +299,29 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   const metaInnerSplit = metaX + metaW / 2;
   doc.line(metaInnerSplit, metaRow1Y, metaInnerSplit, metaRow2Y);
 
+  // These rows are a fixed 13mm tall, so their values shrink rather than wrap.
+  const META_HALF_W = metaW / 2 - 4;
+  const META_FULL_W = metaW - 4;
+
   // Row 1 — Invoice No (left) | Date (right). Labels small normal, values 10pt bold.
   doc.setFont(F, 'normal');
   doc.setFontSize(9);
   doc.text('Invoice No.:', metaX + 2, metaRow1Y + 4.5);
-  doc.setFont(F, 'bold');
-  doc.setFontSize(10);
-  doc.text(invoice.invoiceNumber || '', metaX + 2, metaRow1Y + 10);
+  drawFitted(invoice.invoiceNumber || '', metaX + 2, metaRow1Y + 10, META_HALF_W, 10, 'bold');
 
   doc.setFont(F, 'normal');
   doc.setFontSize(9);
   doc.text('Date:', metaInnerSplit + 2, metaRow1Y + 4.5);
-  doc.setFont(F, 'bold');
-  doc.setFontSize(10);
-  doc.text(fmtDate(invoice.date), metaInnerSplit + 2, metaRow1Y + 10);
+  drawFitted(fmtDate(invoice.date), metaInnerSplit + 2, metaRow1Y + 10, META_HALF_W, 10, 'bold');
 
   // Row 2 — Place of Supply (spans)
   doc.setFont(F, 'normal');
   doc.setFontSize(9);
   doc.text('Place of Supply:', metaX + 2, metaRow2Y + 4.5);
-  doc.setFont(F, 'bold');
-  doc.setFontSize(10);
   const posText = invoice.placeOfSupply
     ? `${invoice.placeOfSupply.stateName || ''}${invoice.placeOfSupply.stateCode ? ` (${invoice.placeOfSupply.stateCode})` : ''}`
     : '';
-  doc.text(posText, metaX + 2, metaRow2Y + 10);
+  drawFitted(posText, metaX + 2, metaRow2Y + 10, META_FULL_W, 10, 'bold');
 
   // Row 3 intentionally empty
 
@@ -276,19 +329,36 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   const billTop = headerTop + headerH;
   const STRIP_H = 5.5;
 
+  // Each side gets exactly half the frame, so every string is wrapped to the
+  // column's inner width here — a long street line (very common in these
+  // addresses) otherwise runs straight through the divider into the other
+  // party's block, and on the Ship To side, off the page.
   const buildAddressBlocks = (snapshot, addr) => {
-    const name = snapshot?.billingName || snapshot?.name || '';
+    const nameLines = wrap(snapshot?.billingName || snapshot?.name || '', COL_INNER_W, 10, 'bold');
     const addressLines = [
       addr?.line1,
       addr?.line2,
       [addr?.city, addr?.pincode].filter(Boolean).join(' '),
       [addr?.state, addr?.stateCode ? `(${addr.stateCode})` : '', addr?.country].filter(Boolean).join(', ')
-    ].filter((s) => s && String(s).trim()).map(String);
+    ]
+      .filter((s) => s && String(s).trim())
+      .flatMap((s) => wrap(s, COL_INNER_W, 9, 'normal'));
     const idRows = [];
     if (snapshot?.phone) idRows.push({ label: 'Phone : ', value: String(snapshot.phone) });
     if (snapshot?.gstin) idRows.push({ label: 'GSTIN : ', value: String(snapshot.gstin) });
     if (snapshot?.pan) idRows.push({ label: 'PAN : ', value: String(snapshot.pan) });
-    return { name, addressLines, idRows };
+    // Label sits left, value right-aligned. If the pair can't share a line, the
+    // value drops underneath instead of colliding with its own label.
+    idRows.forEach((r) => {
+      doc.setFont(F, 'normal');
+      doc.setFontSize(9);
+      const labelW = doc.getTextWidth(r.label);
+      doc.setFont(F, 'bold');
+      r.inline = labelW + doc.getTextWidth(r.value) <= COL_INNER_W;
+      r.valueLines = r.inline ? [r.value] : doc.splitTextToSize(r.value, COL_INNER_W);
+      r.count = r.inline ? 1 : 1 + r.valueLines.length;
+    });
+    return { nameLines, addressLines, idRows };
   };
 
   const bill = buildAddressBlocks(invoice.clientSnapshot, invoice.billTo);
@@ -301,9 +371,10 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   // Trailing gap below PAN (mirrors the issuer's tighter last-line spacing).
   const LAST_ID_ROW_H = 3;
   const sideContentH = (b) =>
-    NAME_H + b.addressLines.length * ADDR_LINE_H + (b.idRows.length ? 1.5 : 0) +
-    Math.max(0, b.idRows.length - 1) * ID_ROW_H +
-    (b.idRows.length > 0 ? LAST_ID_ROW_H : 0);
+    b.nameLines.length * NAME_H + b.addressLines.length * ADDR_LINE_H +
+    (b.idRows.length ? 1.5 : 0) +
+    b.idRows.reduce((sum, r, i) =>
+      sum + r.count * (i === b.idRows.length - 1 ? LAST_ID_ROW_H : ID_ROW_H), 0);
   const billContentH = Math.max(sideContentH(bill), sideContentH(ship));
   const billH = STRIP_H + BILL_PAD_T + billContentH + BILL_PAD_B;
 
@@ -328,8 +399,7 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
     let y = billTop + STRIP_H + BILL_PAD_T;
     doc.setFont(F, 'bold');
     doc.setFontSize(10);
-    doc.text(content.name, xStart + 2, y);
-    y += NAME_H;
+    content.nameLines.forEach((l) => { doc.text(l, xStart + 2, y); y += NAME_H; });
     doc.setFont(F, 'normal');
     doc.setFontSize(9);
     content.addressLines.forEach((line) => {
@@ -338,12 +408,18 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
     });
     if (content.idRows.length) y += 1.5;
     content.idRows.forEach((row, i) => {
+      const rowH = (i === content.idRows.length - 1) ? LAST_ID_ROW_H : ID_ROW_H;
       doc.setFont(F, 'normal');
       doc.setFontSize(9);
       doc.text(row.label, xStart + 2, y);
       doc.setFont(F, 'bold');
-      doc.text(row.value, xEnd - 2, y, { align: 'right' });
-      y += (i === content.idRows.length - 1) ? LAST_ID_ROW_H : ID_ROW_H;
+      if (row.inline) {
+        doc.text(row.valueLines[0], xEnd - 2, y, { align: 'right' });
+        y += rowH;
+      } else {
+        y += rowH;
+        row.valueLines.forEach((l) => { doc.text(l, xEnd - 2, y, { align: 'right' }); y += rowH; });
+      }
     });
   };
   drawSide(M, COL_SPLIT, bill);
@@ -475,38 +551,60 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   doc.setFont(F, 'normal');
   doc.setFontSize(9);
   if (invoice.amountInWords) {
-    doc.text(`Amount Chargeable (in Words): ${invoice.amountInWords}  E & O.E`, M, ty);
+    // Crore-scale amounts spell out longer than the page is wide.
+    const WORDS_LINE_H = 4;
+    const wordsLines = wrap(
+      `Amount Chargeable (in Words): ${invoice.amountInWords}  E & O.E`,
+      PAGE_W - 2 * M, 9
+    );
+    wordsLines.forEach((l, i) => doc.text(l, M, ty + i * WORDS_LINE_H));
+    ty += (wordsLines.length - 1) * WORDS_LINE_H;
   }
 
   // ── Bank details + signatory ───────────────────────────────────────────────
   const footerTop = ty + 6;
-  doc.setDrawColor(BORDER[0], BORDER[1], BORDER[2]);
-  doc.rect(M, footerTop, PAGE_W - 2 * M, 28);
-  doc.line(COL_SPLIT, footerTop, COL_SPLIT, footerTop + 28);
-
-  // Spacing 5.5mm uniformly so the 5 lines (header + 4 data) fill the 28mm box height —
-  // header at +5, last (Account Name) lands at +27, leaving only ~1mm to the box bottom.
-  let fy = footerTop + 5;
   const BANK_LINE_H = 5.2;
+
+  const bankRows = [
+    ['Bank Name : ', settings?.bank?.bankName],
+    ['Account Number : ', settings?.bank?.accountNumber],
+    ['IFSC Code : ', settings?.bank?.ifsc],
+    ['Account Name : ', settings?.bank?.accountName]
+  ].filter(([, v]) => v);
+
+  // Measure before drawing the frame: a long account name (or any bank field
+  // that wraps) must grow the box, not print through its bottom edge. 28mm is
+  // the floor so the usual 4-field case keeps the sample's proportions.
+  const bankLineCount = bankRows.reduce(
+    (sum, [label, value]) => sum + labelValueLines(label, value, COL_INNER_W, 9).lines.length, 0
+  );
+  const FOOTER_H = Math.max(28, 5 + (1 + bankLineCount) * BANK_LINE_H + 1);
+
+  doc.setDrawColor(BORDER[0], BORDER[1], BORDER[2]);
+  doc.rect(M, footerTop, PAGE_W - 2 * M, FOOTER_H);
+  doc.line(COL_SPLIT, footerTop, COL_SPLIT, footerTop + FOOTER_H);
+
+  // Header at +5, then one 5.2mm line per bank field.
+  let fy = footerTop + 5;
   doc.setFont(F, 'bold');
   doc.setFontSize(9);
   doc.text('Bank Details:', M + 2, fy);
   fy += BANK_LINE_H;
-  if (settings?.bank?.bankName) { drawLabelValue('Bank Name : ', settings.bank.bankName, M + 2, fy, 9); fy += BANK_LINE_H; }
-  if (settings?.bank?.accountNumber) { drawLabelValue('Account Number : ', settings.bank.accountNumber, M + 2, fy, 9); fy += BANK_LINE_H; }
-  if (settings?.bank?.ifsc) { drawLabelValue('IFSC Code : ', settings.bank.ifsc, M + 2, fy, 9); fy += BANK_LINE_H; }
-  if (settings?.bank?.accountName) { drawLabelValue('Account Name : ', settings.bank.accountName, M + 2, fy, 9); fy += BANK_LINE_H; }
+  bankRows.forEach(([label, value]) => {
+    const n = drawLabelValue(label, value, M + 2, fy, 9, COL_INNER_W, BANK_LINE_H);
+    fy += BANK_LINE_H * n;
+  });
 
   // Signatory centered in right column (matches sample)
   const sigCenterX = (COL_SPLIT + (PAGE_W - M)) / 2;
+  const SIG_W = (PAGE_W - M) - COL_SPLIT - 4;
   doc.setFont(F, 'normal');
   doc.setFontSize(9);
   doc.text('Authorised Signatory', sigCenterX, footerTop + 5, { align: 'center' });
-  doc.setFont(F, 'bold');
-  doc.text(settings?.authorisedSignatory?.name || '', sigCenterX, footerTop + 22, { align: 'center' });
-  doc.setFont(F, 'normal');
-  doc.setFontSize(8);
-  doc.text(settings?.authorisedSignatory?.title || '', sigCenterX, footerTop + 26, { align: 'center' });
+  drawFitted(settings?.authorisedSignatory?.name || '', sigCenterX, footerTop + FOOTER_H - 6,
+    SIG_W, 9, 'bold', { align: 'center' });
+  drawFitted(settings?.authorisedSignatory?.title || '', sigCenterX, footerTop + FOOTER_H - 2,
+    SIG_W, 8, 'normal', { align: 'center' });
 
   // ── Watermark (drawn LAST, on every page) ─────────────────────────────────
   // Done after all content + after all pages exist so it cannot influence

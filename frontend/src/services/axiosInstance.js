@@ -62,10 +62,38 @@ let refreshPromise = null;
 const isAuthEndpoint = (url = '') =>
   url.includes('api/login') || url.includes('api/refresh') || url.includes('api/logout');
 
+// Distinguishes "the server told us the session is over" from "we couldn't reach the
+// server". Only the former justifies destroying the user's session.
+const isSessionDead = (err) => {
+  const status = err?.response?.status;
+  return status === 401 || status === 403;
+};
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Retry the refresh call itself on transient failures. A serverless/M0 backend that
+// has scaled to zero routinely takes several seconds on the first hit, and that first
+// hit is very often the refresh (the user came back to a sleeping tab). One retry with
+// a short backoff turns a spurious logout into an invisible half-second pause.
+const refreshWithRetry = async (attempts = 3) => {
+  let lastErr;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      return await axiosInstance.post('api/refresh', null, { timeout: 20000 });
+    } catch (err) {
+      lastErr = err;
+      if (isSessionDead(err)) throw err;      // definitive — don't retry, don't mask it
+      // eslint-disable-next-line no-await-in-loop
+      if (i < attempts - 1) await sleep(800 * (i + 1));
+    }
+  }
+  throw lastErr;
+};
+
 const performRefresh = () => {
   if (refreshPromise) return refreshPromise;
-  refreshPromise = axiosInstance
-    .post('api/refresh')
+  refreshPromise = refreshWithRetry()
     .then((res) => {
       const { token, user } = res.data || {};
       if (token) localStorage.setItem('token', token);
@@ -117,9 +145,17 @@ axiosInstance.interceptors.response.use(
       config.headers = { ...config.headers, Authorization: `Bearer ${newToken}` };
       return axiosInstance(config);
     } catch (refreshErr) {
-      // Refresh failed → genuine session expiry. Clear credentials and redirect now,
-      // deterministically, instead of relying on a component's catch + a delayed snackbar.
-      forceLogout();
+      // Refresh failed — but WHY it failed decides whether the session is dead.
+      //
+      //   401/403 from /api/refresh  → the refresh token really is gone/expired/revoked.
+      //                                Session is dead, log out.
+      //   no response (timeout, ERR_NETWORK, tab offline, cold serverless start)
+      //   or 5xx / 429              → transient infrastructure failure. The refresh
+      //                                token is still perfectly valid. Logging out here
+      //                                was the main cause of "random" logouts: one slow
+      //                                cold start on the API and the user is at /login,
+      //                                mid-form, with unsaved work gone.
+      if (isSessionDead(refreshErr)) forceLogout();
       return Promise.reject(error);
     }
   }

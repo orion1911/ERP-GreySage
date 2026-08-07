@@ -185,6 +185,29 @@ const refresh = async (req, res) => {
         }
       }
     }
+
+    // ── Recovery path ────────────────────────────────────────────────────────
+    // While tokenId was missing from RefreshTokenSchema, Mongoose silently dropped
+    // it on save, so live sessions have a hash but no handle — the $elemMatch above
+    // can never find them. Without this, restoring the schema would still log every
+    // currently-signed-in user out on deploy. Match those handle-less entries by
+    // secret; rotation below rewrites them in the correct format, so this branch
+    // stops being reachable after one refresh-token TTL and can then be deleted.
+    if (!matchedUser) {
+      const candidates = await User.find({ 'refreshTokens.expiresAt': { $gt: now } })
+        .select('+refreshTokens');
+      outer: for (const user of candidates) {
+        for (const entry of user.refreshTokens) {
+          if (entry.tokenId || entry.expiresAt <= now) continue;
+          // eslint-disable-next-line no-await-in-loop
+          if (await compareRefreshToken(parts.secret, entry.tokenHash)) {
+            matchedUser = user;
+            matchedEntry = entry;
+            break outer;
+          }
+        }
+      }
+    }
   } else {
     // ── Legacy path: pre-upgrade cookie with no tokenId. Scan as before. ───────
     const candidates = await User.find({ 'refreshTokens.expiresAt': { $gt: now } })

@@ -85,8 +85,16 @@ const AuthenticatedLayout = ({ isMobile, variant, setVariant }) => {
 
     if (typeof error === 'object' && error !== null) {
       const status = error.response?.status;
-      if (status === 401 || status === 403) {
-        severity = 'sessionError';
+      // 403 = "you are logged in but not allowed to do this" (restrictTo / invalid
+      // token). It is NOT session expiry, and treating it as one was logging users
+      // out every time they touched an admin-only endpoint.
+      //
+      // 401 is already fully handled by the axios interceptor: it runs the silent
+      // refresh and, only if that genuinely fails, calls forceLogout(). By the time a
+      // 401 reaches here the session has ALREADY been decided on, so we must not
+      // second-guess it with a 6-second timer that wipes localStorage.
+      if (status === 403) {
+        message = error.response?.data?.error || 'You do not have permission to do that.';
       }
       else if (error.response?.data?.error) {
         message = error.response.data.error;

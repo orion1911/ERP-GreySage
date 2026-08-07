@@ -80,7 +80,14 @@ const refreshWithRetry = async (attempts = 3) => {
   for (let i = 0; i < attempts; i += 1) {
     try {
       // eslint-disable-next-line no-await-in-loop
-      return await axiosInstance.post('api/refresh', null, { timeout: 20000 });
+      // Body MUST be {} and not null. The instance sets Content-Type: application/json
+      // unconditionally, so axios JSON-stringifies whatever is passed — `null` is sent
+      // as the four literal bytes `null`, and express.json() runs in strict mode, where
+      // a top-level non-object is a parse error. That surfaces as a 500 from the error
+      // handler BEFORE the route is ever reached, so every refresh fails and the user
+      // is stranded on an expired access token. Passing {} (or omitting the arg
+      // entirely) is what the original call did.
+      return await axiosInstance.post('api/refresh', {}, { timeout: 20000 });
     } catch (err) {
       lastErr = err;
       if (isSessionDead(err)) throw err;      // definitive — don't retry, don't mask it

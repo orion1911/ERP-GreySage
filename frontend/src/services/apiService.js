@@ -1240,6 +1240,27 @@ const apiService = {
         return response.data;
       } catch (error) { throw error; }
     },
+    // Hide a stale excel row from the bell. Returns the updated (filtered) diff.
+    discard: async (lotNumber, bill, reason) => {
+      try {
+        const response = await axiosInstance.post('api/makings/discard', { lotNumber, bill, reason });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    // Un-hide a previously discarded row. Also returns the updated diff.
+    restore: async (lotNumber, bill, lotKey) => {
+      try {
+        const response = await axiosInstance.post('api/makings/restore', { lotNumber, bill, lotKey });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    // The currently hidden rows (bell's "Hidden" view).
+    getDiscards: async () => {
+      try {
+        const response = await axiosInstance.get('api/makings/discards');
+        return response.data;
+      } catch (error) { throw error; }
+    },
   },
 };
 

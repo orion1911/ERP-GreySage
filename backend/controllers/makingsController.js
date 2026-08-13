@@ -2,7 +2,14 @@
 // Serves the MAKINGS excel ↔ MongoDB reconciliation to the in-app notification bell.
 // The bell READ hits the stored (precomputed) result so it returns instantly; the
 // ~15s workbook parse only runs in the cron/precompute job and the manual refresh.
-const { getStoredMakingsDiff, runMakingsRecon, resolveLotDiscrepancy } = require('../services/makingsReconService');
+const {
+  getStoredMakingsDiff,
+  runMakingsRecon,
+  resolveLotDiscrepancy,
+  discardDiscrepancy,
+  restoreDiscrepancy,
+  listDiscards,
+} = require('../services/makingsReconService');
 
 // GET /api/makings/diff — fast read of the last stored reconciliation.
 const getMakingsDiffController = async (req, res) => {
@@ -41,4 +48,49 @@ const resolveMakingsController = async (req, res) => {
   }
 };
 
-module.exports = { getMakingsDiffController, refreshMakingsController, resolveMakingsController };
+// POST /api/makings/discard — hide a stale excel row from the bell. Returns the
+// updated (filtered) diff so the caller can just swap its list, no extra read.
+const discardMakingsController = async (req, res) => {
+  try {
+    const { lotNumber, bill, reason } = req.body || {};
+    if (!lotNumber) return res.status(400).json({ success: false, error: 'lotNumber is required' });
+    const result = await discardDiscrepancy({ lotNumber, bill, reason, userId: req.user?.userId });
+    return res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('makings discard failed:', err.message);
+    return res.status(500).json({ success: false, error: 'Could not hide this row' });
+  }
+};
+
+// POST /api/makings/restore — un-hide a previously discarded row.
+const restoreMakingsController = async (req, res) => {
+  try {
+    const { lotNumber, bill, lotKey } = req.body || {};
+    if (!lotNumber && !lotKey) return res.status(400).json({ success: false, error: 'lotNumber or lotKey is required' });
+    const result = await restoreDiscrepancy({ lotNumber, bill, lotKey });
+    return res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('makings restore failed:', err.message);
+    return res.status(500).json({ success: false, error: 'Could not restore this row' });
+  }
+};
+
+// GET /api/makings/discards — the hidden rows, for the bell's "Hidden" view.
+const getMakingsDiscardsController = async (req, res) => {
+  try {
+    const discards = await listDiscards();
+    return res.json({ success: true, count: discards.length, discards });
+  } catch (err) {
+    console.error('makings discards read failed:', err.message);
+    return res.status(500).json({ success: false, error: 'Could not read hidden rows' });
+  }
+};
+
+module.exports = {
+  getMakingsDiffController,
+  refreshMakingsController,
+  resolveMakingsController,
+  discardMakingsController,
+  restoreMakingsController,
+  getMakingsDiscardsController,
+};

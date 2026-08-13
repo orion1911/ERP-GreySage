@@ -24,6 +24,7 @@
 // repeated bell opens cheap, mirroring the 5-min cache of the old Python service.
 // ─────────────────────────────────────────────────────────────────────────────
 const XLSX = require('xlsx');
+const crypto = require('crypto');
 const {
   Lot,
   Stitching,
@@ -31,6 +32,7 @@ const {
   Finishing,
   WashingVendor,
   MakingsDiff,
+  MakingsDiscard,
 } = require('../mongodb_schema');
 
 // Default maker sheets (overridable via env MAKINGS_MAKER_SHEETS). These are the
@@ -637,7 +639,10 @@ const runMakingsRecon = async () => {
     };
     await MakingsDiff.findOneAndUpdate({ key: 'latest' }, doc, { upsert: true, new: true });
     const { excelRows, ...clientDoc } = doc; // don't ship the snapshot to callers/UI
-    return clientDoc;
+    // Persist the FULL result above (discards are a display-layer concern — a hidden row
+    // must stay in the stored doc so a restore doesn't need another 15s recon), then
+    // filter for the caller.
+    return applyDiscards(clientDoc);
   } catch (err) {
     await MakingsDiff.findOneAndUpdate(
       { key: 'latest' },
@@ -648,14 +653,130 @@ const runMakingsRecon = async () => {
   }
 };
 
+// ─── Discards (user-hidden rows) ─────────────────────────────────────────────
+// The workbook holds old lots nobody is going to enter into the app, and the recon
+// re-derives them from the excel on every run — so a flag ON the discrepancy would be
+// wiped by the next refresh. Instead we keep a small separate collection keyed by the
+// lot, and filter on READ. Three things fall out of that:
+//   • compute stays pure — no discard logic inside the ~15s job;
+//   • a discard takes effect immediately, without waiting for a recon;
+//   • a restore is instant, because the discrepancy was never actually deleted.
+//
+// The key mirrors aggregateRows(): lotNumber + the NUMERIC bill, so "007" and "7"
+// (and a blank bill vs. a 0 bill) can't create two different discards for one row.
+const discardKey = (lotNumber, bill) => `${String(lotNumber == null ? '' : lotNumber).trim()}|${toInt(bill)}`;
+
+// Fingerprint of what the user actually looked at when they hid the row. Field ORDER
+// isn't part of it (diffRow can emit fields in a different order run to run), but the
+// field/excel/db values are — so if the excel or the app changes, the fingerprint moves
+// and the row comes back rather than staying hidden behind a stale decision.
+const discrepancyFingerprint = (disc) => {
+  const sig = (disc.fields || [])
+    .map((f) => `${f.field}=${f.excel}→${f.db}`)
+    .sort()
+    .join('|');
+  return crypto.createHash('sha1').update(`${disc.inDb ? 1 : 0}::${sig}`).digest('hex').slice(0, 16);
+};
+
+// Strip discarded rows out of a diff result. A discard with a NULL fingerprint hides the
+// lot unconditionally; otherwise it only hides the exact state it was made against.
+const applyDiscards = async (result) => {
+  const list = result.discrepancies || [];
+  if (!list.length) return { ...result, discardedCount: 0 };
+
+  const discards = await MakingsDiscard.find({}).select('lotKey fingerprint').lean();
+  if (!discards.length) return { ...result, discardedCount: 0 };
+
+  const byKey = new Map(discards.map((d) => [d.lotKey, d]));
+  const kept = [];
+  let hidden = 0;
+
+  for (const d of list) {
+    const rec = byKey.get(discardKey(d.lotNumber, d.bill));
+    if (rec && (!rec.fingerprint || rec.fingerprint === discrepancyFingerprint(d))) {
+      hidden++;
+      continue;
+    }
+    // Was discarded, but the values have moved since — surface it again, tagged so the
+    // bell can show WHY a row the user thought they'd dealt with is back.
+    kept.push(rec ? { ...d, changedSinceDiscard: true } : d);
+  }
+
+  return { ...result, discrepancies: kept, count: kept.length, discardedCount: hidden };
+};
+
 // ─── Read the stored diff (fast — this is what the bell request hits) ─────────
 // excelRows is the internal snapshot for re-diffing — never sent to the UI.
 const getStoredMakingsDiff = async () => {
   const doc = await MakingsDiff.findOne({ key: 'latest' }).select('-excelRows').lean();
   if (!doc) {
-    return { count: 0, discrepancies: [], scannedRows: 0, sheets: [], status: 'empty', generatedAt: null };
+    return { count: 0, discrepancies: [], scannedRows: 0, sheets: [], status: 'empty', generatedAt: null, discardedCount: 0 };
   }
-  return doc;
+  return applyDiscards(doc);
+};
+
+// The discarded rows themselves, newest first — powers the bell's "Hidden" view.
+const listDiscards = async () => {
+  const docs = await MakingsDiscard.find({})
+    .sort({ discardedAt: -1 })
+    .populate('discardedBy', 'name username')
+    .lean();
+  return docs.map((d) => ({
+    lotKey: d.lotKey,
+    lotNumber: d.lotNumber,
+    bill: d.bill,
+    client: d.client,
+    maker: d.maker,
+    reason: d.reason,
+    discardedAt: d.discardedAt,
+    discardedBy: d.discardedBy?.name || d.discardedBy?.username || '',
+    // Rendered by the same row component as a live discrepancy.
+    ...(d.snapshot || {}),
+    discarded: true,
+  }));
+};
+
+// Hide a row. We fingerprint against the STORED discrepancy rather than anything the
+// client sends, so a stale bell tab can't pin the discard to values that were never real.
+// If the row isn't in the current stored diff (already resolved, or discarded from a stale
+// list) we still record it with a null fingerprint — a later recon that brings it back
+// will find it already hidden, which is the whole point of the feature.
+const discardDiscrepancy = async ({ lotNumber, bill, reason, userId } = {}) => {
+  if (!lotNumber) throw new Error('lotNumber is required');
+  const lotKey = discardKey(lotNumber, bill);
+
+  const doc = await MakingsDiff.findOne({ key: 'latest' }).select('discrepancies').lean();
+  const match = (doc?.discrepancies || []).find((d) => discardKey(d.lotNumber, d.bill) === lotKey);
+
+  await MakingsDiscard.findOneAndUpdate(
+    { lotKey },
+    {
+      $set: {
+        lotKey,
+        lotNumber: String(lotNumber),
+        bill: bill == null ? '' : String(bill),
+        client: match?.client || '',
+        maker: match?.maker || '',
+        fingerprint: match ? discrepancyFingerprint(match) : null,
+        snapshot: match || {},
+        reason: (reason || '').trim().slice(0, 300),
+        discardedBy: userId || null,
+        discardedAt: new Date(),
+      },
+    },
+    { upsert: true }
+  );
+
+  return getStoredMakingsDiff();
+};
+
+// Un-hide a row. Nothing to recompute — the discrepancy was never deleted, so dropping
+// the suppression is enough to bring it straight back on the next read.
+const restoreDiscrepancy = async ({ lotNumber, bill, lotKey } = {}) => {
+  const key = lotKey || (lotNumber ? discardKey(lotNumber, bill) : null);
+  if (!key) throw new Error('lotNumber or lotKey is required');
+  await MakingsDiscard.deleteOne({ lotKey: key });
+  return getStoredMakingsDiff();
 };
 
 // ─── Re-diff a SINGLE lot after its record was created/edited, and update the ──
@@ -675,7 +796,7 @@ const resolveLotDiscrepancy = async ({ lotNumber } = {}) => {
   const snapshot = doc.excelRows || [];
   // Without a snapshot (first-ever run, or a status:'error' doc) we can't re-diff — leave the
   // stored result untouched rather than blindly deleting a still-valid discrepancy.
-  if (!snapshot.length) return strip(doc);
+  if (!snapshot.length) return applyDiscards(strip(doc));
 
   // Match by lotNumber only (unique in the app): re-diff ALL its excel rows against the current
   // DB, and replace ALL its stored discrepancies. Avoids bill-normalisation edge cases.
@@ -694,7 +815,7 @@ const resolveLotDiscrepancy = async ({ lotNumber } = {}) => {
     { key: 'latest', generatedAt: doc.generatedAt },
     { $set: { discrepancies: nextDiscrepancies, count: nextDiscrepancies.length } }
   );
-  return { ...strip(doc), discrepancies: nextDiscrepancies, count: nextDiscrepancies.length };
+  return applyDiscards({ ...strip(doc), discrepancies: nextDiscrepancies, count: nextDiscrepancies.length });
 };
 
 module.exports = {
@@ -702,6 +823,10 @@ module.exports = {
   runMakingsRecon,
   getStoredMakingsDiff,
   resolveLotDiscrepancy,
+  discardDiscrepancy,
+  restoreDiscrepancy,
+  listDiscards,
+  discardKey,
   parseWorkbook,
   parsePcsShort,
   excelStage,

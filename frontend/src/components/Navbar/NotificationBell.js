@@ -10,7 +10,8 @@ import {
   ErrorOutline as MissingIcon, Search as SearchIcon, Close as ClearIcon,
   ChevronRight as ChevronIcon, ArrowRightAlt as ArrowIcon, CheckCircleOutline as OkIcon,
   Add as AddIcon, ContentCut as StitchIcon, LocalLaundryService as WashIcon,
-  AutoAwesome as FinishIcon,
+  AutoAwesome as FinishIcon, VisibilityOff as HideIcon, Undo as RestoreIcon,
+  HistoryToggleOff as ChangedIcon,
 } from '@mui/icons-material';
 import apiService from '../../services/apiService';
 import EllipsisText from '../common/EllipsisText';
@@ -93,9 +94,11 @@ function NotificationBell() {
   const [refreshing, setRefreshing] = useState(false); // manual recompute
   const [error, setError] = useState('');
   const [items, setItems] = useState([]);
-  const [meta, setMeta] = useState({ status: 'empty', generatedAt: null });
+  const [meta, setMeta] = useState({ status: 'empty', generatedAt: null, discardedCount: 0 });
   const [filterText, setFilterText] = useState('');
   const [groups, setGroups] = useState(['create', 'mismatch']); // multi-select toggles; both = show all
+  const [discarded, setDiscarded] = useState([]);   // rows the user has hidden
+  const [busyKey, setBusyKey] = useState('');       // lot currently being hidden/restored
   const mounted = useRef(true);
   const refreshingRef = useRef(false); // guards a poll/focus read from stomping an in-flight refresh
 
@@ -105,7 +108,11 @@ function NotificationBell() {
   const applyResult = useCallback((res) => {
     if (!mounted.current) return;
     setItems(res.discrepancies || []);
-    setMeta({ status: res.status || 'ok', generatedAt: res.generatedAt || null });
+    setMeta({
+      status: res.status || 'ok',
+      generatedAt: res.generatedAt || null,
+      discardedCount: res.discardedCount || 0,
+    });
   }, []);
 
   // Fast read of the stored result.
@@ -136,6 +143,47 @@ function NotificationBell() {
       if (mounted.current) setRefreshing(false);
     }
   }, [applyResult]);
+
+  // The hidden list is only needed when the user opens the "Hidden" view, so it's
+  // loaded on demand rather than on every poll.
+  const loadDiscards = useCallback(async () => {
+    try {
+      const res = await apiService.makings.getDiscards();
+      if (mounted.current) setDiscarded(res.discards || []);
+    } catch (err) {
+      if (mounted.current) setError(err.response?.data?.error || err.message || 'Could not load hidden rows');
+    }
+  }, []);
+
+  // Hide a stale row. The server returns the updated (already filtered) diff, so the
+  // list swap is one round trip — no follow-up read, no optimistic state to reconcile.
+  const doDiscard = useCallback(async (it) => {
+    const key = `${it.lotNumber}-${it.bill}`;
+    setBusyKey(key);
+    setError('');
+    try {
+      applyResult(await apiService.makings.discard(it.lotNumber, it.bill));
+      if (groups.includes('hidden')) await loadDiscards();
+    } catch (err) {
+      if (mounted.current) setError(err.response?.data?.error || err.message || 'Could not hide this row');
+    } finally {
+      if (mounted.current) setBusyKey('');
+    }
+  }, [applyResult, groups, loadDiscards]);
+
+  const doRestore = useCallback(async (it) => {
+    const key = `${it.lotNumber}-${it.bill}`;
+    setBusyKey(key);
+    setError('');
+    try {
+      applyResult(await apiService.makings.restore(it.lotNumber, it.bill, it.lotKey));
+      await loadDiscards();
+    } catch (err) {
+      if (mounted.current) setError(err.response?.data?.error || err.message || 'Could not restore this row');
+    } finally {
+      if (mounted.current) setBusyKey('');
+    }
+  }, [applyResult, loadDiscards]);
 
   // Read on mount (login), then poll + refetch when the tab regains focus. Also
   // re-read when a lot's record is created/edited (StitchingManagement fires
@@ -181,25 +229,31 @@ function NotificationBell() {
   const matchesFilter = (it) => !q || `${it.lotNumber || ''} ${it.bill || ''}`.toLowerCase().includes(q);
   const showCreate = groups.includes('create');
   const showMismatch = groups.includes('mismatch');
+  const showHidden = groups.includes('hidden');
   const visibleMissing = showCreate ? items.filter((it) => missingKind(it) && matchesFilter(it)) : [];
   const visibleMismatch = showMismatch ? items.filter((it) => !missingKind(it) && matchesFilter(it)) : [];
-  const visibleCount = visibleMissing.length + visibleMismatch.length;
+  const visibleHidden = showHidden ? discarded.filter(matchesFilter) : [];
+  const visibleCount = visibleMissing.length + visibleMismatch.length + visibleHidden.length;
 
   const hasFailure = meta.status === 'error' || Boolean(error);
   const subtitle = refreshing
     ? 'Recomputing… (~15s)'
     : `synced ${timeAgo(meta.generatedAt)}`;
 
-  const renderItem = (it) => {
+  const renderItem = (it, { hidden = false } = {}) => {
     const mk = missingKind(it);
     const StageIcon = mk ? STAGE_ICON[mk] : null;
     const meta = [it.client, it.maker].filter(Boolean).join(' · '); // CLIENT · MAKER/vendor
+    const rowKey = `${it.lotNumber}-${it.bill}`;
+    const busy = busyKey === rowKey;
     return (
       <ListItemButton
-        key={`${it.lotNumber}-${it.bill}`}
+        key={rowKey}
         onClick={() => handleItemClick(it)}
         sx={{
           alignItems: 'flex-start', py: 1.25, px: 2, gap: 1,
+          // Hidden rows read as inactive so they can't be mistaken for live work.
+          ...(hidden ? { opacity: 0.62 } : null),
           // Theme `divider` is too faint on the dark paper to read as a row separator —
           // use a slightly stronger hairline, and drop it on the last row of the group.
           borderBottom: (t) => `1px solid ${t.palette.mode === 'dark' ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.08)'}`,
@@ -212,6 +266,11 @@ function NotificationBell() {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
             <Typography variant="body2" sx={{ fontWeight: 700, flexShrink: 0 }}>{it.lotNumber}</Typography>
             {it.bill && <Chip size="small" variant="outlined" label={`Bill ${it.bill}`} sx={{ height: 20, flexShrink: 0, '& .MuiChip-label': { px: 0.75, fontSize: '.7rem' } }} />}
+            {it.changedSinceDiscard && (
+              <Tooltip title="You hid this row, but the excel or the app has changed since — showing it again." arrow placement="top">
+                <ChangedIcon sx={{ fontSize: 15, color: 'warning.main', flexShrink: 0 }} />
+              </Tooltip>
+            )}
             {meta && <EllipsisText text={meta} variant="caption" sx={{ color: 'text.secondary', maxWidth: 180 }} />}
             {mk && StageIcon && (
               <Tooltip title={MISSING_LABEL[mk]} arrow placement="top">
@@ -235,10 +294,27 @@ function NotificationBell() {
             cells centre-align, so warning and chevron share the same vertical axis. */}
         <Box sx={{ display: 'flex', flexDirection: 'column', flexShrink: 0, alignSelf: 'stretch', alignItems: 'center' }}>
           <Box sx={{ height: 22, display: 'flex', alignItems: 'center' }}>
-            {mk && <MissingIcon color={STAGE_COLOR[mk]} titleAccess="Missing record" sx={{ fontSize: 18 }} />}
+            {mk && <MissingIcon color={STAGE_COLOR[mk]} titleAccess="Missing record" sx={{ fontSize: 18 }} />}  
+                      
+            {/* stopPropagation: the row itself navigates to the pre-filled form, so the
+                hide/restore control must not trigger it. */}
+            <Tooltip title={hidden ? 'Restore — show in the bell again' : 'Hide'} arrow placement="right">
+              <span>
+                <IconButton
+                  size="small"
+                  disabled={busy}
+                  onClick={(e) => { e.stopPropagation(); (hidden ? doRestore : doDiscard)(it); }}
+                  sx={{ p: 0.25, ml: 0.5, mr: 0, color: 'text.disabled', '&:hover': { color: hidden ? 'primary.main' : 'text.primary' } }}
+                >
+                  {busy
+                    ? <CircularProgress size={14} />
+                    : hidden ? <RestoreIcon sx={{ fontSize: 17 }} /> : <HideIcon sx={{ fontSize: 17 }} />}
+                </IconButton>
+              </span>
+            </Tooltip>
           </Box>
-          <Box sx={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-            <ChevronIcon className="nav-caret" sx={{ color: 'text.disabled', fontSize: 22 }} />
+          <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 0.25 }}>
+            {!hidden && <ChevronIcon className="nav-caret" sx={{ color: 'text.disabled', fontSize: 22 }} />}
           </Box>
         </Box>
       </ListItemButton>
@@ -303,7 +379,7 @@ function NotificationBell() {
         </Box>
 
         {/* ── Triage summary + filter (fixed) ── */}
-        {items.length > 0 && (
+        {(items.length > 0 || meta.discardedCount > 0) && (
           <Box sx={{ px: 2, pb: 1.25, flexShrink: 0 }}>
             {/* Filter toggles styled like physical buttons: raised when off, pressed (inset) when on.
                 Multi-select — both on by default (show all); turn one off to hide that group.
@@ -311,7 +387,11 @@ function NotificationBell() {
             <ToggleButtonGroup
               size="small"
               value={groups}
-              onChange={(e, v) => { if (v.length) setGroups(v); }}
+              onChange={(e, v) => {
+                if (!v.length) return; // at least one group must stay selected
+                if (v.includes('hidden') && !groups.includes('hidden')) loadDiscards();
+                setGroups(v);
+              }}
               sx={{
                 display: 'flex', gap: 1, mb: 1,
                 '& .MuiToggleButton-root': {
@@ -343,6 +423,16 @@ function NotificationBell() {
               >
                 <MissingIcon sx={{ fontSize: 16 }} />
                 {missingCount} to create
+              </ToggleButton>
+              <ToggleButton
+                value="hidden" disabled={!meta.discardedCount}
+                sx={{
+                  color: 'text.secondary',
+                  '&.Mui-selected': { bgcolor: 'action.selected', color: 'text.primary', '&:hover': { bgcolor: 'action.selected' } },
+                }}
+              >
+                <HideIcon sx={{ fontSize: 16 }} />
+                {meta.discardedCount}
               </ToggleButton>
               <ToggleButton
                 value="mismatch" disabled={!mismatchCount}
@@ -400,7 +490,7 @@ function NotificationBell() {
             </Box>
           )}
 
-          {!error && meta.status !== 'empty' && items.length === 0 && !loading && (
+          {!error && meta.status !== 'empty' && items.length === 0 && !visibleHidden.length && !loading && (
             <Box sx={{ px: 2, py: 5, textAlign: 'center' }}>
               <OkIcon sx={{ fontSize: 34, color: 'success.main', mb: 1 }} />
               <Typography variant="body2" color="text.secondary">
@@ -409,7 +499,7 @@ function NotificationBell() {
             </Box>
           )}
 
-          {items.length > 0 && visibleCount === 0 && (
+          {(items.length > 0 || discarded.length > 0) && visibleCount === 0 && (
             <Box sx={{ px: 2, py: 4, textAlign: 'center' }}>
               <Typography variant="body2" color="text.secondary">No lots match “{filterText}”.</Typography>
             </Box>
@@ -419,7 +509,7 @@ function NotificationBell() {
             <>
               <GroupHeader count={visibleMissing.length}>Needs creating</GroupHeader>
               <List dense disablePadding>
-                {visibleMissing.map(renderItem)}
+                {visibleMissing.map((it) => renderItem(it))}
               </List>
             </>
           )}
@@ -428,7 +518,16 @@ function NotificationBell() {
             <>
               <GroupHeader count={visibleMismatch.length}>Data mismatches</GroupHeader>
               <List dense disablePadding>
-                {visibleMismatch.map(renderItem)}
+                {visibleMismatch.map((it) => renderItem(it))}
+              </List>
+            </>
+          )}
+
+          {visibleHidden.length > 0 && (
+            <>
+              <GroupHeader count={visibleHidden.length}>Hidden</GroupHeader>
+              <List dense disablePadding>
+                {visibleHidden.map((it) => renderItem(it, { hidden: true }))}
               </List>
             </>
           )}

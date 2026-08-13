@@ -826,9 +826,35 @@ const MakingsDiffSchema = new mongoose.Schema({
   generatedAt: { type: Date, default: Date.now },
 });
 
+// MakingsDiscard Schema: rows the user has marked "don't show me this again".
+// The workbook carries old lots we are never going to enter into the app; without this
+// every recon re-surfaces them in the bell forever. A discard is a DISPLAY-LAYER
+// suppression only — the recon still computes the discrepancy (so excelRows stays whole
+// and a restore is instant), we just filter it out when serving the bell.
+// `fingerprint` pins the discard to the values it was made against: if the excel or the
+// app values later change, the row RESURFACES instead of silently staying hidden — so a
+// discard can never bury a genuinely new disagreement on the same lot.
+const MakingsDiscardSchema = new mongoose.Schema({
+  lotKey: { type: String, required: true, unique: true }, // `${lotNumber}|${toInt(bill)}`
+  lotNumber: { type: String, required: true },
+  bill: { type: String, default: '' },
+  client: { type: String, default: '' },
+  maker: { type: String, default: '' },
+  // sha1 of the discrepancy's fields at discard time. null ⇒ hide unconditionally
+  // (used when the row isn't in the current stored diff yet).
+  fingerprint: { type: String, default: null },
+  // The discrepancy as it looked when discarded, so the "Discarded" view can render
+  // it without re-running the recon.
+  snapshot: { type: Object, default: {} },
+  reason: { type: String, default: '' },
+  discardedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  discardedAt: { type: Date, default: Date.now },
+});
+
 module.exports = {
   Counter: mongoose.model('Counter', CounterSchema),
   MakingsDiff: mongoose.model('MakingsDiff', MakingsDiffSchema),
+  MakingsDiscard: mongoose.model('MakingsDiscard', MakingsDiscardSchema),
   User: mongoose.model('User', UserSchema),
   Client: mongoose.model('Client', ClientSchema),
   FitStyle: mongoose.model('FitStyle', FitStyleSchema),

@@ -93,10 +93,13 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
     Promise.all([itemsP, consP])
       .then(([items, rows]) => {
         if (!active) return;
+        const sortedItems = [...(items || [])].sort(
+          (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+        );
         const prefill = {};
         (rows || []).forEach(r => { prefill[String(r.accessoryItemId)] = r.qty; });
-        setZipperItems(items || []);
-        setValue('zipperConsumption', (items || []).map(i => ({
+        setZipperItems(sortedItems);
+        setValue('zipperConsumption', (sortedItems).map(i => ({
           accessoryItemId: i._id,
           name: i.name,
           qty: prefill[String(i._id)] != null ? prefill[String(i._id)] : 0,

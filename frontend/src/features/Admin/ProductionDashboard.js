@@ -262,9 +262,6 @@ const ProductionDashboard = () => {
                 </Stack>
             </Stack>
 
-            {/* Error Message */}
-            {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
-
             {/* Loading State */}
             {loading && (
                 <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300 }}>

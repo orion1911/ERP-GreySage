@@ -589,8 +589,6 @@ const VendorPaymentManagement = () => {
                 Vendor Payments
             </Typography>
 
-            {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
-
             {/* Filters — padding/margin matches the Sales Invoices filter Paper */}
             <Paper sx={{ p: { xs: 1.5, md: 2 }, mb: 2 }}>
                     <Grid container spacing={2}>

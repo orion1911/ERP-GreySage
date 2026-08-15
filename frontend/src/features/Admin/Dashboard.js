@@ -246,9 +246,6 @@ const Dashboard = () => {
                 </Stack>
             </Stack>
 
-            {/* Error Message */}
-            {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
-
             {/* KPI Cards */}
             <AnimatePresence mode="wait">
                 <motion.div

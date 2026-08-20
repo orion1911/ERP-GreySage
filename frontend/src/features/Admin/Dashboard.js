@@ -19,6 +19,8 @@ import {
     useTheme,
     useMediaQuery,
     IconButton,
+    TextField,
+    MenuItem,
 } from '@mui/material';
 import { BarChart } from '@mui/x-charts/BarChart';
 import { PieChart } from '@mui/x-charts/PieChart';
@@ -32,6 +34,8 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import PendingActionsIcon from '@mui/icons-material/PendingActions';
+import DryCleaningIcon from '@mui/icons-material/DryCleaning';
+import HourglassTopIcon from '@mui/icons-material/HourglassTop';
 import { useOutletContext } from 'react-router-dom';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -54,6 +58,8 @@ const Dashboard = () => {
     const [breakdownPage, setBreakdownPage] = useState(0);
     const [breakdownRowsPerPage, setBreakdownRowsPerPage] = useState(25);
     const [dateRange, setDateRange] = useState([dayjs('2026-01-01'), dayjs(new Date())]);
+    const [clientFilter, setClientFilter] = useState(''); // '' = All clients (default)
+    const [clients, setClients] = useState([]);
 
     // KPI Data
     const [kpiData, setKpiData] = useState({
@@ -61,6 +67,7 @@ const Dashboard = () => {
         totalMaking: 0,
         totalInWashing: 0,
         totalOutWashing: 0,
+        totalAwaitingFinishing: 0,
         totalInFinishing: 0,
         totalPendingDispatch: 0,
         totalPartDispatchPending: 0,
@@ -71,6 +78,7 @@ const Dashboard = () => {
     const [clientSummary, setClientSummary] = useState([]);
     const [washerSummary, setWasherSummary] = useState([]);
     const [stitchingVendorSummary, setStitchingVendorSummary] = useState([]);
+    const [finishingVendorSummary, setFinishingVendorSummary] = useState([]);
     const [breakdownData, setBreakdownData] = useState([]);
     const [stitchingBreakdownData, setStitchingBreakdownData] = useState([]);
     const [stitchingBreakdownPage, setStitchingBreakdownPage] = useState(0);
@@ -88,6 +96,7 @@ const Dashboard = () => {
             const params = {};
             if (dateRange[0]) params.fromDate = dateRange[0].startOf('day').toISOString();
             if (dateRange[1]) params.toDate = dateRange[1].endOf('day').toISOString();
+            if (clientFilter) params.clientId = clientFilter;
             const data = await apiService.admin.dashboard.getProductionDashboard(params);
 
             if (data.error) {
@@ -101,6 +110,7 @@ const Dashboard = () => {
                 totalMaking: data.total_making || 0,
                 totalInWashing: data.total_in_washing || 0,
                 totalOutWashing: data.total_out_washing || 0,
+                totalAwaitingFinishing: data.total_awaiting_finishing || 0,
                 totalInFinishing: data.total_in_finishing || 0,
                 totalPendingDispatch: data.total_pending_dispatch || 0,
                 totalPartDispatchPending: data.total_part_dispatch_pending || 0,
@@ -110,6 +120,7 @@ const Dashboard = () => {
             setClientSummary(data.client_summary || []);
             setWasherSummary(data.washer_summary || []);
             setStitchingVendorSummary(data.stitching_vendor_summary || []);
+            setFinishingVendorSummary(data.finishing_vendor_summary || []);
             setBreakdownData(data.rows || []);
             setStitchingBreakdownData(data.stitching_breakdown || []);
             // setBreakdownData(data.rows?.sort((a, b) => a.CLIENT.localeCompare(b.CLIENT)) || []);
@@ -126,10 +137,22 @@ const Dashboard = () => {
         }
     };
 
-    // Load data on mount and when date range changes
+    // Load data on mount and when the date range or client filter changes
     useEffect(() => {
         loadData();
-    }, [dateRange]);
+    }, [dateRange, clientFilter]);
+
+    // Client list for the filter dropdown (active clients only) — one fetch on mount.
+    useEffect(() => {
+        apiService.client.getClients('')
+            .then((list) => setClients(Array.isArray(list) ? list : []))
+            .catch(() => setClients([]));
+    }, []);
+
+    // Breakdown tables hidden (2026-08): their intent — per-client pending lots/pcs — moved to
+    // filter-aware totals on the Stitching page. Backend builders are commented in
+    // dashboardController.js; flip BOTH this flag and those comments to restore.
+    const SHOW_BREAKDOWNS = false;
 
     // Chart Colors based on theme
     const chartColors = {
@@ -137,6 +160,7 @@ const Dashboard = () => {
         teal: theme.palette.mode === 'dark' ? '#3CC4B4' : '#2AA89A',
         amber: theme.palette.mode === 'dark' ? '#F0A820' : '#D4920A',
         indigo: theme.palette.mode === 'dark' ? '#7B88E0' : '#5C6AC4',
+        violet: theme.palette.mode === 'dark' ? '#A98BE8' : '#9966FF', // matches the In Finishing KPI card
     };
 
     // Prepare data for MUI X Charts
@@ -146,7 +170,12 @@ const Dashboard = () => {
         { label: 'Total', data: clientTop.map((r) => r.TOTAL || 0) },
         { label: 'Making', data: clientTop.map((r) => r.MAKING || 0) },
         { label: 'In Washing', data: clientTop.map((r) => r.IN_WASHING || 0) },
-        { label: 'Completed', data: clientTop.map((r) => r.OUT_WASHING || 0) },
+        // Stage series are mutually exclusive: each lot's pcs appear in exactly one of
+        // Making / In Washing / Awaiting Finishing / In Finishing (finished lots only in
+        // Total). The Out Washing SUPERSET (= awaiting + in finishing + finished) lives in
+        // the table and its own KPI card, not here, so no bar double-counts another.
+        { label: 'Awaiting Finishing', data: clientTop.map((r) => r.AWAITING_FINISHING || 0) },
+        { label: 'In Finishing', data: clientTop.map((r) => r.IN_FINISHING || 0) },
     ];
 
     const washerData = washerSummary.map((r) => ({ label: r.WASHER || '', value: r.PENDING || 0 }));
@@ -160,11 +189,14 @@ const Dashboard = () => {
     };
 
     // KPI Card Component
-    const KPICard = ({ icon: Icon, label, value, subtitle, color }) => (
+    const KPICard = ({ icon: Icon, label, shortLabel, value, subtitle, color }) => (
         <Paper
             elevation={1}
             sx={{
-                p: { xs: 1.5, sm: 2 },
+                p: { xs: 1, sm: 1.5 },
+                // Row-stretch instead of a fixed height: cards equal their row's tallest
+                // (alignItems:'stretch' on the Grid container), with zero reserved slack.
+                height: '100%',
                 borderRadius: 2,
                 border: `1px solid ${theme.palette.divider}`,
                 borderTop: 'none',
@@ -192,11 +224,11 @@ const Dashboard = () => {
                 },
             }}
         >
-            <Stack spacing={1}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 0.5, sm: 1 }, flex: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Box
                         sx={{
-                            p: 1,
+                            p: { xs: 0.5, sm: 1 },
                             borderRadius: 1,
                             backgroundColor: `${color}20`,
                             display: 'flex',
@@ -204,19 +236,21 @@ const Dashboard = () => {
                             justifyContent: 'center',
                         }}
                     >
-                        <Icon sx={{ color, fontSize: 24 }} />
+                        <Icon sx={{ color, fontSize: { xs: 16, sm: 24 } }} />
                     </Box>
                 </Box>
-                <Typography variant="overline" sx={{ textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1.5, color: 'text.secondary', fontSize: '0.65rem' }}>
-                    {label}
+                <Typography variant="overline" sx={{ textTransform: 'uppercase', fontWeight: 700, letterSpacing: { xs: 0.2, sm: 0.8 }, color: 'text.secondary', fontSize: { xs: '0.5rem', sm: '0.6rem' }, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    <Box component="span" sx={{ display: { xs: shortLabel ? 'none' : 'inline', sm: 'inline' } }}>{label}</Box>
+                    {shortLabel && <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>{shortLabel}</Box>}
                 </Typography>
-                <Typography variant="h3" sx={{ fontWeight: 700, color, lineHeight: 1, fontSize: { xs: '1.2rem', sm: '1.6rem', md: '2rem' } }}>
+                <Typography variant="h3" sx={{ fontWeight: 700, color, lineHeight: 1, fontSize: { xs: '0.95rem', sm: '1.35rem', md: '1.5rem' }, mt: { xs: 'auto', sm: 0 } }}>
                     {formatNumber(value)}
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500, fontSize: '0.75rem' }}>
+                {/* Subtitle hidden at xs — a 4-per-row card (~90px) can't fit it legibly. */}
+                <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontWeight: 500, fontSize: '0.7rem', display: { xs: 'none', sm: 'block' } }}>
                     {subtitle}
                 </Typography>
-            </Stack>
+            </Box>
         </Paper>
     );
 
@@ -230,6 +264,20 @@ const Dashboard = () => {
             >
                 <Typography variant="h4">Dashboard</Typography>
                 <Stack direction="row" alignItems="center" justifyContent="flex-start" sx={{ gap: 2 }}>
+                    <TextField
+                        select
+                        size="small"
+                        variant="standard"
+                        value={clientFilter}
+                        onChange={(e) => setClientFilter(e.target.value)}
+                        sx={{ minWidth: 120, maxWidth: 160 }}
+                        SelectProps={{ displayEmpty: true }}
+                    >
+                        <MenuItem value="">All Clients</MenuItem>
+                        {clients.map((c) => (
+                            <MenuItem key={c._id} value={c._id}>{c.name}</MenuItem>
+                        ))}
+                    </TextField>
                     <LocalizationProvider dateAdapter={AdapterDayjs}>
                         <DateRangePicker
                             value={dateRange}
@@ -255,12 +303,12 @@ const Dashboard = () => {
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15 }}
                 >
-                    <Grid container spacing={2} sx={{ mb: 4, alignItems: 'stretch' }}>
+                    <Grid container columns={{ xs: 12, sm: 12, md: 8 }} spacing={{ xs: 1, sm: 2 }} sx={{ mb: 3, alignItems: 'stretch' }}>
                         {loading ? (
-                            [0, 1, 2, 3, 4, 5].map((i) => (
-                                <Grid key={i} size={{ xs: 6, sm: 4, md: 2 }}>
-                                    <Paper elevation={1} sx={{ p: 2, borderRadius: 2 }}>
-                                        <Skeleton variant="circular" width={40} height={40} sx={{ mb: 1 }} />
+                            [0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                                <Grid key={i} size={{ xs: 3, sm: 3, md: 1 }}>
+                                    <Paper elevation={1} sx={{ p: { xs: 1, sm: 1.5 }, borderRadius: 2, height: '100%', boxSizing: 'border-box' }}>
+                                        <Skeleton variant="circular" sx={{ width: { xs: 22, sm: 40 }, height: { xs: 22, sm: 40 }, mb: 1 }} />
                                         <Skeleton variant="text" width="50%" height={16} />
                                         <Skeleton variant="text" width="70%" height={36} sx={{ my: 0.5 }} />
                                         <Skeleton variant="text" width="60%" height={14} />
@@ -273,11 +321,13 @@ const Dashboard = () => {
                                     { label: 'Total Pieces', value: kpiData.totalPcs, subtitle: 'All tracked items', color: '#5C6AC4', icon: GridViewIcon },
                                     { label: 'Making', value: kpiData.totalMaking, subtitle: 'In production', color: '#E8634A', icon: ContentCutIcon },
                                     { label: 'In Washing', value: kpiData.totalInWashing, subtitle: 'Being processed', color: '#D4920A', icon: LocalLaundryServiceIcon },
+                                    { label: 'Out Washing', value: kpiData.totalOutWashing, subtitle: 'Washed out (cumulative)', color: '#3E8FC4', icon: DryCleaningIcon },
+                                    { label: 'Awaiting Finishing', shortLabel: 'To Finish', value: kpiData.totalAwaitingFinishing, subtitle: 'No finishing entry yet', color: '#C2545E', icon: HourglassTopIcon },
                                     { label: 'In Finishing', value: kpiData.totalInFinishing, subtitle: 'Being finished', color: '#9966FF', icon: AutoAwesomeIcon },
-                                    { label: 'Pending Dispatch', value: kpiData.totalPendingDispatch, subtitle: `${formatNumber(kpiData.totalPartDispatchPending)} - part-dispatch`, color: '#E8923D', icon: PendingActionsIcon },
+                                    { label: 'Pending Dispatch', shortLabel: 'To Dispatch', value: kpiData.totalPendingDispatch, subtitle: `${formatNumber(kpiData.totalPartDispatchPending)} - part-dispatch`, color: '#E8923D', icon: PendingActionsIcon },
                                     { label: 'Dispatched', value: kpiData.totalDispatched, subtitle: 'Pieces dispatched', color: '#2AA89A', icon: LocalShippingIcon },
                                 ].map((card, i) => (
-                                    <Grid key={card.label} size={{ xs: 6, sm: 4, md: 2 }}>
+                                    <Grid key={card.label} size={{ xs: 3, sm: 3, md: 1 }}>
                                         <motion.div
                                             initial={{ opacity: 0, y: 20 }}
                                             animate={{ opacity: 1, y: 0 }}
@@ -304,7 +354,7 @@ const Dashboard = () => {
                     transition={{ duration: 0.15 }}
                 >
                     {loading ? (
-                        <Grid container spacing={3} sx={{ mb: 4, alignItems: 'stretch' }}>
+                        <Grid container spacing={3} sx={{ mb: 3, alignItems: 'stretch' }}>
                             {[0, 1].map((i) => (
                                 <Grid key={i} size={{ xs: 12, sm: 6, md: 6 }}>
                                     <Paper elevation={1} sx={{ p: 2, borderRadius: 2 }}>
@@ -321,7 +371,7 @@ const Dashboard = () => {
                             display: 'flex',
                             flexDirection: { xs: 'column', sm: 'row' },
                             gap: 3,
-                            mb: 4,
+                            mb: 3,
                             alignItems: 'stretch',
                             height: { xs: 'auto', sm: 420 }
                         }}>
@@ -337,18 +387,19 @@ const Dashboard = () => {
                                         <BarChart
                                             series={clientSeries}
                                             xAxis={[{
-                                                height: 70,
+                                                height: clientFilter ? 40 : 70,
                                                 scaleType: 'band', data: clientLabels,
                                                 labelStyle: {
                                                     fontSize: 14,
                                                 },
                                                 tickLabelStyle: {
-                                                    angle: -45,
+                                                    // One bar when a client is filtered — no crowding, so keep it horizontal.
+                                                    angle: clientFilter ? 0 : -45,
                                                     fontSize: 11,
                                                 }
                                             }]}
                                             height={320}
-                                            colors={[chartColors.indigo, chartColors.coral, chartColors.amber, chartColors.teal]}
+                                            colors={[chartColors.indigo, chartColors.coral, chartColors.amber, chartColors.teal, chartColors.violet]}
                                             margin={{ left: 0, right: 0, top: 10, bottom: 40 }}
                                             slotProps={{
                                                 legend: { hidden: false },
@@ -415,13 +466,19 @@ const Dashboard = () => {
                                                     In Washing
                                                 </TableCell>
                                                 <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                                    Completed
+                                                    Out Washing
+                                                </TableCell>
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Awaiting Finish
+                                                </TableCell>
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    In Finishing
                                                 </TableCell>
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
                                             {loading ? (
-                                                <TableRowsLoader colsNum={5} rowsNum={5} />
+                                                <TableRowsLoader colsNum={7} rowsNum={5} />
                                             ) : clientSummary.length > 0 ? (
                                                 clientSummary.map((row, idx) => (
                                                     <TableRow key={idx} hover>
@@ -438,11 +495,82 @@ const Dashboard = () => {
                                                         <TableCell align="center">
                                                             <Chip label={formatNumber(row.OUT_WASHING || 0)} size="small" color="success" variant="filled" />
                                                         </TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.AWAITING_FINISHING || 0)} size="small" color="warning" variant="filled" />
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.IN_FINISHING || 0)} size="small" color="secondary" variant="filled" />
+                                                        </TableCell>
                                                     </TableRow>
                                                 ))
                                             ) : (
                                                 <TableRow>
-                                                    <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                                    <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                                        No data available
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            </motion.div>
+                        </AnimatePresence>
+                    </Paper>
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
+                        <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                Stitching Summary
+                            </Typography>
+                        </Box>
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={loading ? 'stitching-vendor-loading' : 'stitching-vendor-data'}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.15 }}
+                                style={{ flex: 1, overflow: 'auto' }}
+                            >
+                                <TableContainer sx={{ height: '100%' }}>
+                                    <Table>
+                                        <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
+                                            <TableRow>
+                                                <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', pl: 2 }}>Vendor</TableCell>
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Total
+                                                </TableCell>
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    In Stitching
+                                                </TableCell>
+                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                                                    Completed
+                                                </TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {loading ? (
+                                                <TableRowsLoader colsNum={4} rowsNum={5} />
+                                            ) : stitchingVendorSummary.length > 0 ? (
+                                                stitchingVendorSummary.map((row, idx) => (
+                                                    <TableRow key={idx} hover>
+                                                        <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.STITCHING_VENDOR}</TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.TOTAL || 0)} size="small" color="default" variant="outlined" />
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.IN_STITCHING || 0)} size="small" color="error" variant="filled" />
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <Chip label={formatNumber(row.COMPLETED || 0)} size="small" color="success" variant="filled" />
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            ) : (
+                                                <TableRow>
+                                                    <TableCell colSpan={4} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                                                         No data available
                                                     </TableCell>
                                                 </TableRow>
@@ -525,28 +653,17 @@ const Dashboard = () => {
                         </AnimatePresence>
                     </Paper>
                 </Grid>
-            </Grid>
 
-            {/* Stitching Vendor Summary + Breakdown — flex row with both Papers at the same
-                fixed height so they end at the same Y. Fixed (not vh) so the dashboard's
-                overall flow stays predictable; 600px fits ~10 breakdown rows + chrome. */}
-            <Box sx={{
-                display: 'flex',
-                flexDirection: { xs: 'column', md: 'row' },
-                gap: 3,
-                mb: 4,
-                alignItems: 'stretch',
-                height: { xs: 'auto', md: 600 }
-            }}>
-                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: { xs: '0 0 500px', md: '1 1 0' }, minHeight: 0 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
                         <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
                             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                Stitching Summary
+                                Finishing Summary
                             </Typography>
                         </Box>
                         <AnimatePresence mode="wait">
                             <motion.div
-                                key={loading ? 'stitching-vendor-loading' : 'stitching-vendor-data'}
+                                key={loading ? 'finishing-vendor-loading' : 'finishing-vendor-data'}
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
@@ -562,7 +679,7 @@ const Dashboard = () => {
                                                     Total
                                                 </TableCell>
                                                 <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                                    In Stitching
+                                                    In Finishing
                                                 </TableCell>
                                                 <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
                                                     Completed
@@ -572,15 +689,15 @@ const Dashboard = () => {
                                         <TableBody>
                                             {loading ? (
                                                 <TableRowsLoader colsNum={4} rowsNum={5} />
-                                            ) : stitchingVendorSummary.length > 0 ? (
-                                                stitchingVendorSummary.map((row, idx) => (
+                                            ) : finishingVendorSummary.length > 0 ? (
+                                                finishingVendorSummary.map((row, idx) => (
                                                     <TableRow key={idx} hover>
-                                                        <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.STITCHING_VENDOR}</TableCell>
+                                                        <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.FINISHING_VENDOR}</TableCell>
                                                         <TableCell align="center">
                                                             <Chip label={formatNumber(row.TOTAL || 0)} size="small" color="default" variant="outlined" />
                                                         </TableCell>
                                                         <TableCell align="center">
-                                                            <Chip label={formatNumber(row.IN_STITCHING || 0)} size="small" color="error" variant="filled" />
+                                                            <Chip label={formatNumber(row.IN_FINISHING || 0)} size="small" color="error" variant="filled" />
                                                         </TableCell>
                                                         <TableCell align="center">
                                                             <Chip label={formatNumber(row.COMPLETED || 0)} size="small" color="success" variant="filled" />
@@ -600,6 +717,21 @@ const Dashboard = () => {
                             </motion.div>
                         </AnimatePresence>
                     </Paper>
+                </Grid>
+            </Grid>
+
+            {/* Stitching Vendor Summary + Breakdown — flex row with both Papers at the same
+                fixed height so they end at the same Y. Fixed (not vh) so the dashboard's
+                overall flow stays predictable; 600px fits ~10 breakdown rows + chrome. */}
+            {SHOW_BREAKDOWNS && (
+            <Box sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', md: 'row' },
+                gap: 3,
+                mb: 4,
+                alignItems: 'stretch',
+                height: { xs: 'auto', md: 600 }
+            }}>
 
                     <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: { xs: '0 0 562px', md: '1 1 0' }, minHeight: 0 }}>
                         <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}`, flexShrink: 0 }}>
@@ -723,8 +855,10 @@ const Dashboard = () => {
                         )}
                     </Paper>
             </Box>
+            )}
 
-            {/* Detailed Breakdown */}
+            {/* Detailed Breakdown (Washing) — hidden with SHOW_BREAKDOWNS */}
+            {SHOW_BREAKDOWNS && (
             <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden' }}>
                 <Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -862,6 +996,7 @@ const Dashboard = () => {
                     />
                 )}
             </Paper>
+            )}
 
             {/* Footer */}
             <Stack direction="row" justifyContent="center" alignItems="center" spacing={2} sx={{ mt: 4, pt: 3, borderTop: `1px solid ${theme.palette.divider}`, textAlign: 'center' }}>

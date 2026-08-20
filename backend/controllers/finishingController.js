@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const { Finishing, Lot, Washing } = require('../mongodb_schema');
 const accessoryService = require('../services/accessoryService');
 const { bumpVendorLedgers } = require('../services/vendorBalanceService');
+const { invalidateDashboard } = require('../services/dashboardCache');
 
 // Accessory basis = how many pcs the entered accessories cover. Clamp to [0, quantity]; an
 // invalid/blank value means "the whole lot" (= quantity). Stored so Finishing Vendor Extras can
@@ -74,6 +75,7 @@ const createFinishing = async (req, res) => {
     session.endSession();
 
     await bumpVendorLedgers(['finishing']); // new finishing work changes the finishing vendor's balance
+    await invalidateDashboard(); // lot enters In Finishing (KPI + client column)
     const populated = await Finishing.findById(finishing._id).populate('vendorId lotId');
     res.status(201).json(populated);
   } catch (err) {
@@ -124,6 +126,7 @@ const updateFinishing = async (req, res) => {
     }
 
     await bumpVendorLedgers(['finishing']); // finishing edit changes the finishing vendor's balance
+    await invalidateDashboard(); // finishing qty/short edits move dispatch KPIs
     const populated = await Finishing.findById(id).populate('lotId vendorId');
     res.json(populated);
   } catch (err) {
@@ -155,6 +158,7 @@ const updateFinishingStatus = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
+    await invalidateDashboard(); // finish-out advances lot 4 -> 5: In Finishing -> Pending Dispatch
     const populated = await Finishing.findById(finishing._id).populate('vendorId lotId');
     res.status(201).json(populated);
 

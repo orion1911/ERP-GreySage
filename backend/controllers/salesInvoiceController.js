@@ -26,6 +26,7 @@ const {
 } = require('../services/invoiceService');
 const { updateClientBalance } = require('../services/clientBalanceService');
 const { bumpVersion } = require('../services/cache');
+const { invalidateDashboard } = require('../services/dashboardCache');
 const CLEDGER = 'cledger'; // must match clientBalanceController's client-ledger cache namespace
 const { logAction } = require('../utils/logger');
 
@@ -339,6 +340,8 @@ const updateLotDamaged = async (req, res) => {
   await logAction(req.user.userId, 'update_lot_damaged', 'Lot', lot._id,
     `Set damaged pcs to ${damagedPcs} for lot ${lot.lotNumber}`);
 
+  await invalidateDashboard(); // damagedPcs feeds the awaiting-dispatch subtraction
+
   res.json({
     _id: lot._id,
     lotNumber: lot.lotNumber,
@@ -424,6 +427,7 @@ const createInvoice = async (req, res) => {
   await Promise.all(affectedLotIds.map((id) => recalcLotInvoiced(id)));
   await updateClientBalance(clientId);
   await bumpVersion(CLEDGER); // invalidate cached client ledgers (invoice changes totalInvoiced)
+  await invalidateDashboard(); // invoicedPcs recalc moves Dispatched / Pending Dispatch KPIs
 
   await recordInvoiceHistory(invoice._id, 'create', null, invoice.toObject(), req.user.userId);
   await logAction(req.user.userId, 'create_invoice', 'Invoice', invoice._id, `Created invoice ${invoiceNumber} for ${client.name}`);
@@ -477,6 +481,7 @@ const updateInvoice = async (req, res) => {
   await Promise.all([...allAffected].map((lid) => recalcLotInvoiced(lid)));
   await updateClientBalance(existing.clientId);
   await bumpVersion(CLEDGER); // invalidate cached client ledgers (invoice changes totalInvoiced)
+  await invalidateDashboard(); // invoicedPcs recalc moves Dispatched / Pending Dispatch KPIs
 
   await recordInvoiceHistory(existing._id, 'update', before, existing.toObject(), req.user.userId);
   await logAction(req.user.userId, 'update_invoice', 'Invoice', existing._id, `Updated invoice ${existing.invoiceNumber}`);
@@ -505,6 +510,7 @@ const cancelInvoice = async (req, res) => {
   await Promise.all(affectedLotIds.map((lid) => recalcLotInvoiced(lid)));
   await updateClientBalance(invoice.clientId);
   await bumpVersion(CLEDGER); // invalidate cached client ledgers (invoice changes totalInvoiced)
+  await invalidateDashboard(); // invoicedPcs recalc moves Dispatched / Pending Dispatch KPIs
 
   await recordInvoiceHistory(invoice._id, 'cancel', before, invoice.toObject(), req.user.userId);
   await logAction(req.user.userId, 'cancel_invoice', 'Invoice', invoice._id, `Cancelled invoice ${invoice.invoiceNumber}`);
@@ -528,6 +534,7 @@ const deleteInvoice = async (req, res) => {
   await Promise.all(affectedLotIds.map((lid) => recalcLotInvoiced(lid)));
   await updateClientBalance(clientId);
   await bumpVersion(CLEDGER); // invalidate cached client ledgers (invoice changes totalInvoiced)
+  await invalidateDashboard(); // invoicedPcs recalc moves Dispatched / Pending Dispatch KPIs
 
   await recordInvoiceHistory(id, 'delete', before, null, req.user.userId);
   await logAction(req.user.userId, 'delete_invoice', 'Invoice', id, `Deleted invoice ${invoice.invoiceNumber}`);
@@ -898,6 +905,7 @@ const createManualDispatch = async (req, res) => {
   await recordManualDispatchHistory(entry._id, lotId, 'create', null, entry.toObject(), req.user.userId);
   await logAction(req.user.userId, 'create_manual_dispatch', 'ManualDispatch', entry._id,
     `Manually dispatched ${goodPcs} good + ${damagedPcs} damaged pcs for lot ${lot.lotNumber}`);
+  await invalidateDashboard(); // manual dispatch changes Lot.manualDispatchedPcs -> Pending Dispatch
 
   const updated = await Lot.findById(lotId).lean();
   res.status(201).json({ entry, lot: { _id: updated._id, status: updated.status, manualDispatchedPcs: updated.manualDispatchedPcs, manualDamagedSoldPcs: updated.manualDamagedSoldPcs } });
@@ -946,6 +954,7 @@ const updateManualDispatch = async (req, res) => {
   await recordManualDispatchHistory(entry._id, entry.lotId, 'update', before, entry.toObject(), req.user.userId);
   await logAction(req.user.userId, 'update_manual_dispatch', 'ManualDispatch', entry._id,
     `Updated manual dispatch to ${goodPcs} good + ${damagedPcs} damaged pcs`);
+  await invalidateDashboard(); // manual dispatch edit re-derives dispatch caches
 
   res.json(entry);
 };
@@ -968,6 +977,7 @@ const deleteManualDispatch = async (req, res) => {
   await recordManualDispatchHistory(id, lotId, 'delete', before, null, req.user.userId);
   await logAction(req.user.userId, 'delete_manual_dispatch', 'ManualDispatch', id,
     `Removed manual dispatch of ${before.goodPcs} good + ${before.damagedPcs} damaged pcs`);
+  await invalidateDashboard(); // manual dispatch removal restores Pending Dispatch pcs
 
   res.json({ success: true });
 };

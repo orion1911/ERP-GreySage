@@ -26,7 +26,7 @@ const ttlFromEnv = (v, def) => {
 const TTL = {
   masters: ttlFromEnv(process.env.CACHE_TTL_MASTERS, 3600),   // 1 hr
   ledger: ttlFromEnv(process.env.CACHE_TTL_LEDGER, 600),      // 10 min
-  dashboard: ttlFromEnv(process.env.CACHE_TTL_DASHBOARD, 600), // 10 min
+  dashboard: ttlFromEnv(process.env.CACHE_TTL_DASHBOARD, 60), // 1 min — dashboards must track writes closely; raise via env if M0 load becomes an issue
 };
 
 // Whether caching is active in this environment. We share ONE Upstash instance across

@@ -1,14 +1,22 @@
 const mongoose = require('mongoose');
 const { Lot, Client, FitStyle, Stitching, Washing, Finishing, VendorBalance, Invoice, AuditLog, StitchingVendor, WashingVendor } = require('../mongodb_schema');
 const { logAction } = require('../utils/logger');
-const { getOrSet, TTL } = require('../services/cache');
+const { getOrSet: cacheGetOrSet, TTL } = require('../services/cache');
 
 // Dashboard aggregations are expensive and depend on many write paths (lots, stitching,
 // washing, finishing, invoices), so precise invalidation isn't practical. They use a SHORT
 // TTL instead — slightly stale dashboard numbers are acceptable. (Correctness-critical reads
 // like ledgers use version bumps, not TTL.) One shared namespace; we never bump it.
 const DASH = 'dashboard';
-const DASH_TTL = TTL.dashboard; // env CACHE_TTL_DASHBOARD (default 600s / 10 min)
+const DASH_TTL = TTL.dashboard; // env CACHE_TTL_DASHBOARD (default 60s / 1 min)
+
+// Dashboard-only kill switch: CACHE_DASHBOARD_ENABLED=false bypasses Redis for THESE
+// endpoints only, leaving masters/ledger caching untouched (the global CACHE_ENABLED
+// switch in services/cache.js turns everything off). Shadowing the import here means
+// every call site below stays unchanged.
+const dashCacheEnabled = () => process.env.CACHE_DASHBOARD_ENABLED !== 'false';
+const getOrSet = (resource, parts, ttlSeconds, fetchFn) =>
+  dashCacheEnabled() ? cacheGetOrSet(resource, parts, ttlSeconds, fetchFn) : fetchFn();
 
 // Helper function to get date range filter
 const getDateRangeFilter = (query) => {
@@ -1118,9 +1126,13 @@ const getTopFitStyles = async (req, res) => {
 // Production Dashboard (mirrors DashboardExcel logic using MongoDB data)
 const getProductionDashboard = async (req, res) => {
   try {
-    const payload = await getOrSet(DASH, ['productionDashboard', req.query.fromDate, req.query.toDate], DASH_TTL, async () => {
+    const payload = await getOrSet(DASH, ['productionDashboard', req.query.fromDate, req.query.toDate, req.query.clientId], DASH_TTL, async () => {
     const startTime = Date.now();
     const { fromDate, toDate } = req.query;
+    // Optional client scope. Invalid/absent id -> unscoped (the 'All clients' default).
+    const clientOid = req.query.clientId && isValidObjectId(req.query.clientId)
+      ? new mongoose.Types.ObjectId(req.query.clientId)
+      : null;
 
     // Build date filter for stitching
     const stitchingMatch = {};
@@ -1135,6 +1147,9 @@ const getProductionDashboard = async (req, res) => {
       { $match: stitchingMatch },
       { $lookup: { from: 'lots', localField: 'lotId', foreignField: '_id', as: 'lot' } },
       { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+      // Client scope applied here propagates everywhere downstream for free: washing,
+      // finishing, and all summaries are keyed off these lotIds.
+      ...(clientOid ? [{ $match: { 'lot.clientId': clientOid } }] : []),
       { $lookup: { from: 'clients', localField: 'lot.clientId', foreignField: '_id', as: 'client' } },
       { $unwind: { path: '$client', preserveNullAndEmptyArrays: true } },
       { $lookup: { from: 'stitchingvendors', localField: 'vendorId', foreignField: '_id', as: 'vendor' } },
@@ -1183,6 +1198,11 @@ const getProductionDashboard = async (req, res) => {
         lotNumber: st.lotNumber || '',
         washerName: null,
         status: 'making',
+        // Finishing progress tracked SEPARATELY from `status` ('in' | 'out' | null).
+        // Deliberately not folded into `status`: washer_summary and the breakdown rows
+        // bucket by status, and a lot that advanced to finishing was still washed out by
+        // its washer — reclassifying it would silently shrink washer OUT_WASHING totals.
+        finishing: null,
       };
     }
 
@@ -1197,34 +1217,57 @@ const getProductionDashboard = async (req, res) => {
     }
 
     // Query finishing records and subtract finishing quantityShort
-    const finishingRecords = await Finishing.find({ lotId: { $in: lotIds } }).lean();
+    const finishingRecords = await Finishing.find({ lotId: { $in: lotIds } })
+      .populate('vendorId', 'name') // vendor names for the Finishing Summary table
+      .lean();
+    const finishingVendorMap = {};
     for (const fr of finishingRecords) {
       const lotId = fr.lotId?.toString();
       if (!lotId || !lotData[lotId]) continue;
       lotData[lotId].quantity -= (fr.quantityShort || 0);
+      // 'in' wins over 'out': any finishing record still open (no finishOutDate) means the
+      // lot is actively in finishing, regardless of other already-closed records for it.
+      if (!fr.finishOutDate) lotData[lotId].finishing = 'in';
+      else if (lotData[lotId].finishing !== 'in') lotData[lotId].finishing = 'out';
+
+      // Finishing vendor summary — mirrors the stitching vendor summary: net pcs from the
+      // finishing record's own quantities, split by whether finish-out is marked.
+      const vName = fr.vendorId?.name || 'Unknown';
+      if (!finishingVendorMap[vName]) finishingVendorMap[vName] = { total: 0, inFinishing: 0, completed: 0 };
+      const netQ = (fr.quantity || 0) - (fr.quantityShort || 0);
+      finishingVendorMap[vName].total += netQ;
+      if (fr.finishOutDate) finishingVendorMap[vName].completed += netQ;
+      else finishingVendorMap[vName].inFinishing += netQ;
     }
 
-    // Filter stitching records for lots not in washing or finishing
+    // lotsInWashing / lotsInFinishing stay live — the stitching VENDOR summary needs them.
     const lotsInWashing = new Set(washingRecords.map(w => w.lotId?.toString()).filter(Boolean));
     const lotsInFinishing = new Set(finishingRecords.map(f => f.lotId?.toString()).filter(Boolean));
-    const filteredStitchingRecords = stitchingRecords.filter(st => {
-      const lotId = st._lotId?.toString();
-      return lotId && !lotsInWashing.has(lotId) && !lotsInFinishing.has(lotId);
-    });
+    // Stitching-breakdown feed — disabled with the breakdown tables (2026-08), kept for re-enable:
+    // const filteredStitchingRecords = stitchingRecords.filter(st => {
+    //   const lotId = st._lotId?.toString();
+    //   return lotId && !lotsInWashing.has(lotId) && !lotsInFinishing.has(lotId);
+    // });
 
     // Compute KPIs, client summary, washer summary, breakdown
-    let totalPcs = 0, totalMaking = 0, totalInWashing = 0, totalOutWashing = 0;
+    let totalPcs = 0, totalMaking = 0, totalInWashing = 0, totalOutWashing = 0, totalAwaitingFinishing = 0;
     const clientMap = {};
     const washerMap = {};
     const breakdownMap = {};
 
     for (const lot of Object.values(lotData)) {
-      const { quantity, clientName, lotNumber, washerName, status } = lot;
+      const { quantity, clientName, lotNumber, washerName, status, finishing } = lot;
       totalPcs += quantity;
 
       // Client map
-      if (!clientMap[clientName]) clientMap[clientName] = { total: 0, making: 0, inWashing: 0, outWashing: 0 };
+      if (!clientMap[clientName]) clientMap[clientName] = { total: 0, making: 0, inWashing: 0, outWashing: 0, inFinishing: 0, awaitingFinishing: 0 };
       clientMap[clientName].total += quantity;
+      // Additive dimension, NOT part of the making/washing status split: a lot in finishing
+      // also counts in OUT_WASHING (it was washed out). The chart renders grouped (not
+      // stacked) bars, so the overlap is safe. Scope note: this column follows the table's
+      // stitching-date scope, so it will not reconcile with the "In Finishing" KPI card,
+      // which is scoped by Finishing.date and computed from good-pcs by lot status.
+      if (finishing === 'in') clientMap[clientName].inFinishing += quantity;
 
       // Washer map
       const washer = washerName || '\u2014';
@@ -1233,14 +1276,17 @@ const getProductionDashboard = async (req, res) => {
         washerMap[washerName].total += quantity;
       }
 
-      // Breakdown map (grouped by client + washer), exclude raw stitching/making rows from washing breakdown
+      // Breakdown tables are hidden from the dashboard (2026-08): their per-client intent is
+      // served by filter-aware totals on the Stitching page. The bKey/breakdownMap writes are
+      // commented — NOT deleted — so re-enabling is an uncomment, and the KPI totals below
+      // (which shared this if/else) keep running exactly as before.
       if (status !== 'making') {
-        const bKey = `${clientName}|${washer}`;
-        if (!breakdownMap[bKey]) {
-          breakdownMap[bKey] = { client: clientName, lots: new Set(), washer, pcs: 0, making: 0, inWashing: 0, outWashing: 0 };
-        }
-        if (lotNumber) breakdownMap[bKey].lots.add(lotNumber);
-        breakdownMap[bKey].pcs += quantity;
+        // const bKey = `${clientName}|${washer}`;
+        // if (!breakdownMap[bKey]) {
+        //   breakdownMap[bKey] = { client: clientName, lots: new Set(), washer, pcs: 0, making: 0, inWashing: 0, outWashing: 0 };
+        // }
+        // if (lotNumber) breakdownMap[bKey].lots.add(lotNumber);
+        // breakdownMap[bKey].pcs += quantity;
 
         if (status === 'inWashing') {
           totalInWashing += quantity;
@@ -1249,14 +1295,21 @@ const getProductionDashboard = async (req, res) => {
             washerMap[washerName].inWashing += quantity;
             washerMap[washerName].pending += quantity;
           }
-          breakdownMap[bKey].inWashing += quantity;
+          // breakdownMap[bKey].inWashing += quantity;
         } else if (status === 'outWashing') {
           totalOutWashing += quantity;
           clientMap[clientName].outWashing += quantity;
+          // The limbo pool: washed out but no finishing entry yet. Finishing entries can lag
+          // wash-out by days or weeks, and these pcs otherwise vanish from the KPI row
+          // (not In Washing, not In Finishing). Identity: outWashing = awaiting + inFin + finished.
+          if (!finishing) {
+            totalAwaitingFinishing += quantity;
+            clientMap[clientName].awaitingFinishing += quantity;
+          }
           if (washerName) {
             washerMap[washerName].outWashing += quantity;
           }
-          breakdownMap[bKey].outWashing += quantity;
+          // breakdownMap[bKey].outWashing += quantity;
         }
       } else {
         totalMaking += quantity;
@@ -1272,6 +1325,8 @@ const getProductionDashboard = async (req, res) => {
         MAKING: data.making,
         IN_WASHING: data.inWashing,
         OUT_WASHING: data.outWashing,
+        AWAITING_FINISHING: data.awaitingFinishing,
+        IN_FINISHING: data.inFinishing,
       }))
       .sort((a, b) => a.CLIENT.localeCompare(b.CLIENT));
 
@@ -1314,49 +1369,59 @@ const getProductionDashboard = async (req, res) => {
       }))
       .sort((a, b) => a.STITCHING_VENDOR.localeCompare(b.STITCHING_VENDOR));
 
-    // Build stitching breakdown
-    const stitchingBreakdownMap = {};
-    for (const st of filteredStitchingRecords) {
-      const clientName = st.clientName;
-      const vendorName = st.stitchingVendorName;
-      const quantity = (st.quantity || 0) - (st.quantityShort || 0);
-      const key = `${clientName}|${vendorName}`;
-      if (!stitchingBreakdownMap[key]) {
-        stitchingBreakdownMap[key] = { client: clientName, vendor: vendorName, pcs: 0, lots: new Set() };
-      }
-      stitchingBreakdownMap[key].pcs += quantity;
-      if (st.lotNumber) stitchingBreakdownMap[key].lots.add(st.lotNumber);
-    }
-
-    const stitching_rows = Object.values(stitchingBreakdownMap)
-      .map(b => ({
-        CLIENT: b.client,
-        LOT_COUNT: b.lots.size,
-        LOT_NO: Array.from(b.lots).sort().join(', '),
-        STITCHING_VENDOR: b.vendor,
-        PCS: b.pcs,
+    const finishing_vendor_summary = Object.entries(finishingVendorMap)
+      .map(([name, data]) => ({
+        FINISHING_VENDOR: name,
+        TOTAL: data.total,
+        IN_FINISHING: data.inFinishing,
+        COMPLETED: data.completed,
       }))
-      .sort((a, b) => {
-        const clientSort = a.CLIENT.localeCompare(b.CLIENT);
-        return clientSort || a.STITCHING_VENDOR.localeCompare(b.STITCHING_VENDOR);
-      });
+      .sort((a, b) => a.FINISHING_VENDOR.localeCompare(b.FINISHING_VENDOR));
 
-    const rows = Object.values(breakdownMap)
-      .map(b => ({
-        CLIENT: b.client,
-        LOT_COUNT: b.lots.size,
-        LOT_NO: Array.from(b.lots).sort().join(', '),
-        WASHING: b.washer,
-        PCS: b.pcs,
-        MAKING: b.making,
-        IN_WASHING: b.inWashing,
-        OUT_WASHING: b.outWashing,
-      }))
-      .sort((a, b) => {
-        const clientSort = a.CLIENT.localeCompare(b.CLIENT);
-        return clientSort || a.WASHING.localeCompare(b.WASHING);
-      });
-      // .sort((a, b) => b.PCS - a.PCS);
+    // ── stitching_rows + rows builders: disabled with the breakdown tables (2026-08). Uncomment to restore. ──
+    // // Build stitching breakdown
+    // const stitchingBreakdownMap = {};
+    // for (const st of filteredStitchingRecords) {
+    // const clientName = st.clientName;
+    // const vendorName = st.stitchingVendorName;
+    // const quantity = (st.quantity || 0) - (st.quantityShort || 0);
+    // const key = `${clientName}|${vendorName}`;
+    // if (!stitchingBreakdownMap[key]) {
+    // stitchingBreakdownMap[key] = { client: clientName, vendor: vendorName, pcs: 0, lots: new Set() };
+    // }
+    // stitchingBreakdownMap[key].pcs += quantity;
+    // if (st.lotNumber) stitchingBreakdownMap[key].lots.add(st.lotNumber);
+    // }
+
+    // const stitching_rows = Object.values(stitchingBreakdownMap)
+    // .map(b => ({
+    // CLIENT: b.client,
+    // LOT_COUNT: b.lots.size,
+    // LOT_NO: Array.from(b.lots).sort().join(', '),
+    // STITCHING_VENDOR: b.vendor,
+    // PCS: b.pcs,
+    // }))
+    // .sort((a, b) => {
+    // const clientSort = a.CLIENT.localeCompare(b.CLIENT);
+    // return clientSort || a.STITCHING_VENDOR.localeCompare(b.STITCHING_VENDOR);
+    // });
+
+    // const rows = Object.values(breakdownMap)
+    // .map(b => ({
+    // CLIENT: b.client,
+    // LOT_COUNT: b.lots.size,
+    // LOT_NO: Array.from(b.lots).sort().join(', '),
+    // WASHING: b.washer,
+    // PCS: b.pcs,
+    // MAKING: b.making,
+    // IN_WASHING: b.inWashing,
+    // OUT_WASHING: b.outWashing,
+    // }))
+    // .sort((a, b) => {
+    // const clientSort = a.CLIENT.localeCompare(b.CLIENT);
+    // return clientSort || a.WASHING.localeCompare(b.WASHING);
+    // });
+    // // .sort((a, b) => b.PCS - a.PCS);
 
     // Dispatch KPIs — good-pcs aggregation over lots that reached finishing (scoped by
     // Finishing.date to honour the date filter), split by the lot's CURRENT status. Marking
@@ -1376,6 +1441,7 @@ const getProductionDashboard = async (req, res) => {
       { $group: { _id: '$lotId', finalGross: { $sum: { $subtract: ['$quantity', { $ifNull: ['$quantityShort', 0] }] } } } },
       { $lookup: { from: Lot.collection.collectionName, localField: '_id', foreignField: '_id', as: 'lot' } },
       { $unwind: '$lot' },
+      ...(clientOid ? [{ $match: { 'lot.clientId': clientOid } }] : []),
       {
         $project: {
           status: '$lot.status',
@@ -1397,6 +1463,7 @@ const getProductionDashboard = async (req, res) => {
     // "Dispatched" = actual good pcs invoiced across ALL lots (incl. lots dispatched before
     //   finishing). A cumulative current-state total, not narrowed by the date filter.
     const dispatchedAgg = await Lot.aggregate([
+      ...(clientOid ? [{ $match: { clientId: clientOid } }] : []),
       { $group: { _id: null, totalDispatched: { $sum: { $ifNull: ['$invoicedPcs', 0] } } } }
     ]);
     const total_dispatched = dispatchedAgg[0]?.totalDispatched || 0;
@@ -1408,6 +1475,7 @@ const getProductionDashboard = async (req, res) => {
       total_making: totalMaking,
       total_in_washing: totalInWashing,
       total_out_washing: totalOutWashing,
+      total_awaiting_finishing: totalAwaitingFinishing,
       total_in_finishing,
       total_pending_dispatch,
       total_part_dispatch_pending,
@@ -1415,13 +1483,21 @@ const getProductionDashboard = async (req, res) => {
       client_summary,
       washer_summary,
       stitching_vendor_summary,
-      rows,
-      stitching_breakdown: stitching_rows,
+      finishing_vendor_summary,
+      // Breakdown payloads intentionally empty while the tables are hidden — the builders
+      // above are commented, not deleted. Restore both together.
+      rows: [],
+      stitching_breakdown: [],
       processing_time: processingTime,
-      timestamp: new Date().toISOString(),
+      // When this payload was COMPUTED. Overridden with response time below — kept here so
+      // the cache entry still records its own generation moment for debugging.
+      generated_at: new Date().toISOString(),
     };
     });
-    res.json(payload);
+    // timestamp must reflect THIS response, not cache-entry creation, or the frontend's
+    // "last updated" stamp reports stale data as fresh (which is how the invalidation gap
+    // went undiagnosed).
+    res.json({ ...payload, timestamp: new Date().toISOString() });
   } catch (error) {
     console.error('Error in production dashboard:', error);
     res.status(500).json({ error: 'Error fetching production dashboard data' });

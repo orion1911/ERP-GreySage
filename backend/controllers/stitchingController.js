@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { Stitching, Lot, Finishing, Washing, Counter, Client, FitStyle, AccessoryType, AccessoryItem, AccessoryConsumption } = require('../mongodb_schema');
 const { updateVendorBalance, bumpVendorLedgers } = require('../services/vendorBalanceService');
+const { invalidateDashboard } = require('../services/dashboardCache');
 const accessoryService = require('../services/accessoryService');
 const { logAction } = require('../utils/logger');
 
@@ -235,6 +236,7 @@ const createStitching = async (req, res) => {
   }
 
   await bumpVendorLedgers(['stitching']); // new stitching work changes the stitching vendor's balance
+  await invalidateDashboard(); // new lot + stitching qty move Making / Total Pieces
   const populatedStitching = await Stitching.findById(stitching._id)
     .populate({ path: 'lotId', populate: [{ path: 'clientId' }, { path: 'fitStyleId' }] })
     .populate({ path: 'vendorId' });
@@ -330,6 +332,7 @@ const updateStitching = async (req, res) => {
 
   // Stitching edit can change its own vendor's balance AND cascade qty into washing/finishing.
   await bumpVendorLedgers(['stitching', 'washing', 'finishing']);
+  await invalidateDashboard(); // qty/short edits cascade into every dashboard total
   const populatedStitching = await Stitching.findById(id)
     .populate({ path: 'lotId', populate: [{ path: 'clientId' }, { path: 'fitStyleId' }] })
     .populate({ path: 'vendorId' });
@@ -378,6 +381,7 @@ const updateStitchingStatus = async (req, res) => {
     .populate({ path: 'lotId', populate: [{ path: 'clientId' }, { path: 'fitStyleId' }] })
     .populate({ path: 'vendorId' });
   if (!stitching) return res.status(404).json({ error: 'Stitching record not found' });
+  await invalidateDashboard(); // stitch-out flips vendor In Stitching -> Completed
   res.json(stitching);
 };
 

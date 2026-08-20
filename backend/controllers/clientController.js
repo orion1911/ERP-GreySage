@@ -98,6 +98,7 @@ const toggleClientActive = async (req, res) => {
   client.isActive = !client.isActive;
   await client.save();
   await bumpVersion(CLIENTS); // invalidate cached client lists
+  await bumpVersion(CLEDGER); // receivables list filters isActive — deactivated clients must drop off it
   //await logAction(req.user.userId, 'toggle_client_active', 'Client', client._id, `Client ${client.name} ${client.isActive ? 'enabled' : 'disabled'}`);
   res.json(client);
 };
@@ -128,8 +129,9 @@ const updateClient = async (req, res) => {
 
   await client.save();
   await bumpVersion(CLIENTS); // invalidate cached client lists
-  // Receivables list membership depends on isInternal and is cached separately.
-  if (internalChanged) await bumpVersion(CLEDGER);
+  // Unconditional: membership depends on isInternal, but the cached ledger payloads also
+  // carry the client NAME — a rename must not show stale for CLEDGER_TTL.
+  await bumpVersion(CLEDGER);
   //await logAction(req.user.userId, 'update_client', 'Client', client._id, `Updated client: ${client.name}`);
   res.json(client);
 };

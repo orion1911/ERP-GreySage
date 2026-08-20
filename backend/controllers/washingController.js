@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { Washing, Lot, Stitching, Finishing } = require('../mongodb_schema');
 const { updateVendorBalance, bumpVendorLedgers } = require('../services/vendorBalanceService');
+const { invalidateDashboard } = require('../services/dashboardCache');
 // const { logAction } = require('../utils/logger');
 
 // Keep an existing Finishing record's quantity in sync with the washing available qty
@@ -90,6 +91,7 @@ const createWashing = async (req, res) => {
     transactionCommitted = true;
 
     await bumpVendorLedgers(['washing']); // new washing work changes the washing vendor's balance
+    await invalidateDashboard(); // lot moves Making -> In Washing
     // Populate the washing record for response
     const populatedWashing = await Washing.findById(washing._id).populate('vendorId lotId').session(null);
 
@@ -150,6 +152,7 @@ const updateWashing = async (req, res) => {
 
     // Washing edit changes its own vendor's balance AND can cascade qty into finishing.
     await bumpVendorLedgers(['washing', 'finishing']);
+    await invalidateDashboard(); // wash qty/short edits move In/Out Washing totals
     const populatedWashing = await Washing.findById(id).populate('lotId vendorId');
     res.json(populatedWashing);
   } catch (error) {
@@ -162,6 +165,7 @@ const updateWashingStatus = async (req, res) => {
   try {
     const washing = await Washing.findByIdAndUpdate(req.params.id, { washOutDate }, { new: true }).populate('lotId vendorId');
     if (!washing) return res.status(404).json({ error: 'Washing record not found' });
+    await invalidateDashboard(); // washOutDate alone flips In Washing -> Out Washing on every surface
     res.json(washing);
   } catch (error) {
     res.status(400).json({ error: error.message });

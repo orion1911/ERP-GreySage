@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useTheme, alpha } from '@mui/material/styles';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, Box, IconButton, Tooltip, Badge, Typography } from '@mui/material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, Box, IconButton, Tooltip, Badge, Typography, Chip } from '@mui/material';
 import { LocalLaundryService, ExpandMore, Add, ChevronRight, Edit as EditIcon, AutoAwesome } from '@mui/icons-material';
 import WashingGrid from '../Washing/WashingGrid';
 import FinishingGrid from '../Finishing/FinishingGrid';
@@ -200,6 +200,55 @@ function StitchingGrid({
     }
     return sortData(filtered, sortBy, sortDirection);
   }, [stitchingRecords, washingRecords, finishingRecords, searchTerm, vendorFilter, washingVendorFilter, finishingVendorFilter, clientFilter, statusFilter, sortBy, sortDirection, filterStatus]);
+
+  // Filter-aware totals for the header bar. Derived from processedRecords, so every active
+  // filter (search, stitching/washing/finishing vendor, client, lot status, stitched/pending)
+  // is already applied — the numbers always describe exactly the rows on screen. This replaces
+  // the dashboard breakdown tables: same question ("this client/vendor: how many lots, how
+  // many pcs?"), answered live against the working set instead of a precomputed snapshot.
+  const filteredTotals = useMemo(() => {
+    const recs = processedRecords || [];
+    let qty = 0, short = 0, pendingQty = 0, pendingLots = 0;
+    // Dashboard-mirroring stage KPIs, same rules as getProductionDashboard: net pcs
+    // (stitch − stitchShort − washShorts − finishShorts), staged by record existence and
+    // out-dates. washingRecords/finishingRecords are bulk-loaded page-wide by
+    // StitchingManagement, so this is pure client-side math over the FILTERED rows.
+    // Pending Dispatch / Dispatched are deliberately absent: their dashboard formulas
+    // aggregate invoice caches across ALL lots, so a filtered subset would show a
+    // different (misleading) number under the same label.
+    let totalPcs = 0, making = 0, inWashing = 0, outWashing = 0, awaitingFinishing = 0, inFinishing = 0;
+    const lotIds = new Set();
+    const clientIds = new Set();
+    for (const r of recs) {
+      const q = r.quantity || 0;
+      const s = r.quantityShort || 0;
+      qty += q;
+      short += s;
+      const lotKey = r.lotId?._id;
+      if (lotKey) lotIds.add(lotKey);
+      if (r.lotId?.clientId?._id) clientIds.add(r.lotId.clientId._id);
+      if (!r.stitchOutDate) { pendingQty += q - s; pendingLots += 1; }
+
+      let net = q - s;
+      const wash = lotKey && washingRecords ? (washingRecords[lotKey] || [])[0] : null; // one per lot (API-enforced)
+      const fins = lotKey && finishingRecords ? (finishingRecords[lotKey] || []) : [];
+      if (wash) net -= (wash.washDetails || []).reduce((sum, d) => sum + (d.quantityShort || 0), 0);
+      net -= fins.reduce((sum, f) => sum + (f.quantityShort || 0), 0);
+      totalPcs += net;
+
+      if (!wash) making += net;
+      else if (!wash.washOutDate) inWashing += net;
+      else {
+        outWashing += net; // cumulative, matches the dashboard's Out Washing superset
+        if (fins.length === 0) awaitingFinishing += net;
+      }
+      if (fins.some((f) => !f.finishOutDate)) inFinishing += net;
+    }
+    return {
+      lots: lotIds.size, clients: clientIds.size, qty, short, net: qty - short, pendingQty, pendingLots,
+      totalPcs, making, inWashing, outWashing, awaitingFinishing, inFinishing,
+    };
+  }, [processedRecords, washingRecords, finishingRecords]);
 
   // Reset to the first page when the filters change (but NOT on a plain data update —
   // autoResetPageIndex is disabled below so editing a record keeps you on your page).
@@ -486,7 +535,46 @@ function StitchingGrid({
 
   const paginatedRecordsSx = processedRecords ? processedRecords.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage) : processedRecords;
 
+  // Outlined error chips use error.main for text, which sinks into a dark background —
+  // lift them to error.light in dark mode only (light mode already reads fine).
+  const outlinedAlertSx = theme.palette.mode === 'dark'
+    ? { color: theme.palette.error.light, borderColor: theme.palette.error.light }
+    : {};
+
+  const TotalsBar = () => (
+    <Box
+      sx={{
+        mb: 1.5,
+        px: { xs: 0, sm: 0.5 },
+        // sm+: the same wrapping flex row as before (desktop alignment already approved).
+        // xs: a strict 3-column grid — 9 chips form a tidy 3×3 with all edges aligned,
+        // instead of the ragged wrap the flex row produces at narrow widths.
+        display: { xs: 'grid', sm: 'flex' },
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: { xs: 0.75, sm: 1 },
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        '& .MuiChip-root': {
+          width: { xs: '100%', sm: 'auto' }, // fill the grid cell on mobile; natural width on sm+
+        },
+      }}
+    >
+      <Chip size="small" variant="outlined" label={`${filteredTotals.lots.toLocaleString()} lots`} />
+      <Chip size="small" variant="outlined" label={`${filteredTotals.clients.toLocaleString()} clients`} />
+      <Chip size="small" color="error" variant="outlined" sx={outlinedAlertSx} label={`${filteredTotals.short.toLocaleString()} short`} />
+      {/* Dashboard stage KPIs over the filtered rows, in KPI-row order. */}
+      <Chip size="small" color="primary" variant="filled" label={`Total ${filteredTotals.totalPcs.toLocaleString()}`} />
+      <Chip size="small" color="error" variant="filled" label={`Making ${filteredTotals.making.toLocaleString()}`} />
+      <Chip size="small" color="warning" variant="filled" label={`In Wash ${filteredTotals.inWashing.toLocaleString()}`} />
+      <Chip size="small" color="info" variant="filled" label={`Out Wash ${filteredTotals.outWashing.toLocaleString()}`} />
+      <Chip size="small" color="error" variant="outlined" sx={outlinedAlertSx} label={`Awaiting Fin ${filteredTotals.awaitingFinishing.toLocaleString()}`} />
+      <Chip size="small" color="secondary" variant="filled" label={`In Fin ${filteredTotals.inFinishing.toLocaleString()}`} />
+    </Box>
+  );
+
   return isMobile ? (
+    <Box>
+      <TotalsBar />
     <StitchingGridSx
       onAdd={onAdd}
       noZipperFilter={noZipperFilter}
@@ -524,6 +612,7 @@ function StitchingGrid({
       setStatusFilter={setStatusFilter}
       readOnly={readOnly}
     />
+    </Box>
   ) : (
     <AnimatePresence mode="wait">
     <motion.div
@@ -533,6 +622,7 @@ function StitchingGrid({
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
     >
+    <TotalsBar />
     <TableContainer>
       <Table>
         <TableHead>

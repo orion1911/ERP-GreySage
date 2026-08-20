@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Container,
     Paper,
@@ -45,6 +45,199 @@ import dayjs from 'dayjs';
 import { motion, AnimatePresence } from 'motion/react';
 import apiService from '../../services/apiService';
 import { TableRowsLoader } from '../../components/Skeleton/SkeletonLoader';
+
+// ─── Hoisted to module scope ─────────────────────────────────────────────────
+// These were defined inside Dashboard, which meant every parent re-render (sidebar
+// toggle, theme switch) created new component identities — React remounted them,
+// AnimatedNumber's prevRef reset, and the counters replayed from 0. Stable
+// module-scope identities re-render in place instead.
+// Format large numbers
+const formatNumber = (num) => {
+    return (num || 0).toLocaleString();
+};
+
+// Count-up for KPI values: rAF tween with ease-out cubic, re-animating on value
+// change. Respects prefers-reduced-motion (jumps straight to the value). Rounded on
+// every frame so intermediate states are clean integers.
+const AnimatedNumber = ({ value, duration = 1200, delay = 0 }) => {
+    const [display, setDisplay] = useState(0);
+    const prevRef = useRef(0);
+    useEffect(() => {
+        const from = prevRef.current;
+        const to = Number(value) || 0;
+        prevRef.current = to;
+        if (from === to) { setDisplay(to); return undefined; }
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            setDisplay(to);
+            return undefined;
+        }
+        let raf;
+        let timer;
+        let lastPaint = 0;
+        const stepMs = 40; // repaint the number ~12x/sec, not every frame — visible ticks, not a blur
+        let start = null;
+        const tick = (now) => {
+            if (start === null) start = now;
+            const t = Math.min((now - start) / duration, 1);
+            const eased = 1 - Math.pow(1 - t, 2);
+            if (t === 1 || now - lastPaint >= stepMs) {
+                lastPaint = now;
+                setDisplay(Math.round(from + (to - from) * eased));
+            }
+            if (t < 1) raf = requestAnimationFrame(tick);
+        };
+        const begin = () => { raf = requestAnimationFrame(tick); };
+        if (delay > 0) { timer = setTimeout(begin, delay * 1000); } else { begin(); }
+        return () => { cancelAnimationFrame(raf); clearTimeout(timer); };
+    }, [value, duration, delay]);
+    return <>{formatNumber(display)}</>;
+};
+
+// KPI Card Component
+const KPICard = ({ icon: Icon, label, shortLabel, value, subtitle, color, theme, delay = 0 }) => (
+    <Paper
+        elevation={1}
+        sx={{
+            p: { xs: 1.25, sm: 1.5 },
+            // Row-stretch instead of a fixed height: cards equal their row's tallest
+            // (alignItems:'stretch' on the Grid container), with zero reserved slack.
+            height: '100%',
+            borderRadius: 2,
+            border: `1px solid ${theme.palette.divider}`,
+            borderTop: 'none',
+            transition: 'all 0.3s ease',
+            boxSizing: 'border-box',
+            display: 'flex',
+            flex: 1,
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            position: 'relative',
+            '@keyframes kpiBarSweep': {
+                from: { transform: 'scaleX(0)' },
+                to: { transform: 'scaleX(1)' },
+            },
+            '&::before': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: '20px',
+                right: '12px',
+                height: '2px',
+                background: `linear-gradient(to right, ${color}, ${color}dd 40%, transparent)`,
+                borderRadius: '1px 1px 0 0',
+                transformOrigin: 'right',
+                animation: {
+                        xs: `kpiBarSweep 0.28s cubic-bezier(0.25, 0.45, 0.25, 1) ${1.35 + delay}s both`,
+                        sm: `kpiBarSweep 0.37s cubic-bezier(0.25, 0.45, 0.25, 1) ${1.3 + delay}s both`,
+                        md: `kpiBarSweep 0.67s cubic-bezier(0.25, 0.45, 0.25, 1) ${1.13 + delay}s both`,
+                    },
+                '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+            },
+            '&:hover': {
+                elevation: 3,
+                transform: 'translateY(-4px)',
+                boxShadow: theme.shadows[8],
+            },
+        }}
+    >
+        <Box
+            component="svg"
+            aria-hidden="true"
+            sx={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+                overflow: 'visible',
+                '@keyframes kpiBorderLapXs': {
+                    '0%': { strokeDashoffset: -2.7, opacity: 0, animationTimingFunction: 'linear' },
+                    '6%': { opacity: 1 },
+                    '75.3%': { strokeDashoffset: 82, opacity: 1, animationTimingFunction: 'cubic-bezier(0.25, 0.45, 0.25, 1)' },
+                    '100%': { strokeDashoffset: 97.3, opacity: 0 },
+                },
+                '@keyframes kpiBorderLapSm': {
+                    '0%': { strokeDashoffset: -1.9, opacity: 0, animationTimingFunction: 'linear' },
+                    '6%': { opacity: 1 },
+                    '68.4%': { strokeDashoffset: 77.9, opacity: 1, animationTimingFunction: 'cubic-bezier(0.25, 0.45, 0.25, 1)' },
+                    '100%': { strokeDashoffset: 98.1, opacity: 0 },
+                },
+                '@keyframes kpiBorderLapMd': {
+                    '0%': { strokeDashoffset: -1.2, opacity: 0, animationTimingFunction: 'linear' },
+                    '6%': { opacity: 1 },
+                    '48.3%': { strokeDashoffset: 61.6, opacity: 1, animationTimingFunction: 'cubic-bezier(0.25, 0.45, 0.25, 1)' },
+                    '100%': { strokeDashoffset: 98.8, opacity: 0 },
+                },
+                '& rect': {
+                    x: '1px',
+                    y: '1px',
+                    width: 'calc(100% - 2px)',
+                    height: 'calc(100% - 2px)',
+                    rx: '7px',
+                    fill: 'none',
+                    stroke: color,
+                    strokeWidth: 2,
+                    strokeLinecap: 'round',
+                    // Shared by all three comet layers — same head position every frame.
+                    // One keyframe set per breakpoint (literal values; calc()/var() broke here).
+                    animation: {
+                        xs: `kpiBorderLapXs 1.13s linear ${0.5 + delay}s both`,
+                        sm: `kpiBorderLapSm 1.17s linear ${0.5 + delay}s both`,
+                        md: `kpiBorderLapMd 1.3s linear ${0.5 + delay}s both`,
+                    },
+                },
+                '& rect:nth-of-type(1)': {
+                    strokeDasharray: { xs: '15.3 84.7', sm: '20.3 79.7', md: '37.9 62.1' },
+                    strokeOpacity: 0.22,
+                    filter: 'blur(2px)',
+                },
+                '& rect:nth-of-type(2)': {
+                    strokeDasharray: { xs: '10.7 89.3', sm: '14.2 85.8', md: '26.5 73.5' },
+                    strokeOpacity: 0.55,
+                    filter: 'blur(1px)',
+                },
+                '& rect:nth-of-type(3)': {
+                    strokeDasharray: { xs: '6.1 93.9', sm: '8.1 91.9', md: '15.2 84.8' },
+                    strokeOpacity: 1,
+                },
+                '@media (prefers-reduced-motion: reduce)': { display: 'none' },
+            }}
+        >
+            <rect pathLength="100" />
+            <rect pathLength="100" />
+            <rect pathLength="100" />
+        </Box>
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { md: 'center' }, gap: { xs: 0.75, sm: 1, md: 1.5 }, flex: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+                <Box
+                    sx={{
+                        p: { xs: 0.75, sm: 1 },
+                        borderRadius: 1,
+                        backgroundColor: `${color}20`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}
+                >
+                    <Icon sx={{ color, fontSize: { xs: 20, sm: 24 } }} />
+                </Box>
+            </Box>
+            <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+            <Typography variant="overline" sx={{ textTransform: 'uppercase', fontWeight: 700, letterSpacing: { xs: 0.2, sm: 0.8 }, color: 'text.secondary', fontSize: { xs: '0.6rem', sm: '0.6rem' }, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                <Box component="span" sx={{ display: { xs: shortLabel ? 'none' : 'inline', sm: 'inline' } }}>{label}</Box>
+                {shortLabel && <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>{shortLabel}</Box>}
+            </Typography>
+            <Typography variant="h3" sx={{ fontWeight: 700, color, lineHeight: 1, fontSize: { xs: '1.35rem', sm: '1.35rem', md: '1.5rem' }, mt: { xs: 'auto', sm: 0 } }}>
+                <AnimatedNumber value={value} delay={delay + 0.2} />
+            </Typography>
+            {/* Subtitle hidden at xs — a 4-per-row card (~90px) can't fit it legibly. */}
+            <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontWeight: 500, fontSize: '0.7rem', display: { xs: 'none', sm: 'block' } }}>
+                {subtitle}
+            </Typography>
+            </Box>
+        </Box>
+    </Paper>
+);
 
 const Dashboard = () => {
     const theme = useTheme();
@@ -183,94 +376,24 @@ const Dashboard = () => {
 
     const pieColors = [chartColors.coral, chartColors.teal, chartColors.indigo, chartColors.amber, '#B07AE8', '#5CC4C0', '#F4A060'];
 
-    // Format large numbers
-    const formatNumber = (num) => {
-        return (num || 0).toLocaleString();
-    };
-
-    // KPI Card Component
-    const KPICard = ({ icon: Icon, label, shortLabel, value, subtitle, color }) => (
-        <Paper
-            elevation={1}
-            sx={{
-                p: { xs: 1, sm: 1.5 },
-                // Row-stretch instead of a fixed height: cards equal their row's tallest
-                // (alignItems:'stretch' on the Grid container), with zero reserved slack.
-                height: '100%',
-                borderRadius: 2,
-                border: `1px solid ${theme.palette.divider}`,
-                borderTop: 'none',
-                transition: 'all 0.3s ease',
-                boxSizing: 'border-box',
-                display: 'flex',
-                flex: 1,
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                position: 'relative',
-                '&::before': {
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    left: '20px',
-                    right: '12px',
-                    height: '4px',
-                    background: `linear-gradient(to right, ${color}, ${color}dd 40%, transparent)`,
-                    borderRadius: '2px 2px 0 0',
-                },
-                '&:hover': {
-                    elevation: 3,
-                    transform: 'translateY(-4px)',
-                    boxShadow: theme.shadows[8],
-                },
-            }}
-        >
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 0.5, sm: 1 }, flex: 1 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box
-                        sx={{
-                            p: { xs: 0.5, sm: 1 },
-                            borderRadius: 1,
-                            backgroundColor: `${color}20`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}
-                    >
-                        <Icon sx={{ color, fontSize: { xs: 16, sm: 24 } }} />
-                    </Box>
-                </Box>
-                <Typography variant="overline" sx={{ textTransform: 'uppercase', fontWeight: 700, letterSpacing: { xs: 0.2, sm: 0.8 }, color: 'text.secondary', fontSize: { xs: '0.5rem', sm: '0.6rem' }, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                    <Box component="span" sx={{ display: { xs: shortLabel ? 'none' : 'inline', sm: 'inline' } }}>{label}</Box>
-                    {shortLabel && <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>{shortLabel}</Box>}
-                </Typography>
-                <Typography variant="h3" sx={{ fontWeight: 700, color, lineHeight: 1, fontSize: { xs: '0.95rem', sm: '1.35rem', md: '1.5rem' }, mt: { xs: 'auto', sm: 0 } }}>
-                    {formatNumber(value)}
-                </Typography>
-                {/* Subtitle hidden at xs — a 4-per-row card (~90px) can't fit it legibly. */}
-                <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontWeight: 500, fontSize: '0.7rem', display: { xs: 'none', sm: 'block' } }}>
-                    {subtitle}
-                </Typography>
-            </Box>
-        </Paper>
-    );
-
     return (
         <Container maxWidth="xl" sx={{ pt: '0 !important', pb: 2, px: '0 !important' }}>
             {/* Header — on mobile the date filter + refresh drop to a centered row below the title */}
             <Stack
                 direction={{ xs: 'column', md: 'row' }}
                 alignItems={{ xs: 'stretch', md: 'center' }}
-                sx={{ mb: 3, mt: 1, flexWrap: 'wrap', gap: 2 }}
+                justifyContent={{ md: 'space-between' }}
+                sx={{ mb: 3, mt: 1, flexWrap: 'wrap', gap: 2, pr: { xs: 6, md: 0 } }}
             >
                 <Typography variant="h4">Dashboard</Typography>
-                <Stack direction="row" alignItems="center" justifyContent="flex-start" sx={{ gap: 2 }}>
+                <Stack direction="row" alignItems="center" justifyContent={{ xs: 'space-between', md: 'center' }} sx={{ gap: { xs: 2, md: 1.5 }, mx: { md: 'auto' } }}>
                     <TextField
                         select
                         size="small"
                         variant="standard"
                         value={clientFilter}
                         onChange={(e) => setClientFilter(e.target.value)}
-                        sx={{ minWidth: 120, maxWidth: 160 }}
+                        sx={{ minWidth: { xs: 120, md: 104 }, maxWidth: { xs: 160, md: 140 }, '& .MuiInputBase-root': { fontSize: { md: '0.85rem' } } }}
                         SelectProps={{ displayEmpty: true }}
                     >
                         <MenuItem value="">All Clients</MenuItem>
@@ -285,11 +408,11 @@ const Dashboard = () => {
                             format="DD/MM/YY"
                             slots={{ textField: MorphDateTextField }}
                             slotProps={{ textField: { variant: 'standard', size: 'small' } }}
-                            sx={{ width: 180 }}
+                            sx={{ width: { xs: 180, md: 190 }, '& .MuiInputBase-root': { fontSize: { md: '0.85rem' } } }}
                         />
                     </LocalizationProvider>
-                    <IconButton onClick={loadData} disabled={loading}>
-                        <RefreshIcon />
+                    <IconButton size="small" onClick={loadData} disabled={loading}>
+                        <RefreshIcon sx={{ fontSize: { xs: 24, md: 20 } }} />
                     </IconButton>
                 </Stack>
             </Stack>
@@ -303,15 +426,19 @@ const Dashboard = () => {
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15 }}
                 >
-                    <Grid container columns={{ xs: 12, sm: 12, md: 8 }} spacing={{ xs: 1, sm: 2 }} sx={{ mb: 3, alignItems: 'stretch' }}>
+                    <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: 3, alignItems: 'stretch' }}>
                         {loading ? (
                             [0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                                <Grid key={i} size={{ xs: 3, sm: 3, md: 1 }}>
+                                <Grid key={i} size={{ xs: 3, sm: 3, md: 3 }}>
                                     <Paper elevation={1} sx={{ p: { xs: 1, sm: 1.5 }, borderRadius: 2, height: '100%', boxSizing: 'border-box' }}>
-                                        <Skeleton variant="circular" sx={{ width: { xs: 22, sm: 40 }, height: { xs: 22, sm: 40 }, mb: 1 }} />
-                                        <Skeleton variant="text" width="50%" height={16} />
-                                        <Skeleton variant="text" width="70%" height={36} sx={{ my: 0.5 }} />
-                                        <Skeleton variant="text" width="60%" height={14} />
+                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { md: 'center' }, gap: { xs: 0, md: 1.5 }, height: '100%' }}>
+                                            <Skeleton variant="circular" sx={{ width: { xs: 22, sm: 40 }, height: { xs: 22, sm: 40 }, mb: { xs: 1, md: 0 }, flexShrink: 0 }} />
+                                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                <Skeleton variant="text" width="50%" height={16} />
+                                                <Skeleton variant="text" width="70%" height={36} sx={{ my: 0.5 }} />
+                                                <Skeleton variant="text" width="60%" height={14} sx={{ display: { xs: 'none', sm: 'block' } }} />
+                                            </Box>
+                                        </Box>
                                     </Paper>
                                 </Grid>
                             ))
@@ -327,14 +454,14 @@ const Dashboard = () => {
                                     { label: 'Pending Dispatch', shortLabel: 'To Dispatch', value: kpiData.totalPendingDispatch, subtitle: `${formatNumber(kpiData.totalPartDispatchPending)} - part-dispatch`, color: '#E8923D', icon: PendingActionsIcon },
                                     { label: 'Dispatched', value: kpiData.totalDispatched, subtitle: 'Pieces dispatched', color: '#2AA89A', icon: LocalShippingIcon },
                                 ].map((card, i) => (
-                                    <Grid key={card.label} size={{ xs: 3, sm: 3, md: 1 }}>
+                                    <Grid key={card.label} size={{ xs: 3, sm: 3, md: 3 }}>
                                         <motion.div
                                             initial={{ opacity: 0, y: 20 }}
                                             animate={{ opacity: 1, y: 0 }}
-                                            transition={{ duration: 0.4, delay: i * 0.1 }}
+                                            transition={{ duration: 0.4 }}
                                             style={{ height: '100%' }}
                                         >
-                                            <KPICard {...card} />
+                                            <KPICard {...card} theme={theme} />
                                         </motion.div>
                                     </Grid>
                                 ))}
@@ -348,10 +475,10 @@ const Dashboard = () => {
             <AnimatePresence mode="wait">
                 <motion.div
                     key={loading ? 'charts-loading' : 'charts-data'}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
+                    initial={loading ? { opacity: 0 } : { opacity: 0, y: 24 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                    transition={loading ? { duration: 0.15 } : { duration: 0.5, delay: 0.25, ease: [0.25, 0.1, 0.25, 1] }}
                 >
                     {loading ? (
                         <Grid container spacing={3} sx={{ mb: 3, alignItems: 'stretch' }}>
@@ -436,21 +563,28 @@ const Dashboard = () => {
             {/* Summary Tables */}
             <Grid container spacing={3} sx={{ mb: 4 }}>
                 <Grid size={{ xs: 12, md: 6 }}>
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={loading ? 'client-loading' : 'client-data'}
+                            initial={loading ? { opacity: 0 } : { opacity: 0, y: 24 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                            transition={loading ? { duration: 0.15 } : { duration: 0.5, delay: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
+                            style={{ height: '100%' }}
+                        >
+                        {loading ? (
+                            <Paper elevation={1} sx={{ borderRadius: 2, p: 2, height: 500, overflow: 'hidden' }}>
+                                <Skeleton variant="text" width="40%" height={28} sx={{ mb: 2 }} />
+                                <Skeleton variant="rectangular" height={424} />
+                            </Paper>
+                        ) : (
                     <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
                         <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
                             <Typography variant="h6" sx={{ fontWeight: 600 }}>
                                 Client Summary
                             </Typography>
                         </Box>
-                        <AnimatePresence mode="wait">
-                            <motion.div
-                                key={loading ? 'client-loading' : 'client-data'}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 0.15 }}
-                                style={{ flex: 1, overflow: 'auto' }}
-                            >
+                        <Box sx={{ flex: 1, overflow: 'auto' }}>
                                 <TableContainer sx={{ height: '100%' }}>
                                     <Table>
                                         <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
@@ -477,9 +611,7 @@ const Dashboard = () => {
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
-                                            {loading ? (
-                                                <TableRowsLoader colsNum={7} rowsNum={5} />
-                                            ) : clientSummary.length > 0 ? (
+                                            {clientSummary.length > 0 ? (
                                                 clientSummary.map((row, idx) => (
                                                     <TableRow key={idx} hover>
                                                         <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.CLIENT}</TableCell>
@@ -513,27 +645,36 @@ const Dashboard = () => {
                                         </TableBody>
                                     </Table>
                                 </TableContainer>
-                            </motion.div>
-                        </AnimatePresence>
+                        </Box>
                     </Paper>
+                        )}
+                        </motion.div>
+                    </AnimatePresence>
                 </Grid>
 
                 <Grid size={{ xs: 12, md: 6 }}>
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={loading ? 'stitching-vendor-loading' : 'stitching-vendor-data'}
+                            initial={loading ? { opacity: 0 } : { opacity: 0, y: 24 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                            transition={loading ? { duration: 0.15 } : { duration: 0.5, delay: 0.45, ease: [0.25, 0.1, 0.25, 1] }}
+                            style={{ height: '100%' }}
+                        >
+                        {loading ? (
+                            <Paper elevation={1} sx={{ borderRadius: 2, p: 2, height: 500, overflow: 'hidden' }}>
+                                <Skeleton variant="text" width="40%" height={28} sx={{ mb: 2 }} />
+                                <Skeleton variant="rectangular" height={424} />
+                            </Paper>
+                        ) : (
                     <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
                         <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
                             <Typography variant="h6" sx={{ fontWeight: 600 }}>
                                 Stitching Summary
                             </Typography>
                         </Box>
-                        <AnimatePresence mode="wait">
-                            <motion.div
-                                key={loading ? 'stitching-vendor-loading' : 'stitching-vendor-data'}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 0.15 }}
-                                style={{ flex: 1, overflow: 'auto' }}
-                            >
+                        <Box sx={{ flex: 1, overflow: 'auto' }}>
                                 <TableContainer sx={{ height: '100%' }}>
                                     <Table>
                                         <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
@@ -551,9 +692,7 @@ const Dashboard = () => {
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
-                                            {loading ? (
-                                                <TableRowsLoader colsNum={4} rowsNum={5} />
-                                            ) : stitchingVendorSummary.length > 0 ? (
+                                            {stitchingVendorSummary.length > 0 ? (
                                                 stitchingVendorSummary.map((row, idx) => (
                                                     <TableRow key={idx} hover>
                                                         <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.STITCHING_VENDOR}</TableCell>
@@ -578,27 +717,36 @@ const Dashboard = () => {
                                         </TableBody>
                                     </Table>
                                 </TableContainer>
-                            </motion.div>
-                        </AnimatePresence>
+                        </Box>
                     </Paper>
+                        )}
+                        </motion.div>
+                    </AnimatePresence>
                 </Grid>
 
                 <Grid size={{ xs: 12, md: 6 }}>
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={loading ? 'washer-loading' : 'washer-data'}
+                            initial={loading ? { opacity: 0 } : { opacity: 0, y: 24 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                            transition={loading ? { duration: 0.15 } : { duration: 0.5, delay: 0.55, ease: [0.25, 0.1, 0.25, 1] }}
+                            style={{ height: '100%' }}
+                        >
+                        {loading ? (
+                            <Paper elevation={1} sx={{ borderRadius: 2, p: 2, height: 500, overflow: 'hidden' }}>
+                                <Skeleton variant="text" width="40%" height={28} sx={{ mb: 2 }} />
+                                <Skeleton variant="rectangular" height={424} />
+                            </Paper>
+                        ) : (
                     <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
                         <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
                             <Typography variant="h6" sx={{ fontWeight: 600 }}>
                                 Washer Summary
                             </Typography>
                         </Box>
-                        <AnimatePresence mode="wait">
-                            <motion.div
-                                key={loading ? 'washer-loading' : 'washer-data'}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 0.15 }}
-                                style={{ flex: 1, overflow: 'auto' }}
-                            >
+                        <Box sx={{ flex: 1, overflow: 'auto' }}>
                                 <TableContainer sx={{ height: '100%' }}>
                                     <Table>
                                         <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
@@ -619,9 +767,7 @@ const Dashboard = () => {
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
-                                            {loading ? (
-                                                <TableRowsLoader colsNum={5} rowsNum={5} />
-                                            ) : washerSummary.length > 0 ? (
+                                            {washerSummary.length > 0 ? (
                                                 washerSummary.map((row, idx) => (
                                                     <TableRow key={idx} hover>
                                                         <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.WASHER}</TableCell>
@@ -649,27 +795,36 @@ const Dashboard = () => {
                                         </TableBody>
                                     </Table>
                                 </TableContainer>
-                            </motion.div>
-                        </AnimatePresence>
+                        </Box>
                     </Paper>
+                        )}
+                        </motion.div>
+                    </AnimatePresence>
                 </Grid>
 
                 <Grid size={{ xs: 12, md: 6 }}>
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={loading ? 'finishing-vendor-loading' : 'finishing-vendor-data'}
+                            initial={loading ? { opacity: 0 } : { opacity: 0, y: 24 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                            transition={loading ? { duration: 0.15 } : { duration: 0.5, delay: 0.65, ease: [0.25, 0.1, 0.25, 1] }}
+                            style={{ height: '100%' }}
+                        >
+                        {loading ? (
+                            <Paper elevation={1} sx={{ borderRadius: 2, p: 2, height: 500, overflow: 'hidden' }}>
+                                <Skeleton variant="text" width="40%" height={28} sx={{ mb: 2 }} />
+                                <Skeleton variant="rectangular" height={424} />
+                            </Paper>
+                        ) : (
                     <Paper elevation={1} sx={{ borderRadius: 2, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 500 }}>
                         <Box sx={{ p: 2, pl: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
                             <Typography variant="h6" sx={{ fontWeight: 600 }}>
                                 Finishing Summary
                             </Typography>
                         </Box>
-                        <AnimatePresence mode="wait">
-                            <motion.div
-                                key={loading ? 'finishing-vendor-loading' : 'finishing-vendor-data'}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 0.15 }}
-                                style={{ flex: 1, overflow: 'auto' }}
-                            >
+                        <Box sx={{ flex: 1, overflow: 'auto' }}>
                                 <TableContainer sx={{ height: '100%' }}>
                                     <Table>
                                         <TableHead sx={{ backgroundColor: theme.palette.action.hover, position: 'sticky', top: 0 }}>
@@ -687,9 +842,7 @@ const Dashboard = () => {
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
-                                            {loading ? (
-                                                <TableRowsLoader colsNum={4} rowsNum={5} />
-                                            ) : finishingVendorSummary.length > 0 ? (
+                                            {finishingVendorSummary.length > 0 ? (
                                                 finishingVendorSummary.map((row, idx) => (
                                                     <TableRow key={idx} hover>
                                                         <TableCell sx={{ fontWeight: 600, pl: 2 }}>{row.FINISHING_VENDOR}</TableCell>
@@ -714,9 +867,11 @@ const Dashboard = () => {
                                         </TableBody>
                                     </Table>
                                 </TableContainer>
-                            </motion.div>
-                        </AnimatePresence>
+                        </Box>
                     </Paper>
+                        )}
+                        </motion.div>
+                    </AnimatePresence>
                 </Grid>
             </Grid>
 

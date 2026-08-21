@@ -1126,7 +1126,7 @@ const getTopFitStyles = async (req, res) => {
 // Production Dashboard (mirrors DashboardExcel logic using MongoDB data)
 const getProductionDashboard = async (req, res) => {
   try {
-    const payload = await getOrSet(DASH, ['productionDashboard', req.query.fromDate, req.query.toDate, req.query.clientId], DASH_TTL, async () => {
+    const payload = await getOrSet(DASH, ['productionDashboard-v2', req.query.fromDate, req.query.toDate, req.query.clientId], DASH_TTL, async () => {
     const startTime = Date.now();
     const { fromDate, toDate } = req.query;
     // Optional client scope. Invalid/absent id -> unscoped (the 'All clients' default).
@@ -1160,7 +1160,13 @@ const getProductionDashboard = async (req, res) => {
         quantity: 1,
         quantityShort: 1,
         clientName: { $ifNull: ['$client.name', 'Unknown'] },
-        stitchingVendorName: { $ifNull: ['$vendor.name', 'Unknown'] }
+        stitchingVendorName: { $ifNull: ['$vendor.name', 'Unknown'] },
+        // Dispatch-split inputs (2026-08): the finishing/dispatch KPIs now share this
+        // stitching-scoped universe instead of their own Finishing.date aggregate, so
+        // the KPI row consolidates to Total Pieces. See the dispatch block below.
+        lotStatus: { $ifNull: ['$lot.status', 0] },
+        invoicedPcs: { $ifNull: ['$lot.invoicedPcs', 0] },
+        damagedPcs: { $ifNull: ['$lot.damagedPcs', 0] }
       }}
     ]);
 
@@ -1196,6 +1202,9 @@ const getProductionDashboard = async (req, res) => {
         quantity: (st.quantity || 0) - (st.quantityShort || 0),
         clientName: st.clientName,
         lotNumber: st.lotNumber || '',
+        lotStatus: st.lotStatus || 0,
+        invoicedPcs: st.invoicedPcs || 0,
+        damagedPcs: st.damagedPcs || 0,
         washerName: null,
         status: 'making',
         // Finishing progress tracked SEPARATELY from `status` ('in' | 'out' | null).
@@ -1251,6 +1260,16 @@ const getProductionDashboard = async (req, res) => {
 
     // Compute KPIs, client summary, washer summary, breakdown
     let totalPcs = 0, totalMaking = 0, totalInWashing = 0, totalOutWashing = 0, totalAwaitingFinishing = 0;
+    // Unified-scope finishing/dispatch KPIs (2026-08). Previously In Finishing / Pending
+    // Dispatch came from a separate Finishing.date-scoped aggregate and Dispatched was a
+    // cumulative all-lots total — three scopes on one KPI row, so the cards could not sum
+    // to Total Pieces (on-screen In Finishing even disagreed with the client table).
+    // Now every card derives from the stitching-scoped lotData universe. Identity:
+    //   Total = Making + InWashing + Awaiting + InFinishing + Pending + Dispatched + Damaged
+    // total_damaged is exposed for that last term; verify with
+    // migrations/audit-dashboard-stage-counts.js.
+    let totalInFinishingScoped = 0, totalPendingDispatch = 0, totalPartDispatchPending = 0,
+        totalDispatchedScoped = 0, totalDamaged = 0;
     const clientMap = {};
     const washerMap = {};
     const breakdownMap = {};
@@ -1305,6 +1324,19 @@ const getProductionDashboard = async (req, res) => {
           if (!finishing) {
             totalAwaitingFinishing += quantity;
             clientMap[clientName].awaitingFinishing += quantity;
+          } else if (finishing === 'in') {
+            totalInFinishingScoped += quantity;
+          } else {
+            // Finished pool -> Damaged + Dispatched + Pending. invoicedPcs on lots that
+            // never reached finishing (dispatched-early edge case) stays inside that lot's
+            // stage bucket at full qty, so the row identity still holds.
+            const damaged = Math.min(lot.damagedPcs, quantity);
+            const dispatched = Math.min(lot.invoicedPcs, quantity - damaged);
+            const pending = quantity - damaged - dispatched;
+            totalDamaged += damaged;
+            totalDispatchedScoped += dispatched;
+            totalPendingDispatch += pending;
+            if (lot.lotStatus === 6) totalPartDispatchPending += pending;
           }
           if (washerName) {
             washerMap[washerName].outWashing += quantity;
@@ -1423,50 +1455,16 @@ const getProductionDashboard = async (req, res) => {
     // });
     // // .sort((a, b) => b.PCS - a.PCS);
 
-    // Dispatch KPIs — good-pcs aggregation over lots that reached finishing (scoped by
-    // Finishing.date to honour the date filter), split by the lot's CURRENT status. Marking
-    // finish-out advances a lot 4 -> 5, so status is the lot-level "finish-out marked" signal:
-    //   - "In Finishing"     = pcs in lots still being finished        (status 4, no finish-out).
-    //   - "Pending Dispatch" = finished pcs not yet dispatched         (status 5 + 6); a
-    //       part-dispatched lot (6) contributes only its REMAINING pcs via the per-lot
-    //       subtraction of already-invoiced (dispatched) pcs below.
-    const finishingDateMatch = {};
-    if (fromDate || toDate) {
-      finishingDateMatch.date = {};
-      if (fromDate) finishingDateMatch.date.$gte = new Date(fromDate);
-      if (toDate) finishingDateMatch.date.$lte = new Date(toDate);
-    }
-    const finishingByStatusAgg = await Finishing.aggregate([
-      { $match: finishingDateMatch },
-      { $group: { _id: '$lotId', finalGross: { $sum: { $subtract: ['$quantity', { $ifNull: ['$quantityShort', 0] }] } } } },
-      { $lookup: { from: Lot.collection.collectionName, localField: '_id', foreignField: '_id', as: 'lot' } },
-      { $unwind: '$lot' },
-      ...(clientOid ? [{ $match: { 'lot.clientId': clientOid } }] : []),
-      {
-        $project: {
-          status: '$lot.status',
-          awaiting: {
-            $max: [
-              0,
-              { $subtract: [{ $subtract: ['$finalGross', { $ifNull: ['$lot.damagedPcs', 0] }] }, { $ifNull: ['$lot.invoicedPcs', 0] }] }
-            ]
-          }
-        }
-      },
-      { $group: { _id: '$status', awaiting: { $sum: '$awaiting' } } }
-    ]);
-    const awaitingByStatus = finishingByStatusAgg.reduce((acc, r) => { acc[r._id] = r.awaiting; return acc; }, {});
-    const total_in_finishing = awaitingByStatus[4] || 0;
-    const total_pending_dispatch = (awaitingByStatus[5] || 0) + (awaitingByStatus[6] || 0);
-    const total_part_dispatch_pending = awaitingByStatus[6] || 0; // subset of pending, from part-dispatched lots
-
-    // "Dispatched" = actual good pcs invoiced across ALL lots (incl. lots dispatched before
-    //   finishing). A cumulative current-state total, not narrowed by the date filter.
-    const dispatchedAgg = await Lot.aggregate([
-      ...(clientOid ? [{ $match: { clientId: clientOid } }] : []),
-      { $group: { _id: null, totalDispatched: { $sum: { $ifNull: ['$invoicedPcs', 0] } } } }
-    ]);
-    const total_dispatched = dispatchedAgg[0]?.totalDispatched || 0;
+    // Dispatch KPIs (2026-08): now accumulated in the main lotData loop above on the
+    // stitching-date scope, replacing the old Finishing.date aggregate (whose In Finishing
+    // disagreed with the client table on the same screen) and the cumulative all-lots
+    // Dispatched total. "Dispatched" therefore now means: invoiced pcs of the lots in the
+    // current filter scope — it follows the date/client filters like every other card.
+    const total_in_finishing = totalInFinishingScoped;
+    const total_pending_dispatch = totalPendingDispatch;
+    const total_part_dispatch_pending = totalPartDispatchPending;
+    const total_dispatched = totalDispatchedScoped;
+    const total_damaged = totalDamaged;
 
     const processingTime = (Date.now() - startTime) / 1000;
 
@@ -1480,6 +1478,7 @@ const getProductionDashboard = async (req, res) => {
       total_pending_dispatch,
       total_part_dispatch_pending,
       total_dispatched,
+      total_damaged,
       client_summary,
       washer_summary,
       stitching_vendor_summary,

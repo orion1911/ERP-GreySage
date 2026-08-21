@@ -34,8 +34,6 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import PendingActionsIcon from '@mui/icons-material/PendingActions';
-import DryCleaningIcon from '@mui/icons-material/DryCleaning';
-import HourglassTopIcon from '@mui/icons-material/HourglassTop';
 import { useOutletContext } from 'react-router-dom';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -94,11 +92,11 @@ const AnimatedNumber = ({ value, duration = 1200, delay = 0 }) => {
 };
 
 // KPI Card Component
-const KPICard = ({ icon: Icon, label, shortLabel, value, subtitle, color, theme, delay = 0 }) => (
+const KPICard = ({ icon: Icon, label, shortLabel, value, subtitle, color, theme, delay = 0, iconBadge }) => (
     <Paper
         elevation={1}
         sx={{
-            p: { xs: 1.25, sm: 1.5 },
+            p: { xs: 1.25, sm: 2 },
             // Row-stretch instead of a fixed height: cards equal their row's tallest
             // (alignItems:'stretch' on the Grid container), with zero reserved slack.
             height: '100%',
@@ -207,7 +205,10 @@ const KPICard = ({ icon: Icon, label, shortLabel, value, subtitle, color, theme,
             <rect pathLength="100" />
             <rect pathLength="100" />
         </Box>
-        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { md: 'center' }, gap: { xs: 0.75, sm: 1, md: 1.5 }, flex: 1 }}>
+        {/* Column at every breakpoint — the pre-Aug structure (see ProductionDashboard's
+            KPICard): icon row on top, label, large value, subtitle. The md icon-left row
+            variant made desktop cards squat and was reverted (2026-08). */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 0.75, sm: 1 }, flex: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
                 <Box
                     sx={{
@@ -221,17 +222,24 @@ const KPICard = ({ icon: Icon, label, shortLabel, value, subtitle, color, theme,
                 >
                     <Icon sx={{ color, fontSize: { xs: 20, sm: 24 } }} />
                 </Box>
+                {/* xs-only: phones hide subtitles, so In Finishing parks its awaiting
+                    count up here beside the icon instead. */}
+                {iconBadge && (
+                    <Typography noWrap sx={{ display: { xs: 'block', sm: 'none' }, color: 'text.secondary', fontWeight: 600, fontSize: '0.6rem', minWidth: 0 }}>
+                        {iconBadge}
+                    </Typography>
+                )}
             </Box>
             <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
             <Typography variant="overline" sx={{ textTransform: 'uppercase', fontWeight: 700, letterSpacing: { xs: 0.2, sm: 0.8 }, color: 'text.secondary', fontSize: { xs: '0.6rem', sm: '0.6rem' }, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                 <Box component="span" sx={{ display: { xs: shortLabel ? 'none' : 'inline', sm: 'inline' } }}>{label}</Box>
                 {shortLabel && <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>{shortLabel}</Box>}
             </Typography>
-            <Typography variant="h3" sx={{ fontWeight: 700, color, lineHeight: 1, fontSize: { xs: '1.35rem', sm: '1.35rem', md: '1.5rem' }, mt: { xs: 'auto', sm: 0 } }}>
+            <Typography variant="h3" sx={{ fontWeight: 700, color, lineHeight: 1, fontSize: { xs: '1.35rem', sm: '1.6rem', md: '2rem' }, mt: { xs: 'auto', sm: 0 } }}>
                 <AnimatedNumber value={value} delay={delay + 0.2} />
             </Typography>
-            {/* Subtitle hidden at xs — a 4-per-row card (~90px) can't fit it legibly. */}
-            <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontWeight: 500, fontSize: '0.7rem', display: { xs: 'none', sm: 'block' } }}>
+            {/* Subtitle hidden at xs — the iconBadge slot carries anything phones need. */}
+            <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontWeight: 500, fontSize: '0.75rem', display: { xs: 'none', sm: 'block' } }}>
                 {subtitle}
             </Typography>
             </Box>
@@ -259,7 +267,6 @@ const Dashboard = () => {
         totalPcs: 0,
         totalMaking: 0,
         totalInWashing: 0,
-        totalOutWashing: 0,
         totalAwaitingFinishing: 0,
         totalInFinishing: 0,
         totalPendingDispatch: 0,
@@ -302,7 +309,6 @@ const Dashboard = () => {
                 totalPcs: data.total_pcs || 0,
                 totalMaking: data.total_making || 0,
                 totalInWashing: data.total_in_washing || 0,
-                totalOutWashing: data.total_out_washing || 0,
                 totalAwaitingFinishing: data.total_awaiting_finishing || 0,
                 totalInFinishing: data.total_in_finishing || 0,
                 totalPendingDispatch: data.total_pending_dispatch || 0,
@@ -365,8 +371,9 @@ const Dashboard = () => {
         { label: 'In Washing', data: clientTop.map((r) => r.IN_WASHING || 0) },
         // Stage series are mutually exclusive: each lot's pcs appear in exactly one of
         // Making / In Washing / Awaiting Finishing / In Finishing (finished lots only in
-        // Total). The Out Washing SUPERSET (= awaiting + in finishing + finished) lives in
-        // the table and its own KPI card, not here, so no bar double-counts another.
+        // Total), so no bar double-counts another. The Out Washing SUPERSET (= awaiting +
+        // in finishing + finished) was removed from every stage surface (2026-08) for the
+        // same reason; per-washer Out remains in the Washer Summary as throughput.
         { label: 'Awaiting Finishing', data: clientTop.map((r) => r.AWAITING_FINISHING || 0) },
         { label: 'In Finishing', data: clientTop.map((r) => r.IN_FINISHING || 0) },
     ];
@@ -428,10 +435,10 @@ const Dashboard = () => {
                 >
                     <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: 3, alignItems: 'stretch' }}>
                         {loading ? (
-                            [0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                                <Grid key={i} size={{ xs: 3, sm: 3, md: 3 }}>
+                            [0, 1, 2, 3, 4, 5].map((i) => (
+                                <Grid key={i} size={{ xs: 4, sm: 4, md: 2 }}>
                                     <Paper elevation={1} sx={{ p: { xs: 1, sm: 1.5 }, borderRadius: 2, height: '100%', boxSizing: 'border-box' }}>
-                                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { md: 'center' }, gap: { xs: 0, md: 1.5 }, height: '100%' }}>
+                                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0, height: '100%' }}>
                                             <Skeleton variant="circular" sx={{ width: { xs: 22, sm: 40 }, height: { xs: 22, sm: 40 }, mb: { xs: 1, md: 0 }, flexShrink: 0 }} />
                                             <Box sx={{ flex: 1, minWidth: 0 }}>
                                                 <Skeleton variant="text" width="50%" height={16} />
@@ -446,15 +453,17 @@ const Dashboard = () => {
                             <>
                                 {[
                                     { label: 'Total Pieces', value: kpiData.totalPcs, subtitle: 'All tracked items', color: '#5C6AC4', icon: GridViewIcon },
-                                    { label: 'Making', value: kpiData.totalMaking, subtitle: 'In production', color: '#E8634A', icon: ContentCutIcon },
+                                    { label: 'In Making', value: kpiData.totalMaking, subtitle: 'In production', color: '#E8634A', icon: ContentCutIcon },
                                     { label: 'In Washing', value: kpiData.totalInWashing, subtitle: 'Being processed', color: '#D4920A', icon: LocalLaundryServiceIcon },
-                                    { label: 'Out Washing', value: kpiData.totalOutWashing, subtitle: 'Washed out (cumulative)', color: '#3E8FC4', icon: DryCleaningIcon },
-                                    { label: 'Awaiting Finishing', shortLabel: 'To Finish', value: kpiData.totalAwaitingFinishing, subtitle: 'No finishing entry yet', color: '#C2545E', icon: HourglassTopIcon },
-                                    { label: 'In Finishing', value: kpiData.totalInFinishing, subtitle: 'Being finished', color: '#9966FF', icon: AutoAwesomeIcon },
+                                    // Out Washing + Awaiting Finishing cards removed (2026-08): Out Washing was a
+                                    // cumulative superset that read like a stage, and awaiting is a wait-state of
+                                    // finishing — folded into In Finishing's subtitle below. Both totals stay in
+                                    // kpiData: the client chart series and summary tables still use them.
+                                    { label: 'In Finishing', value: kpiData.totalInFinishing, subtitle: `${formatNumber(kpiData.totalAwaitingFinishing)} - awaiting`, iconBadge: `${formatNumber(kpiData.totalAwaitingFinishing)} awaiting`, color: '#9966FF', icon: AutoAwesomeIcon },
                                     { label: 'Pending Dispatch', shortLabel: 'To Dispatch', value: kpiData.totalPendingDispatch, subtitle: `${formatNumber(kpiData.totalPartDispatchPending)} - part-dispatch`, color: '#E8923D', icon: PendingActionsIcon },
                                     { label: 'Dispatched', value: kpiData.totalDispatched, subtitle: 'Pieces dispatched', color: '#2AA89A', icon: LocalShippingIcon },
                                 ].map((card, i) => (
-                                    <Grid key={card.label} size={{ xs: 3, sm: 3, md: 3 }}>
+                                    <Grid key={card.label} size={{ xs: 4, sm: 4, md: 2 }}>
                                         <motion.div
                                             initial={{ opacity: 0, y: 20 }}
                                             animate={{ opacity: 1, y: 0 }}
@@ -594,13 +603,10 @@ const Dashboard = () => {
                                                     Total
                                                 </TableCell>
                                                 <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                                    Making
+                                                    In Making
                                                 </TableCell>
                                                 <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
                                                     In Washing
-                                                </TableCell>
-                                                <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
-                                                    Out Washing
                                                 </TableCell>
                                                 <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase' }}>
                                                     Awaiting Finish
@@ -625,9 +631,6 @@ const Dashboard = () => {
                                                             <Chip label={formatNumber(row.IN_WASHING || 0)} size="small" color="primary" variant="filled" />
                                                         </TableCell>
                                                         <TableCell align="center">
-                                                            <Chip label={formatNumber(row.OUT_WASHING || 0)} size="small" color="success" variant="filled" />
-                                                        </TableCell>
-                                                        <TableCell align="center">
                                                             <Chip label={formatNumber(row.AWAITING_FINISHING || 0)} size="small" color="warning" variant="filled" />
                                                         </TableCell>
                                                         <TableCell align="center">
@@ -637,7 +640,7 @@ const Dashboard = () => {
                                                 ))
                                             ) : (
                                                 <TableRow>
-                                                    <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                                    <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                                                         No data available
                                                     </TableCell>
                                                 </TableRow>

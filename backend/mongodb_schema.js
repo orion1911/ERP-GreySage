@@ -801,7 +801,10 @@ const ReportSchema = new mongoose.Schema({
 const AuditLogSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   action: { type: String, required: true },
-  entity: { type: String, enum: ['User', 'Client', 'FitStyle', 'Order', 'Stitching', 'Washing', 'Finishing', 'VendorBalance', 'Invoice', 'Balance', 'Report', 'ClientBalance', 'ClientPayment', 'CompanySettings', 'AccessoryType', 'AccessoryItem', 'AccessoryPurchase', 'AccessoryPayment', 'AccessoryReturn'], required: true },
+  // ⚠ Keep this in sync with every logAction(...) call site — a value missing here makes the
+  // audit write throw, and before logger.js failed open that error FAILED the business
+  // operation it was auditing ('ManualDispatch' and 'Lot' were both missing and live).
+  entity: { type: String, enum: ['User', 'Client', 'FitStyle', 'Order', 'Lot', 'Stitching', 'Washing', 'Finishing', 'VendorBalance', 'Invoice', 'ManualDispatch', 'Balance', 'Report', 'ClientBalance', 'ClientPayment', 'CompanySettings', 'AccessoryType', 'AccessoryItem', 'AccessoryPurchase', 'AccessoryPayment', 'AccessoryReturn'], required: true },
   entityId: { type: mongoose.Schema.Types.ObjectId, required: true },
   details: { type: String },
   createdAt: { type: Date, default: Date.now }

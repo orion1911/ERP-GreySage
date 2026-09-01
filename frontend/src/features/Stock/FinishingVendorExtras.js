@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
   Box, Paper, Button, IconButton, Tooltip, Typography, Stack, Chip, Grid,
-  Table, TableHead, TableBody, TableRow, TableCell, Collapse, CircularProgress,
+  Table, TableHead, TableBody, TableRow, TableCell, Collapse,
   Accordion, AccordionSummary, AccordionDetails, useMediaQuery, useTheme,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, TextField
 } from '@mui/material';
@@ -12,6 +12,7 @@ import {
 } from '@mui/icons-material';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
+import { ExtrasPageSkeleton } from '../../components/Skeleton/SkeletonLoader';
 import EllipsisText from '../../components/common/EllipsisText';
 
 const fmtQty = (n) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
@@ -175,7 +176,7 @@ function FinishingVendorExtras({ hideZero = true, readOnly = false, showSnackbar
   );
 
   if (loading) {
-    return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}><CircularProgress /></Box>;
+    return <ExtrasPageSkeleton isMobile={isMobile} />;
   }
 
   const vendors = hideZero

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
   Box, Paper, Grid, Button, IconButton, Tooltip, Typography, Stack, Chip,
-  Table, TableHead, TableBody, TableRow, TableCell, TableContainer, TablePagination, CircularProgress,
+  Table, TableHead, TableBody, TableRow, TableCell, TableContainer, TablePagination,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, TextField
 } from '@mui/material';
 import {
@@ -11,6 +11,7 @@ import {
 } from '@mui/icons-material';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
+import { LedgerTableSkeleton } from '../../components/Skeleton/SkeletonLoader';
 import EllipsisText from '../../components/common/EllipsisText';
 import AccessoryPurchaseModal from './AccessoryPurchaseModal';
 import AccessoryPaymentModal from './AccessoryPaymentModal';
@@ -122,11 +123,9 @@ function AccessoryLedger({ type, onStockChange }) {
 
   const lineSummary = (p) => (p.lines || []).map(l => `${l.nameSnapshot || l.accessoryItemId?.name || ''} (${fmtQty(l.qty)})`).join(', ');
 
-  const Loader = () => (
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-      <CircularProgress size={28} />
-    </Box>
-  );
+  // Skeleton rows in the shape of the table they stand in for (works in the fixed-height
+  // scroll container on both desktop and mobile).
+  const Loader = ({ cols = 6 }) => <LedgerTableSkeleton cols={cols} rows={6} />;
 
   return (
     <Box>
@@ -160,7 +159,7 @@ function AccessoryLedger({ type, onStockChange }) {
           <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>Purchases</Typography>
           <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
             <TableContainer sx={{ height: TABLE_HEIGHT, overflowY: 'auto', overflowX: 'auto' }}>
-              {loadingP ? <Loader /> : (
+              {loadingP ? <Loader cols={6} /> : (
                 <Table size="small" stickyHeader sx={{ minWidth: isMobile ? 540 : 'auto' }}>
                   <TableHead>
                     <TableRow>
@@ -214,7 +213,7 @@ function AccessoryLedger({ type, onStockChange }) {
           <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>Payments</Typography>
           <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
             <TableContainer sx={{ height: TABLE_HEIGHT, overflowY: 'auto', overflowX: 'auto' }}>
-              {loadingPay ? <Loader /> : (
+              {loadingPay ? <Loader cols={5} /> : (
                 <Table size="small" stickyHeader sx={{ minWidth: isMobile ? 540 : 'auto' }}>
                   <TableHead>
                     <TableRow>

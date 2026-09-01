@@ -382,13 +382,12 @@ function NotificationBell() {
         {(items.length > 0 || meta.discardedCount > 0) && (
           <Box sx={{ px: 2, pb: 1.25, flexShrink: 0 }}>
             {/* Filter toggles styled like physical buttons: raised when off, pressed (inset) when on.
-                Multi-select — both on by default (show all); turn one off to hide that group.
-                At least one must stay selected. */}
+                Multi-select — create + mismatch on by default (show all); turn one off to hide
+                that group. All three may be off, which just empties the list. */}
             <ToggleButtonGroup
               size="small"
               value={groups}
               onChange={(e, v) => {
-                if (!v.length) return; // at least one group must stay selected
                 if (v.includes('hidden') && !groups.includes('hidden')) loadDiscards();
                 setGroups(v);
               }}
@@ -501,7 +500,13 @@ function NotificationBell() {
 
           {(items.length > 0 || discarded.length > 0) && visibleCount === 0 && (
             <Box sx={{ px: 2, py: 4, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary">No lots match “{filterText}”.</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {groups.length === 0
+                  ? 'All groups are turned off — select one above.'
+                  : filterText.trim()
+                    ? `No lots match “${filterText}”.`
+                    : 'Nothing in the selected groups.'}
+              </Typography>
             </Box>
           )}
 

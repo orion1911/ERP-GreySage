@@ -2,10 +2,11 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
   Box, Typography, Paper, Card, CardContent, Tabs, Tab, ToggleButton, ToggleButtonGroup,
-  CircularProgress, Stack, Chip, FormControl, Select, MenuItem, Switch, FormControlLabel
+  Stack, Chip, FormControl, Select, MenuItem, Switch, FormControlLabel
 } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
+import { StockPageSkeleton } from '../../components/Skeleton/SkeletonLoader';
 import LinkIcon from '@mui/icons-material/Link';
 import RadioButtonCheckedIcon from '@mui/icons-material/RadioButtonChecked';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
@@ -82,9 +83,7 @@ function StockManagement() {
   }, []);
 
   if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}><CircularProgress /></Box>
-    );
+    return <StockPageSkeleton isMobile={isMobile} />;
   }
 
   return (

@@ -10,6 +10,7 @@ import {
   Tune as TuneIcon, ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import apiService from '../../services/apiService';
+import { OrderCardsLoader, TableRowsLoader } from '../../components/Skeleton/SkeletonLoader';
 import EllipsisText from '../../components/common/EllipsisText';
 import AccessoryItemModal from './AccessoryItemModal';
 
@@ -166,7 +167,17 @@ function AccessoryMasters({ type, clients, clientFilter = '', onStockChange }) {
       </Paper>
 
       {loading ? (
-        <Box sx={{ textAlign: 'center', py: 3 }}><CircularProgress size={28} /></Box>
+        isMobile ? (
+          <OrderCardsLoader type="item" numOfCards={4} />
+        ) : (
+          <TableContainer>
+            <Table size="small">
+              <TableBody>
+                <TableRowsLoader colsNum={6} rowsNum={6} />
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )
       ) : isMobile ? (
         <Stack spacing={1.5}>
           {filtered.length === 0 && <Typography align="center" variant="body2">No items</Typography>}

@@ -153,6 +153,94 @@ const FinishingVendorSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// ─── Cutting Book (Stage #0 — the physical cutting register) ─────────────────────────────
+// One CuttingSheet = one dated section of the paper book = one Lot. Its rows are the
+// individual book lots (each a fabric layup: meters consumed + size-wise piece counts).
+// Saving a sheet GENERATES the LotNumber (`series/firstRow/lastRow`) instead of manual entry.
+
+// CuttingMaster Schema: Lookup for the in-house cutting masters written in the book margins
+// (RAMU MSTR, ANSAR MSTR, …). Same catalog shape as FitStyle.
+const CuttingMasterSchema = new mongoose.Schema({
+  name: { type: String, required: true, unique: true, trim: true },
+  isActive: { type: Boolean, default: true },
+  sortOrder: { type: Number, default: 0 }, // user-defined display order for dropdowns/catalog (lower = first)
+  createdAt: { type: Date, default: Date.now }
+});
+CuttingMasterSchema.index({ name: 1 }, { unique: true });
+
+// WaistSize Schema: Lookup for the size columns a sheet can carry. Seeded 26–42 by
+// cutting-book-init.js with 28–36 flagged default (pre-selected on a new sheet); the rare
+// 26 / 38 / 40 / 42 columns are added per-sheet from the non-default pool.
+const WaistSizeSchema = new mongoose.Schema({
+  size: { type: Number, required: true, unique: true, min: 26, max: 42 },
+  isDefault: { type: Boolean, default: false }, // pre-selected on a new cutting sheet
+  isActive: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+// One row of a cutting sheet = one book lot (one fabric layup).
+const CuttingSheetRowSchema = new mongoose.Schema({
+  bookLotNo: { type: Number, required: true, min: 1 }, // sequential within the series (8, 9, …)
+  meters: { type: Number, required: true, min: 0 },    // fresh fabric consumed by this layup
+  // Leftover meters from an earlier cutting folded into this layup (the "+35m" margin note).
+  // Consumption for totals/AVG = meters + carryInMeters.
+  carryInMeters: { type: Number, default: 0, min: 0 },
+  // Full roll length when the roll was only PARTIALLY used (the "(104m)" note). When
+  // rollMeters > meters the difference becomes an `available` FabricLeftover for a later sheet.
+  rollMeters: { type: Number, min: 0 },
+  // The FabricLeftover this row's carryInMeters was taken from (null for manual carry-ins
+  // that predate the ledger). Lets edit/delete release the leftover back to `available`.
+  appliedLeftoverId: { type: mongoose.Schema.Types.ObjectId, ref: 'FabricLeftover' },
+  sizeQty: [{ size: { type: Number, required: true }, qty: { type: Number, default: 0, min: 0 } }],
+  totalPcs: { type: Number, default: 0, min: 0 }       // Σ sizeQty.qty — stored for reporting
+}, { _id: false });
+
+const CuttingSheetSchema = new mongoose.Schema({
+  sheetId: { type: String, unique: true },             // CS-YYYYMMDD### via Counter
+  date: { type: Date, required: true },
+  series: { type: String, required: true, trim: true, uppercase: true }, // 'X', 'Y', …
+  clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
+  fitStyleId: { type: mongoose.Schema.Types.ObjectId, ref: 'FitStyle', required: true },
+  fabric: { type: String, required: true },            // fabric / quality no (111112, 5009, FARNA)
+  stitchingVendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'StitchingVendor', required: true },
+  masterId: { type: mongoose.Schema.Types.ObjectId, ref: 'CuttingMaster', required: true },
+  panna: { type: Number, min: 0 },                     // fabric width, inches (77.5, 79)
+  layerLength: { type: Number, min: 0 },               // marker/layer length, inches (44.5)
+  sizes: [{ type: Number }],                           // the sheet's size columns, ascending
+  rows: [CuttingSheetRowSchema],
+  // Derived on every save (never trusted from the client):
+  totalMeters: { type: Number, default: 0 },           // Σ (meters + carryInMeters)
+  totalPcs: { type: Number, default: 0 },
+  avgConsumption: { type: Number, default: 0 },        // totalMeters / totalPcs — the book's AVG
+  description: { type: String },
+  // The Lot this sheet generated (create mode) or was attached to (stitching-first lots).
+  // 1:1 — a lot has at most one sheet, a sheet always has its lot.
+  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot', required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+CuttingSheetSchema.index({ lotId: 1 }, { unique: true });
+CuttingSheetSchema.index({ series: 1, createdAt: -1 }); // next-lot-no + series listing
+CuttingSheetSchema.index({ date: -1 });                 // list default sort
+
+// FabricLeftover Schema: the between-sheets thread — a partially-used roll's remainder
+// (rollMeters − meters) parked here until a later sheet of the SAME fabric folds it in as
+// a row's carryInMeters. A convenience ledger, not a hard reconciliation: manual carry-ins
+// are always allowed.
+const FabricLeftoverSchema = new mongoose.Schema({
+  fabric: { type: String, required: true },
+  meters: { type: Number, required: true, min: 0 },
+  sourceLabel: { type: String },                       // e.g. 'Y/45' — display, frozen at creation
+  fromSheetId: { type: mongoose.Schema.Types.ObjectId, ref: 'CuttingSheet', required: true },
+  fromBookLotNo: { type: Number, required: true },
+  status: { type: String, enum: ['available', 'used'], default: 'available' },
+  usedBySheetId: { type: mongoose.Schema.Types.ObjectId, ref: 'CuttingSheet' },
+  usedByBookLotNo: { type: Number },
+  usedLabel: { type: String },                         // e.g. 'Y/52' — display, frozen at use
+  createdAt: { type: Date, default: Date.now }
+});
+FabricLeftoverSchema.index({ status: 1, fabric: 1 });
+FabricLeftoverSchema.index({ fromSheetId: 1 });
+
 // Order Schema: Stage #1 - Client bulk orders
 const OrderSchema = new mongoose.Schema({
   orderId: { type: String, required: true, unique: true },
@@ -176,15 +264,26 @@ OrderSchema.index({ status: 1, date: 1 }); // Compound index for status-based da
 const LotSchema = new mongoose.Schema({
   lotId: { type: String, unique: true },                    // LT-YYYYMMDD###
   lotNumber: { type: String, required: true, unique: true }, // e.g., A/1/5
-  invoiceNumber: { type: Number, required: true, unique: true }, // upstream invoice (NOT the sales invoice)
+  // Upstream/maker invoice (NOT the sales invoice). OPTIONAL since the Cutting Book landed:
+  // a lot created from a cutting sheet (status 1) has no maker bill yet — it is required and
+  // set when stitching starts. Sparse-unique so multiple status-1 lots can coexist without one.
+  // ⚠ The pre-existing non-sparse unique index must be dropped once:
+  //     node backend/migrations/cutting-book-init.js
+  invoiceNumber: { type: Number, unique: true, sparse: true },
   clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
   fabric: { type: String, required: true },
   fitStyleId: { type: mongoose.Schema.Types.ObjectId, ref: 'FitStyle', required: true },
   waistSize: { type: String, required: true },
   date: { type: Date, required: true },
-  // 2 Stitching · 3 Washing · 4 Finishing · 5 Finished/Ready · 6 Partially Dispatched · 7 Dispatched
-  status: { type: Number, enum: [2, 3, 4, 5, 6, 7], default: 2 },
+  // 1 Cut (cutting sheet saved, awaiting stitching) · 2 Stitching · 3 Washing · 4 Finishing ·
+  // 5 Finished/Ready · 6 Partially Dispatched · 7 Dispatched
+  // Dashboard "active lots" filters use $in: [2,3,4], so status-1 lots are deliberately
+  // outside every production/sales aggregate until stitching begins.
+  status: { type: Number, enum: [1, 2, 3, 4, 5, 6, 7], default: 2 },
   statusHistory: [{ status: Number, changedAt: { type: Date, default: Date.now } }],
+  // Back-reference to the CuttingSheet that generated (or was attached to) this lot.
+  // Null for legacy lots entered stitching-first that never got a book entry.
+  cuttingSheetId: { type: mongoose.Schema.Types.ObjectId, ref: 'CuttingSheet' },
   description: { type: String },
   // Sales-side cached aggregate: sum of all issued GOOD invoice-line pcs for this lot
   // (lines where isDamaged != true). Recomputed by invoiceService.recalcLotInvoiced
@@ -865,6 +964,10 @@ module.exports = {
   StitchingVendor: mongoose.model('StitchingVendor', StitchingVendorSchema),
   WashingVendor: mongoose.model('WashingVendor', WashingVendorSchema),
   FinishingVendor: mongoose.model('FinishingVendor', FinishingVendorSchema),
+  CuttingMaster: mongoose.model('CuttingMaster', CuttingMasterSchema),
+  WaistSize: mongoose.model('WaistSize', WaistSizeSchema),
+  CuttingSheet: mongoose.model('CuttingSheet', CuttingSheetSchema),
+  FabricLeftover: mongoose.model('FabricLeftover', FabricLeftoverSchema),
   Order: mongoose.model('Order', OrderSchema),
   Lot: mongoose.model('Lot', LotSchema),
   Stitching: mongoose.model('Stitching', StitchingSchema),

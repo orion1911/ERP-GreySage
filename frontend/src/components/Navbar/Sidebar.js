@@ -13,6 +13,7 @@ import {
   LocalShipping as DispatchIcon,
   AccountBalance as ClientPayIcon, Business as CompanyIcon,
   Warehouse as WarehouseIcon, Category as CategoryIcon,
+  Straighten as StraightenIcon, Engineering as EngineeringIcon,
   ExpandLess as ExpandLessIcon, ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import { motion } from 'motion/react';
@@ -47,6 +48,7 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', icon: <PieChartIcon /> },
     // { label: 'Dashboard XL', path: '/dashboardxl', icon: <LeaderboardIcon /> },
+    { label: 'Cutting Book', path: '/cutting-book', icon: <StraightenIcon /> },
     { label: 'Stitching', path: '/stitching', icon: <ContentCutIcon /> },
     { label: 'Sales / Invoices', path: '/sales/invoices', icon: <InvoiceIcon /> },
     { label: 'Pending Dispatch', path: '/sales/dispatch', icon: <DispatchIcon /> },
@@ -61,6 +63,8 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
         { label: 'Stitching Vendors', path: '/stitching-vendors', icon: <ContentCutIcon /> },
         { label: 'Washing Vendors', path: '/washing-vendors', icon: <LaundryIcon /> },
         { label: 'Finishing Vendors', path: '/finishing-vendors', icon: <AutoAwesomeIcon /> },
+        { label: 'Cutting Masters', path: '/cutting-masters', icon: <EngineeringIcon /> },
+        { label: 'Waist Sizes', path: '/waist-sizes', icon: <StraightenIcon /> },
       ]
     },
     { label: 'Reports', path: '/reports', icon: <AssessmentIcon /> },

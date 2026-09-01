@@ -27,6 +27,9 @@ const auditLogRoutes = require('./routes/auditLogs');
 const emailRoutes = require('./routes/contact');
 const cronRoutes = require('./routes/cron');
 const makingsRoutes = require('./routes/makings');
+const cuttingMasterRoutes = require('./routes/cuttingMasters');
+const waistSizeRoutes = require('./routes/waistSizes');
+const cuttingSheetRoutes = require('./routes/cuttingSheets');
 
 // Middleware
 const errorHandler = require('./middleware/error');
@@ -126,6 +129,9 @@ app.use('/api', fitStyleRoutes);
 app.use('/api', vendorRoutes);
 // app.use('/api', orderRoutes); // dormant — Order stage removed
 app.use('/api', lotRoutes);
+app.use('/api', cuttingMasterRoutes);
+app.use('/api', waistSizeRoutes);
+app.use('/api', cuttingSheetRoutes);
 app.use('/api', stitchingRoutes);
 app.use('/api', washingRoutes);
 app.use('/api', finishingRoutes);

@@ -25,6 +25,9 @@ import StitchingVendorCatalog from './features/Catalogs/StitchingVendorCatalog';
 import WashingVendorCatalog from './features/Catalogs/WashingVendorCatalog';
 import FinishingVendorCatalog from './features/Catalogs/FinishingVendorCatalog';
 import StitchingManagement from './features/Stitching/StitchingManagement';
+import CuttingBookManagement from './features/CuttingBook/CuttingBookManagement';
+import CuttingMasterCatalog from './features/Catalogs/CuttingMasterCatalog';
+import WaistSizeCatalog from './features/Catalogs/WaistSizeCatalog';
 import { VendorPaymentManagement } from './features/VendorPayments';
 import { InvoiceManagement, DispatchManagement } from './features/Sales';
 import { ClientPaymentManagement } from './features/ClientPayments';
@@ -213,6 +216,7 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/dashboardxl" element={<DashboardExcel />} />
               <Route path="/stitching" element={<StitchingManagement />} />
+              <Route path="/cutting-book" element={<CuttingBookManagement />} />
               <Route path="/stock" element={<StockManagement />} />
               <Route path="/vendor-payments" element={<VendorPaymentManagement />} />
               <Route path="/sales/invoices" element={<InvoiceManagement />} />
@@ -225,6 +229,8 @@ function App() {
               <Route path="/stitching-vendors" element={<StitchingVendorCatalog />} />
               <Route path="/washing-vendors" element={<WashingVendorCatalog />} />
               <Route path="/finishing-vendors" element={<FinishingVendorCatalog />} />
+              <Route path="/cutting-masters" element={<CuttingMasterCatalog />} />
+              <Route path="/waist-sizes" element={<WaistSizeCatalog />} />
               <Route element={<AdminLayout />}>
                 <Route path="/users" element={<UserManagement />} />
                 <Route path="/audit-logs" element={<AuditLogs />} />

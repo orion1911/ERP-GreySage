@@ -282,87 +282,6 @@ const apiService = {
   },
 
   // Vendor Payments API calls
-  vendorPayments: {
-    getVendorsByType: async (vendorType) => {
-      try {
-        const response = await axiosInstance.get('api/vendors-by-type', {
-          params: { vendorType },
-        });
-        return response.data;
-      } catch (error) {
-        throw error;
-      }
-    },
-
-    getVendorLotsDetails: async (vendorId, vendorType) => {
-      try {
-        const response = await axiosInstance.get('api/vendor-lots-details', {
-          params: { vendorId, vendorType },
-        });
-        return response.data;
-      } catch (error) {
-        throw error;
-      }
-    },
-
-    addVendorPayment: async (payload) => {
-      try {
-        const response = await axiosInstance.post('api/vendor-payment', payload);
-        return response.data;
-      } catch (error) {
-        throw error;
-      }
-    },
-
-    addShortAdjustment: async (payload) => {
-      try {
-        const response = await axiosInstance.post('api/short-adjustment', payload);
-        return response.data;
-      } catch (error) {
-        throw error;
-      }
-    },
-
-    getVendorPaymentEntries: async (vendorId, vendorType) => {
-      try {
-        const response = await axiosInstance.get('api/vendor-payment-entries', {
-          params: { vendorId, vendorType },
-        });
-        return response.data;
-      } catch (error) {
-        throw error;
-      }
-    },
-
-    getVendorBalanceSummary: async (vendorId, vendorType) => {
-      try {
-        const response = await axiosInstance.get('api/vendor-balance-summary', {
-          params: { vendorId, vendorType },
-        });
-        return response.data;
-      } catch (error) {
-        throw error;
-      }
-    },
-
-    updatePaymentEntry: async (entryId, payload) => {
-      try {
-        const response = await axiosInstance.put(`api/vendor-payment/${entryId}`, payload);
-        return response.data;
-      } catch (error) {
-        throw error;
-      }
-    },
-
-    deletePaymentEntry: async (entryId) => {
-      try {
-        const response = await axiosInstance.delete(`api/vendor-payment/${entryId}`);
-        return response.data;
-      } catch (error) {
-        throw error;
-      }
-    },
-  },
 
   // Fabric Vendors API calls
   fabricVendors: {
@@ -1258,6 +1177,129 @@ const apiService = {
     getDiscards: async () => {
       try {
         const response = await axiosInstance.get('api/makings/discards');
+        return response.data;
+      } catch (error) { throw error; }
+    },
+  },
+
+  // Cutting Book — Stage #0 (paper cutting register). Sheets generate Lot numbers.
+  cuttingMasters: {
+    createCuttingMaster: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/cutting-masters', payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getCuttingMasters: async (search = '', showInactive = false) => {
+      try {
+        const response = await axiosInstance.get('api/cutting-masters', { params: { search, showInactive } });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    toggleCuttingMasterActive: async (id) => {
+      try {
+        const response = await axiosInstance.put(`api/cutting-masters/${id}/toggle-active`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    updateCuttingMaster: async (id, payload) => {
+      try {
+        const response = await axiosInstance.patch(`api/cutting-masters/${id}`, payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    reorderCuttingMasters: async (orderedIds) => {
+      try {
+        const response = await axiosInstance.patch('api/cutting-masters/reorder', { order: orderedIds });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+  },
+
+  waistSizes: {
+    createWaistSize: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/waist-sizes', payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getWaistSizes: async (showInactive = false) => {
+      try {
+        const response = await axiosInstance.get('api/waist-sizes', { params: { showInactive } });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    toggleWaistSizeDefault: async (id) => {
+      try {
+        const response = await axiosInstance.put(`api/waist-sizes/${id}/toggle-default`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    toggleWaistSizeActive: async (id) => {
+      try {
+        const response = await axiosInstance.put(`api/waist-sizes/${id}/toggle-active`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+  },
+
+  cuttingBook: {
+    getSheets: async (params) => {
+      try {
+        const response = await axiosInstance.get('api/cutting-sheets', { params });
+        return response.data; // { sheets, total, page, limit }
+      } catch (error) { throw error; }
+    },
+    createSheet: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/cutting-sheets', payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    updateSheet: async (id, payload) => {
+      try {
+        const response = await axiosInstance.patch(`api/cutting-sheets/${id}`, payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    deleteSheet: async (id) => {
+      try {
+        const response = await axiosInstance.delete(`api/cutting-sheets/${id}`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    // Next book-lot number in a series + the known series list (for the series autocomplete).
+    getNextLotNo: async (series) => {
+      try {
+        const response = await axiosInstance.get('api/cutting-sheets/next-lot-no', { params: { series } });
+        return response.data; // { series, nextBookLotNo, knownSeries }
+      } catch (error) { throw error; }
+    },
+    // Live "is this range free?" check while typing. Advisory — save re-checks under a lock.
+    checkLot: async (series, start, end, excludeLotId) => {
+      try {
+        const response = await axiosInstance.get('api/cutting-sheets/check-lot', { params: { series, start, end, excludeLotId } });
+        return response.data; // { available, lotNumber, message? }
+      } catch (error) { throw error; }
+    },
+    // Lots with no book entry yet — the attach-mode picker.
+    getAvailableLots: async () => {
+      try {
+        const response = await axiosInstance.get('api/cutting-sheets/available-lots');
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    // Status-1 (Cut) lots — the Add Stitching picker.
+    getCutLots: async () => {
+      try {
+        const response = await axiosInstance.get('api/cutting-sheets/cut-lots');
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    // Available fabric leftovers, optionally filtered to one fabric.
+    getLeftovers: async (fabric) => {
+      try {
+        const response = await axiosInstance.get('api/cutting-sheets/leftovers', { params: { fabric } });
         return response.data;
       } catch (error) { throw error; }
     },

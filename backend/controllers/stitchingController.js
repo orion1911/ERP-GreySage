@@ -46,66 +46,111 @@ const prepareZipperConsumption = async (zipperConsumption, quantity) => {
   return { typeId: zipperType._id, rows };
 };
 
-// Helper function to parse lotNumber and extract series, sub-series, and lot number
-const parseLotNumber = (lotNumber) => {
-  const parts = lotNumber.split('/');
-  if (parts.length !== 2 && parts.length !== 3) {
-    throw new Error('Invalid lotNumber format. Expected format: SERIES/SUBSERIES or SERIES/SUBSERIES/NUM');
+// Helper function to parse lotNumber and extract series, sub-series, and lot number.
+// MOVED to utils/lotNumber.js when the Cutting Book landed — cuttingSheetController needs the
+// exact same parse/overlap rules for sheet-generated lot numbers. Behaviour unchanged.
+const { validateLotNumber } = require('../utils/lotNumber');
+
+// Cutting-Book path: the Lot already exists at status 1 (Cut), created by a cutting sheet.
+// Here stitching STARTS the lot instead of creating it — the maker invoiceNumber lands now,
+// status moves 1 → 2, and the stitching entry is recorded, all in one transaction. LotNumber
+// validation is skipped: the number was generated and range-checked when the sheet was saved.
+const createStitchingForCutLot = async (req, res) => {
+  let { lotId, clientId, fabric, fitStyleId, waistSize, invoiceNumber, vendorId, quantity, quantityShort, rate, threadColors, zipperConsumption, date, stitchOutDate, description } = req.body;
+
+  const lot = await Lot.findById(lotId);
+  if (!lot) return res.status(404).json({ error: 'Lot not found' });
+  if (lot.status !== 1) return res.status(400).json({ error: `Lot ${lot.lotNumber} is already in the pipeline — edit its stitching record instead` });
+  const existingStitching = await Stitching.findOne({ lotId: lot._id }).select('_id').lean();
+  if (existingStitching) return res.status(400).json({ error: `Lot ${lot.lotNumber} already has a stitching record` });
+
+  if (!invoiceNumber) return res.status(400).json({ error: 'Invoice number is required' });
+  if (typeof invoiceNumber !== 'number' || isNaN(invoiceNumber)) {
+    return res.status(400).json({ error: 'Invoice number must be a valid number' });
   }
-  const [series, subSeries, lotNum] = parts;
-  if (!/^[A-Z]+$/.test(series)) {
-    throw new Error('Series must contain one or more uppercase letters only');
+  if (!vendorId) return res.status(400).json({ error: 'Vendor ID is required' });
+  if ((quantity ?? '') === '' || quantity < 0) return res.status(400).json({ error: 'Quantity must be a positive number' });
+  if ((rate ?? '') === '' || rate < 0) return res.status(400).json({ error: 'Rate must be a non-negative number' });
+
+  quantity = parseInt(quantity);
+  threadColors = (threadColors || []).map(tc => ({ color: tc.color.trim(), quantity: Number(tc.quantity) }));
+  const totalThreadQuantity = threadColors.reduce((sum, tc) => sum + parseInt(tc.quantity), 0);
+  if (totalThreadQuantity !== quantity) {
+    return res.status(400).json({ error: `Sum of thread color quantities (${totalThreadQuantity}) must equal total Lot quantity (${quantity})` });
   }
-  if (!/^\d+$/.test(subSeries)) {
-    throw new Error('Sub-series must be a number');
-  }
-  if (parts.length === 3 && !/^\d+$/.test(lotNum)) {
-    throw new Error('Lot number must be a number');
-  }
-  return {
-    series,
-    subSeries: parseInt(subSeries, 10),
-    lotNum: parts.length === 3 ? parseInt(lotNum, 10) : parseInt(subSeries, 10),
-  };
-};
 
-// Helper function to validate lotNumber against existing lots
-const validateLotNumber = async (lotNumber, excludeLotId = null) => {
-  const { series, subSeries, lotNum } = parseLotNumber(lotNumber);
+  const preparedZipper = await prepareZipperConsumption(zipperConsumption, quantity);
+  if (preparedZipper?.error) return res.status(400).json({ error: preparedZipper.error });
 
-  // Define the new range (single lot if subSeries === lotNum)
-  const newRangeStart = subSeries;
-  const newRangeEnd = lotNum;
+  // The sparse unique index would also catch this — pre-check for a clean message.
+  const dupInvoice = await Lot.findOne({ invoiceNumber, _id: { $ne: lot._id } }).select('invoiceNumber').lean();
+  if (dupInvoice) return res.status(400).json({ error: `Invoice number (${invoiceNumber}) already exists` });
 
-  // Find all lots in the same series, excluding the specified lotId (for updates)
-  const query = { lotNumber: { $regex: `^${series}/` } };
-  if (excludeLotId) query._id = { $ne: excludeLotId };
-  const existingLots = await Lot.find(query);
+  const session = await mongoose.startSession();
+  let transactionCommitted = false;
+  let stitching = null;
+  try {
+    session.startTransaction();
 
-  const lotRanges = [];
+    // Start the lot: header fields honour any edits made in the Add Stitching form.
+    lot.invoiceNumber = invoiceNumber;
+    lot.status = 2;
+    lot.statusHistory.push({ status: 2, changedAt: new Date() });
+    if (clientId) lot.clientId = clientId;
+    if (fabric) lot.fabric = fabric;
+    if (fitStyleId) lot.fitStyleId = fitStyleId;
+    if (waistSize) lot.waistSize = waistSize;
+    if (description) lot.description = description;
+    await lot.save({ session });
 
-  // Parse existing lotNumbers to identify ranges
-  for (const lot of existingLots) {
-    const { subSeries: existingSubSeries, lotNum: existingLotNum } = parseLotNumber(lot.lotNumber);
-    lotRanges.push({
-      start: existingSubSeries,
-      end: existingLotNum,
+    stitching = new Stitching({
+      lotId: lot._id,
+      vendorId,
+      quantity,
+      quantityShort: quantityShort || 0,
+      rate,
+      threadColors,
+      date,
+      stitchOutDate,
+      description,
+      createdAt: new Date(),
     });
-  }
+    await stitching.save({ session });
 
-  // Validate: new lot's range must not overlap with existing ranges
-  for (const range of lotRanges) {
-    const overlap =
-      (newRangeStart >= range.start && newRangeStart <= range.end) ||
-      (newRangeEnd >= range.start && newRangeEnd <= range.end) ||
-      (newRangeStart <= range.start && newRangeEnd >= range.end);
-    if (overlap) {
-      throw new Error(`Lot range already exists! Lot range ${series}/${newRangeStart}/${newRangeEnd} conflicts with existing range ${series}/${range.start}/${range.end}`);
+    if (preparedZipper && preparedZipper.rows) {
+      await accessoryService.replaceConsumption({
+        accessoryTypeId: preparedZipper.typeId,
+        lotId: lot._id,
+        stage: 'stitching',
+        items: preparedZipper.rows,
+        userId: req.user?.userId
+      }, session);
+    }
+
+    await session.commitTransaction();
+    transactionCommitted = true;
+  } finally {
+    if (session && !transactionCommitted) {
+      await session.abortTransaction();
+    }
+    if (session) {
+      await session.endSession();
     }
   }
+
+  await bumpVendorLedgers(['stitching']); // new stitching work changes the stitching vendor's balance
+  await invalidateDashboard(); // lot enters status 2 — Making / Total Pieces move
+  const populatedStitching = await Stitching.findById(stitching._id)
+    .populate({ path: 'lotId', populate: [{ path: 'clientId' }, { path: 'fitStyleId' }] })
+    .populate({ path: 'vendorId' });
+  res.status(201).json(populatedStitching);
 };
 
 const createStitching = async (req, res) => {
+  // A lotId means "start stitching on a Cut lot from the Cutting Book" — the lot exists,
+  // so the create-a-new-lot path below doesn't apply.
+  if (req.body.lotId) return createStitchingForCutLot(req, res);
+
   let { lotNumber, clientId, fabric, fitStyleId, waistSize, invoiceNumber, vendorId, quantity, quantityShort, rate, threadColors, zipperConsumption, date, stitchOutDate, description } = req.body;
   let session = null;
 
@@ -258,6 +303,12 @@ const updateStitching = async (req, res) => {
   // Find the stitching record
   const stitching = await Stitching.findById(id).populate('lotId vendorId');
   if (!stitching) return res.status(404).json({ error: 'Stitching record not found' });
+
+  // Sheet-backed lots: the lot number is generated from the cutting sheet's row range, so it
+  // can only change by editing the sheet (which revalidates and keeps rows in sync).
+  if (lotNumber && stitching.lotId?.cuttingSheetId && lotNumber !== stitching.lotId.lotNumber) {
+    return res.status(400).json({ error: `Lot ${stitching.lotId.lotNumber} is managed by a Cutting Book sheet — change its number by editing the sheet` });
+  }
 
   // Validate zipper consumption against the effective quantity (provided or existing)
   let preparedZipper = null;

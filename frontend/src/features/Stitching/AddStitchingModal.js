@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form';
-import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Divider, Chip, CircularProgress } from '@mui/material';
+import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Divider, Chip, CircularProgress, Autocomplete } from '@mui/material';
 import { Close as CloseIcon, Delete as DeleteIcon, Save as SaveIcon, Add as AddIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -43,6 +43,42 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
     control,
     name: 'threadColors',
   });
+
+  // ── Cut Lot picker (Cutting Book) ──
+  // In create mode, a Lot may already exist at status 1 — created by a cutting sheet, with
+  // no maker invoice yet. Picking one here STARTS that lot (the backend takes the lotId
+  // path: sets invoiceNumber, moves status 1 → 2) instead of creating a new lot. Everything
+  // prefills from the sheet and stays editable, except the generated lot number.
+  const [cutLots, setCutLots] = React.useState([]);
+  const [selectedCutLot, setSelectedCutLot] = React.useState(null);
+
+  useEffect(() => {
+    if (!open || isEditMode || prefill) { setSelectedCutLot(null); return; }
+    let active = true;
+    apiService.cuttingBook.getCutLots()
+      .then(lots => { if (active) setCutLots(lots || []); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [open, isEditMode, prefill]);
+
+  const handleCutLotSelect = (lot) => {
+    setSelectedCutLot(lot);
+    if (!lot) { reset(defaultValues); return; }
+    setValue('lotNumber', lot.lotNumber || '');
+    setValue('clientId', lot.clientId || '');
+    setValue('fabric', lot.fabric || '');
+    setValue('fitStyleId', lot.fitStyleId || '');
+    setValue('waistSize', lot.waistSize || '');
+    if (lot.cuttingSheetId?.totalPcs) setValue('quantity', String(lot.cuttingSheetId.totalPcs));
+    const sheetVendorId = lot.cuttingSheetId?.stitchingVendorId;
+    if (sheetVendorId) {
+      setValue('vendorId', sheetVendorId);
+      const v = (vendors || []).find(x => x._id === sheetVendorId);
+      if (v && Number(v.defaultRate) > 0) setValue('rate', v.defaultRate);
+    }
+    if (lot.date) setValue('date', dayjs(lot.date));
+    if (lot.description) setValue('description', lot.description);
+  };
 
   // ── Zipper consumption (stock-out recorded at the stitching stage) ──
   // Show ALL zipper types applicable to the selected client (client mapping if any,
@@ -181,6 +217,8 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
 
     const formattedData = {
       ...data,
+      // Cutting-Book path: lotId tells the backend to start the existing Cut lot.
+      lotId: selectedCutLot?._id || undefined,
       lotNumber: data.lotNumber.toUpperCase().replaceAll(' ', ''),
       fabric: data.fabric.toUpperCase().trim(),
       waistSize: data.waistSize.toUpperCase().trim(),
@@ -204,6 +242,7 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
       .then(res => {
         onAddStitching(res);
         reset(defaultValues);
+        setSelectedCutLot(null);
       })
       .catch(err => {
         console.log(err.response);
@@ -240,6 +279,25 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
         </Box>
         <form onSubmit={handleSubmit(onSubmit)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }}>
           <Grid container spacing={2}>
+            {!isEditMode && !prefill && cutLots.length > 0 && (
+              <Grid size={{ xs: 12 }}>
+                <Autocomplete
+                  options={cutLots}
+                  value={selectedCutLot}
+                  onChange={(_, v) => handleCutLotSelect(v)}
+                  getOptionLabel={(o) => `${o.lotNumber}  —  ${o.fabric || ''}`}
+                  isOptionEqualToValue={(o, v) => o._id === v._id}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Cut Lot (from Cutting Book)"
+                      variant="standard"
+                      helperText="Optional — pick a cut lot to start it, or leave empty for manual entry"
+                    />
+                  )}
+                />
+              </Grid>
+            )}
             <Grid size={{ xs: 6, md: 4 }} sx={{ alignContent: 'center' }}>
               <LocalizationProvider dateAdapter={AdapterDayjs}>
                 <Controller
@@ -279,8 +337,9 @@ function AddStitchingModal({ open, onClose, clients, fitStyles, vendors, onAddSt
                     fullWidth
                     margin="normal"
                     variant="standard"
+                    disabled={!!selectedCutLot}
                     error={!!errors.lotNumber}
-                    helperText={errors.lotNumber?.message}
+                    helperText={selectedCutLot ? 'Generated by the cutting sheet' : errors.lotNumber?.message}
                     placeholder="e.g., A/2 or A/1/3"
                   />
                 )}

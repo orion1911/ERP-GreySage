@@ -377,7 +377,9 @@ const WashingSchema = new mongoose.Schema({
   washOutDate: { type: Date },
   vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'WashingVendor', required: true },
   washDetails: [{
-    washColor: { type: String, required: true },
+    // Legacy display field only — the Colour/Batch column was retired when rows
+    // became creation-based; new rows persist 'NA'. NOT required.
+    washColor: { type: String, default: 'NA' },
     // Legacy free-text creation. Kept so pre-catalog records display unchanged; new rows
     // echo the joined creation names here for readability and use creations[] below.
     washCreation: { type: String, required: true },

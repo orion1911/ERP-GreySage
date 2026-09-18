@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
-import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Divider, Autocomplete, Chip } from '@mui/material';
+import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Autocomplete, Chip, Paper, Stack } from '@mui/material';
 import { Close as CloseIcon, Add as AddIcon, Delete as DeleteIcon, Save as SaveIcon, Calculate as CalculateIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -151,6 +151,12 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
     });
   }, [watchedDetails, rateByCreation, setValue]);
 
+  // Running totals for the summary chips: Σ row quantity (validated live against
+  // the available stitching quantity) and Σ qty × rate = the vendor's wash bill.
+  const totalQty = (watchedDetails || []).reduce((s, d) => s + (parseInt(d?.quantity, 10) || 0), 0);
+  const totalAmount = (watchedDetails || []).reduce((s, d) => s + (parseInt(d?.quantity, 10) || 0) * (Number(d?.rate) || 0), 0);
+  const qtyMismatch = !!lotQuantity && totalQty !== parseInt(lotQuantity, 10);
+
   const creationOptions = rateCard; // [{ creationId, name, rate|null }]
   const getOptionRate = (opt) => rateByCreation.get(String(opt.creationId));
 
@@ -238,7 +244,7 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
             <Typography variant="h6" id="add-washing-modal">
               {isEditMode ? 'Edit Washing' : 'Add Washing'}
             </Typography>
-            <Typography variant="caption">Available Quantity <b>{lotQuantity}</b></Typography>
+            <Chip size="small" variant="outlined" color="primary" sx={{ mt: 0.5 }} label={`Available Quantity: ${lotQuantity}`} />
           </Grid>
           <Grid size={{ xs: 2, md: 2 }} sx={{ textAlign: 'right' }}>
             <IconButton id="close-wash-modal" onClick={onClose}>
@@ -339,31 +345,27 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
               const rowWatch = watchedDetails?.[index] || {};
               const selected = rowWatch.creations || [];
               const isLegacyRow = selected.length === 0 && !!(rowWatch.washCreation && rowWatch.washCreation.trim()) && rowWatch.rate;
+              const rowQty = parseInt(rowWatch.quantity, 10) || 0;
+              const rowRate = Number(rowWatch.rate) || 0;
               return (
-              <React.Fragment key={wd.id}>
-                <Grid size={{ xs: 6, md: 6 }}>
-                  <Controller
-                    name={`washDetails[${index}].washColor`}
-                    control={control}
-                    rules={{ required: 'Required!' }}
-                    render={({ field }) => (
-                      <TextField
-                        {...field}
-                        onChange={(e) => {
-                          field.onChange(e.target.value.toUpperCase());
-                        }}
-                        label="Wash Color"
-                        fullWidth
-                        margin="normal"
-                        variant="standard"
-                        error={!!errors.washDetails?.[index]?.washColor}
-                        helperText={errors.washDetails?.[index]?.washColor?.message}
-                        sx={{ mb: 1 }}
-                      />
-                    )}
-                  />
-                </Grid>
-                <Grid size={{ xs: 6, md: 6 }}>
+              <Grid size={{ xs: 12 }} key={wd.id}>
+                <Paper variant="outlined" sx={{ p: { xs: 1.25, md: 2 }, mb: 1, borderRadius: 2 }}>
+                  <Grid container spacing={2}>
+                    {/* Wash Colour retired — rows are creation-based now. Legacy rows
+                        carry a free-text washCreation and keep their stored rate. */}
+                    <Grid size={{ xs: 8 }} sx={{ alignContent: 'center' }}>
+                      <Typography variant="overline" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                        Colour / Batch {index + 1}{isLegacyRow ? ' · legacy' : ''}
+                      </Typography>
+                    </Grid>
+                    <Grid size={{ xs: 4 }} sx={{ textAlign: 'right' }}>
+                      {index > 0 && (
+                        <IconButton size="small" color="error" onClick={() => remove(index)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                    </Grid>
+                    <Grid size={{ xs: 6, md: 4 }}>
                   <Controller
                     name={`washDetails[${index}].quantity`}
                     control={control}
@@ -388,9 +390,37 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
                     )}
                   />
                 </Grid>
-                <Grid size={{ xs: 12, md: 8 }}>
-                  <Controller
-                    name={`washDetails[${index}].creations`}
+                    <Grid size={{ xs: 6, md: 4 }}>
+                      <Controller
+                        name={`washDetails[${index}].rate`}
+                        control={control}
+                        render={({ field }) => (
+                          <TextField
+                            {...field}
+                            label="Rate (auto)"
+                            fullWidth
+                            margin="normal"
+                            variant="standard"
+                            InputProps={{ readOnly: true }}
+                            sx={{ mb: 1 }}
+                            helperText={isLegacyRow ? 'Legacy row — stored rate kept' : 'Sum of the selected creations\u2019 rates'}
+                          />
+                        )}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 4 }} sx={{ alignContent: 'center' }}>
+                      <Box sx={{ mt: { xs: 0.5, md: 2.25 } }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          Row amount (Qty × Rate)
+                        </Typography>
+                        <Typography variant="body1" fontWeight="bold">
+                          ₹{(Math.round(rowQty * rowRate * 100) / 100).toLocaleString('en-IN')}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                    <Grid size={{ xs: 12 }}>
+                      <Controller
+                        name={`washDetails[${index}].creations`}
                     control={control}
                     rules={{
                       validate: (value) => {
@@ -456,26 +486,8 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
                     )}
                   />
                 </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <Controller
-                    name={`washDetails[${index}].rate`}
-                    control={control}
-                    render={({ field }) => (
-                      <TextField
-                        {...field}
-                        label="Rate (auto)"
-                        fullWidth
-                        margin="normal"
-                        variant="standard"
-                        InputProps={{ readOnly: true }}
-                        sx={{ mb: 1 }}
-                        helperText={isLegacyRow ? `Legacy row — stored rate kept` : 'Sum of the selected creations\u2019 rates'}
-                      />
-                    )}
-                  />
-                </Grid>
                 {isEditMode && <>
-                  <Grid size={{ xs: 3, md: 3 }}>
+                  <Grid size={{ xs: 6, md: 4 }}>
                     <Controller
                       name={`washDetails[${index}].quantityShort`}
                       control={control}
@@ -498,7 +510,7 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
                       )}
                     />
                   </Grid>
-                  <Grid size={{ xs: 9, md: 9 }}>
+                  <Grid size={{ xs: 6, md: 8 }}>
                     <Controller
                       name={`washDetails[${index}].quantityShortDesc`}
                       control={control}
@@ -516,22 +528,36 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
                     />
                   </Grid>
                 </>}
-                <Grid size={{ xs: 3, md: 3 }} sx={{ alignContent: 'center' }}>
-                  {index > 0 && <IconButton sx={{ mt: 2 }} onClick={() => remove(index)} color="error">
-                    <DeleteIcon />
-                  </IconButton>}
-                  {index === fields.length - 1 && <IconButton sx={{ mt: 2 }}
-                    onClick={() => append({ washColor: '', creations: [], quantity: '', rate: '0', quantityShort: '', quantityShortDesc: '', washCreation: '' })}
-                  >
-                    <AddIcon />
-                  </IconButton>}
-                </Grid>
-                <Grid size={{ xs: 12, md: 12 }} sx={{ m: 0, p: 0 }}>
-                  {fields.length > 1 && <Divider fullWidth />}
-                </Grid>
-              </React.Fragment>
+                  </Grid>
+                </Paper>
+              </Grid>
               );
             })}
+            <Grid size={{ xs: 12 }}>
+              <Button
+                variant="text"
+                startIcon={<AddIcon />}
+                onClick={() => append({ washColor: 'NA', creations: [], quantity: '', rate: '0', quantityShort: '', quantityShortDesc: '', washCreation: '' })}
+              >
+                Add Colour / Batch
+              </Button>
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Chip
+                  size="small"
+                  variant={qtyMismatch ? 'filled' : 'outlined'}
+                  color={qtyMismatch ? 'error' : 'success'}
+                  label={`Σ Qty: ${totalQty}${lotQuantity ? ` / ${lotQuantity} available` : ''}`}
+                />
+                <Chip size="small" variant="outlined" color="primary" label={`Wash bill: ₹${totalAmount.toLocaleString('en-IN')}`} />
+              </Stack>
+              {qtyMismatch && (
+                <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.5 }}>
+                  Total wash quantity must equal the available quantity ({lotQuantity}).
+                </Typography>
+              )}
+            </Grid>
             <Grid size={{ xs: 12, md: 12 }}>
               <Controller
                 name="description"

@@ -345,6 +345,17 @@ function StitchingManagement() {
 
   const handleEditWashing = (record) => {
     setSelectedWashingRecord(record);
+    // Edit path has no selectedLot — derive the Available Quantity the same way the
+    // "Add" button does: stitching qty minus its short, from the lot's stitching record.
+    const stitch = (stitchingRecords || []).find(
+      (r) => r.lotId?._id && record.lotId?._id && String(r.lotId._id) === String(record.lotId._id)
+    );
+    setSelectedLot({
+      lotNumber: record.lotId?.lotNumber || '',
+      lotId: record.lotId?._id || '',
+      invoiceNumber: record.lotId?.invoiceNumber || '',
+      lotQuantity: stitch ? (stitch.quantity || 0) - (stitch.quantityShort || 0) : '',
+    });
     setOpenWashingModal(true);
   };
 

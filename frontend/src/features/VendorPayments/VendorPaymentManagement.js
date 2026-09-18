@@ -855,7 +855,7 @@ const VendorPaymentManagement = () => {
                                                         <TableCell sx={{ fontSize: '0.85rem' }}>
                                                             {lot.isWashDetail ? (
                                                                 <Box>
-                                                                    <div style={{ fontWeight: 'bold' }}>{lot.washDetail.washColor}</div>
+                                                                    <div style={{ fontWeight: 'bold' }}>Rs. {lot.washDetail.rate ?? 0} / pc</div>
                                                                     <div style={{ fontSize: '0.75rem', color: '#666' }}>{lot.washDetail.washCreation}</div>
                                                                 </Box>
                                                             ) : (

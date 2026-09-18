@@ -3,7 +3,7 @@
 //   1. Creates one WashCreation per distinct legacy washDetails.washCreation
 //      free-text string (skipping 'NA' / blank), so the catalog starts from the
 //      data that already exists.
-//   2. Sets upliftPercent = 12 on every WashingVendor missing it (schema default
+//   2. Sets upliftPercent = 0 on every WashingVendor missing it (schema default
 //      only applies to NEW documents — existing vendors need the field written).
 //
 // Idempotent: safe to run repeatedly (upserts + $exists guards).
@@ -52,12 +52,12 @@ const SKIP = new Set(['', 'NA', 'N/A', 'NIL', 'NONE', '-']);
     }
     console.log(`WashCreation: ${created} created, ${existing} already present, ${skipped} skipped (blank/NA).`);
 
-    // ── 2. Default the washing-vendor uplift to 12 where missing ─────────
+    // ── 2. Default the washing-vendor uplift to 0 where missing ─────────
     const res2 = await WashingVendor.updateMany(
       { upliftPercent: { $exists: false } },
-      { $set: { upliftPercent: 12 } }
+      { $set: { upliftPercent: 0 } }
     );
-    console.log(`WashingVendor: upliftPercent=12 set on ${res2.modifiedCount} vendor(s).`);
+    console.log(`WashingVendor: upliftPercent=0 set on ${res2.modifiedCount} vendor(s).`);
 
     console.log('Backfill complete.');
   } catch (err) {

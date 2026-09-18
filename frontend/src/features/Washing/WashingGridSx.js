@@ -107,7 +107,7 @@ function WashingGridSx({
                           {record.washDetails.map((wd, index) => (
                             // <Box key={index} sx={{ m: 1 }}>
                             <>
-                              <Grid size={{ xs: 4, sm: 4 }}><Chip color="success" size="small" label={wd.washColor} /></Grid>
+                              <Grid size={{ xs: 4, sm: 4 }}><Chip color="success" size="small" label={`RATE: ${wd.rate ?? 0}`} /></Grid>
                               <Grid size={{ xs: 8, sm: 8 }} sx={{ display: 'flex', alignItems: 'center' }}>
                                 {Array.isArray(wd.creations) && wd.creations.length > 0 ? (
                                   <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>

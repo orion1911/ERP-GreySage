@@ -42,6 +42,8 @@ function StitchingGrid({
   onAdd,
   noZipperFilter,
   onToggleNoZipper,
+  awaitingFinFilter,
+  onToggleAwaitingFin,
   readOnly = false
 }) {
   const theme = useTheme();
@@ -169,6 +171,16 @@ function StitchingGrid({
   const processedRecords = useMemo(() => {
     let filtered = stitchingRecords;
     filtered = filterData(filtered, searchTerm);
+    if (awaitingFinFilter && filtered) {
+      // Awaiting Finishing: washing entered AND washed out (washOutDate set) but no
+      // finishing entry yet — same rule as the "Awaiting Fin" totals chip.
+      filtered = filtered.filter(record => {
+        const wash = washingRecords && washingRecords[record.lotId?._id];
+        const washedOut = Array.isArray(wash) && wash.some(w => !!w.washOutDate);
+        const fins = finishingRecords && finishingRecords[record.lotId?._id];
+        return washedOut && !(Array.isArray(fins) && fins.length > 0);
+      });
+    }
     if (vendorFilter && filtered) {
       filtered = filtered.filter(record => record.vendorId?._id === vendorFilter);
     }
@@ -200,7 +212,7 @@ function StitchingGrid({
       });
     }
     return sortData(filtered, sortBy, sortDirection);
-  }, [stitchingRecords, washingRecords, finishingRecords, searchTerm, vendorFilter, washingVendorFilter, finishingVendorFilter, clientFilter, statusFilter, sortBy, sortDirection, filterStatus]);
+  }, [stitchingRecords, washingRecords, finishingRecords, searchTerm, vendorFilter, washingVendorFilter, finishingVendorFilter, clientFilter, statusFilter, sortBy, sortDirection, filterStatus, awaitingFinFilter]);
 
   // Filter-aware totals for the header bar. Derived from processedRecords, so every active
   // filter (search, stitching/washing/finishing vendor, client, lot status, stitched/pending)
@@ -255,7 +267,7 @@ function StitchingGrid({
   // autoResetPageIndex is disabled below so editing a record keeps you on your page).
   useEffect(() => {
     setPage(0);
-  }, [searchTerm, vendorFilter, washingVendorFilter, finishingVendorFilter, clientFilter, statusFilter, filterStatus]);
+  }, [searchTerm, vendorFilter, washingVendorFilter, finishingVendorFilter, clientFilter, statusFilter, filterStatus, awaitingFinFilter]);
 
   const columns = [
     {
@@ -580,6 +592,8 @@ function StitchingGrid({
       onAdd={onAdd}
       noZipperFilter={noZipperFilter}
       onToggleNoZipper={onToggleNoZipper}
+      awaitingFinFilter={awaitingFinFilter}
+      onToggleAwaitingFin={onToggleAwaitingFin}
       processedRecords={paginatedRecordsSx}
       totalCount={processedRecords ? processedRecords.length : 0}
       page={page}

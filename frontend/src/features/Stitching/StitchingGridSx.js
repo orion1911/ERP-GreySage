@@ -16,6 +16,8 @@ function StitchingGridSx({
   onAdd,
   noZipperFilter,
   onToggleNoZipper,
+  awaitingFinFilter,
+  onToggleAwaitingFin,
   processedRecords,
   totalCount,
   page,
@@ -125,6 +127,25 @@ function StitchingGridSx({
             }
             label="Missing Zipper"
             // Tight margins so the switch, Add and the sort/date controls all fit one row.
+            sx={{
+              ml: 0.5,
+              mr: 0,
+              whiteSpace: 'nowrap',
+              '& .MuiFormControlLabel-label': { fontSize: '0.75rem' }
+            }}
+          />
+        )}
+        {!readOnly && onToggleAwaitingFin && (
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                color="error"
+                checked={!!awaitingFinFilter}
+                onChange={onToggleAwaitingFin}
+              />
+            }
+            label="Awaiting Finishing"
             sx={{
               ml: 0.5,
               mr: 0,

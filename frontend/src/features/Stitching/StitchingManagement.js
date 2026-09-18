@@ -50,6 +50,7 @@ function StitchingManagement() {
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [vendorFilter, setVendorFilter] = useState('');
   const [noZipperFilter, setNoZipperFilter] = useState(false);
+  const [awaitingFinFilter, setAwaitingFinFilter] = useState(false);
   const [washingVendorFilter, setWashingVendorFilter] = useState('');
   const [finishingVendorFilter, setFinishingVendorFilter] = useState('');
   const [clientFilter, setClientFilter] = useState('');
@@ -481,6 +482,20 @@ function StitchingManagement() {
                 sx={{ mr: 0, whiteSpace: 'nowrap', '& .MuiFormControlLabel-label': { fontSize: '0.875rem' } }}
               />
             </Tooltip>
+            <Tooltip title="Washed out, no finishing entry yet">
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small"
+                    color="error"
+                    checked={awaitingFinFilter}
+                    onChange={(e) => setAwaitingFinFilter(e.target.checked)}
+                  />
+                }
+                label="Awaiting Finishing"
+                sx={{ mr: 0, whiteSpace: 'nowrap', '& .MuiFormControlLabel-label': { fontSize: '0.875rem' } }}
+              />
+            </Tooltip>
             <Button variant="contained" endIcon={<ContentCut />} onClick={() => { setSelectedRecord(null); setOpenStitchingModal(true); }}>
               Add
             </Button>
@@ -511,6 +526,8 @@ function StitchingManagement() {
         onAdd={() => { setSelectedRecord(null); setOpenStitchingModal(true); }}
         noZipperFilter={noZipperFilter}
         onToggleNoZipper={() => setNoZipperFilter((v) => !v)}
+        awaitingFinFilter={awaitingFinFilter}
+        onToggleAwaitingFin={() => setAwaitingFinFilter((v) => !v)}
         onEditStitching={handleEditStitching}
         onEditWashing={handleEditWashing}
         onEditFinishing={handleEditFinishing}

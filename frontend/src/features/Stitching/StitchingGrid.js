@@ -156,12 +156,13 @@ function StitchingGrid({
 
   const filterData = (data, search) => {
     if (!data || !Array.isArray(data)) return undefined;
+    const q = String(search || '').trim().toLowerCase(); // trim: pasted/trailing spaces must not break matching
     return data.filter(record =>
-      !search ||
-      record.lotId?.lotNumber?.toLowerCase().includes(search.toLowerCase()) ||
-      record.lotId?.invoiceNumber?.toString().toLowerCase().includes(search.toLowerCase()) ||
-      record.lotId?.clientId?.name?.toString().toLowerCase().includes(search.toLowerCase()) ||
-      record.vendorId?.name?.toLowerCase().includes(search.toLowerCase())
+      !q ||
+      record.lotId?.lotNumber?.toLowerCase().includes(q) ||
+      record.lotId?.invoiceNumber?.toString().toLowerCase().includes(q) ||
+      record.lotId?.clientId?.name?.toString().toLowerCase().includes(q) ||
+      record.vendorId?.name?.toLowerCase().includes(q)
     );
   };
 

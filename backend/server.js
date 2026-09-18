@@ -30,6 +30,8 @@ const makingsRoutes = require('./routes/makings');
 const cuttingMasterRoutes = require('./routes/cuttingMasters');
 const waistSizeRoutes = require('./routes/waistSizes');
 const cuttingSheetRoutes = require('./routes/cuttingSheets');
+const washCreationRoutes = require('./routes/washCreations');
+const costingRoutes = require('./routes/costing');
 
 // Middleware
 const errorHandler = require('./middleware/error');
@@ -135,6 +137,8 @@ app.use('/api', cuttingSheetRoutes);
 app.use('/api', stitchingRoutes);
 app.use('/api', washingRoutes);
 app.use('/api', finishingRoutes);
+app.use('/api', washCreationRoutes); // wash creation catalog + per-vendor rate card
+app.use('/api', costingRoutes);      // costing per piece (derived live, overlay saved)
 app.use('/api/vendor-balances', vendorBalanceRoutes);
 app.use('/api/sales-invoices', salesInvoiceRoutes);
 app.use('/api/client-balances', clientBalanceRoutes);

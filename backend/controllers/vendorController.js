@@ -72,11 +72,14 @@ const updateVendor = async (req, res, Model, vendorType) => {
   const vendor = await Model.findById(req.params.id);
   if (!vendor) return res.status(404).json({ error: `${vendorType} not found` });
 
-  const { name, contact, address, isActive, defaultRate } = req.body;
+  const { name, contact, address, isActive, defaultRate, upliftPercent } = req.body;
   if (name !== undefined) vendor.name = name;
   if (contact !== undefined) vendor.contact = contact;
   if (address !== undefined) vendor.address = address;
   if (defaultRate !== undefined) vendor.defaultRate = defaultRate;
+  // Washing-vendor costing uplift default (the old "+10/12" as a %). Harmless to
+  // accept for other vendor types — the field only exists on WashingVendor.
+  if (upliftPercent !== undefined) vendor.upliftPercent = upliftPercent;
   if (isActive !== undefined) vendor.isActive = isActive;
 
   await vendor.save();

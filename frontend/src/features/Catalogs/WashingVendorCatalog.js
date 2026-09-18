@@ -1,18 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Switch, useTheme } from '@mui/material';
-import { LocalLaundryService as LaundryIcon, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon, SwapVert } from '@mui/icons-material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Switch, useTheme, ToggleButtonGroup, ToggleButton } from '@mui/material';
+import { LocalLaundryService as LaundryIcon, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon, SwapVert, RateReview as RateReviewIcon } from '@mui/icons-material';
 import { TableRowsLoader, NoRecordRow } from '../../components/Skeleton/SkeletonLoader';
 import apiService from '../../services/apiService';
 import WashingVendorCatalogSx from './WashingVendorCatalogSx';
 import WashingVendorCatalogAdd from './WashingVendorCatalogAdd';
+import WashingVendorRateCard from './WashingVendorRateCard';
+import WashCreationCatalog from './WashCreationCatalog';
 import CatalogReorderList from './CatalogReorderList';
 import { motion, AnimatePresence } from 'motion/react';
 
 function WashingVendorCatalog() {
   const { showSnackbar, isMobile } = useOutletContext();
   const theme = useTheme();
+  // Tabbed master (Stock Management pattern): the wash-creation catalog lives here
+  // because a creation's rate is priced per washing vendor, not globally.
+  const [view, setView] = useState('vendors'); // 'vendors' | 'creations'
   const [vendors, setVendors] = useState([]);
   const [search, setSearch] = useState('');
   const [openModal, setOpenModal] = useState(false);
@@ -23,18 +28,33 @@ function WashingVendorCatalog() {
   const [reorderMode, setReorderMode] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  const [rateCardVendor, setRateCardVendor] = useState(null); // opens the per-vendor rate card editor
+  // Skeleton is shown ONLY before the very first response. The table used to be gated on
+  // `loading`, which flips true on every keystroke (the fetch effect depends on the search
+  // term) — so the grid blinked to the skeleton on each character typed.
+  const [initialLoading, setInitialLoading] = useState(true);
+  // Debounced copy of the search box: the input stays instant, but the request (and the
+  // list swap) only fires once the user pauses instead of once per character.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const getWashingVendors = () => {
     setLoading(true);
-    apiService.washingVendors.getWashingVendors(search, showInactive)
+    apiService.washingVendors.getWashingVendors(debouncedSearch, showInactive)
       .then(res => {
         setTimeout(() => {
           setVendors(res);
           setLoading(false);
+          setInitialLoading(false);
         }, process.env.REACT_APP_DATA_LOAD_TIMEOUT || 0);
       })
       .catch(err => {
         setLoading(false);
+        setInitialLoading(false); // never stay stuck on the skeleton after a failed load
         console.log(err);
         showSnackbar(err);
       });
@@ -42,7 +62,8 @@ function WashingVendorCatalog() {
 
   useEffect(() => {
     getWashingVendors();
-  }, [search, showInactive]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, showInactive]);
 
   const handleToggleActive = (id) => {
     setVendorToToggle(id);
@@ -118,11 +139,20 @@ function WashingVendorCatalog() {
       cell: ({ row }) => row.original.defaultRate ?? 0
     },
     {
+      accessorKey: 'upliftPercent',
+      header: 'Uplift %',
+      enableSorting: true,
+      cell: ({ row }) => `${row.original.upliftPercent ?? 12}%`
+    },
+    {
       accessorKey: '_id',
       header: 'Actions',
       enableSorting: false,
       cell: ({ row }) => (
         <Stack direction="row" spacing={1} justifyContent='center'>
+          <IconButton disabled={loading} color="primary" title="Rate Card" onClick={() => setRateCardVendor(row.original)} size="small">
+            <RateReviewIcon fontSize="small" />
+          </IconButton>
           <IconButton disabled={loading} color={row.original.isActive ? 'warning' : 'success'} onClick={() => handleToggleActive(row.original._id)} size="small">
             {row.original.isActive ? <DeleteIcon fontSize="small" /> : <CheckIcon fontSize="small" />}
           </IconButton>
@@ -158,6 +188,31 @@ function WashingVendorCatalog() {
   return (
     <>
       <Typography variant="h4" sx={{ mb: 1 }}>Washing Vendor</Typography>
+
+      {/* Top-level switch, styled exactly like Stock Management's top toggle.
+          The creation catalog lives here because a creation is priced per vendor. */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 1.5, flexWrap: 'wrap' }}>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={view}
+          onChange={(e, v) => v && setView(v)}
+          color="primary"
+          sx={{ '& .MuiToggleButton-root': { py: 0.35, fontSize: '0.87rem', fontWeight: 'bold', textTransform: 'none' } }}
+        >
+          <ToggleButton value="vendors">
+            <LaundryIcon fontSize="small" sx={{ mr: 0.5 }} />
+            Vendors
+          </ToggleButton>
+          <ToggleButton value="creations">
+            <RateReviewIcon fontSize="small" sx={{ mr: 0.5 }} />
+            Wash Creations
+          </ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
+
+      {view === 'creations' ? <WashCreationCatalog /> : (
+      <>
       {!reorderMode && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
@@ -207,6 +262,7 @@ function WashingVendorCatalog() {
           vendors={vendors}
           search={search}
           loading={loading}
+          initialLoading={initialLoading}
           handleToggleActive={handleToggleActive}
           showSnackbar={showSnackbar}
           handleEditVendor={handleEditVendor}
@@ -215,8 +271,11 @@ function WashingVendorCatalog() {
         />
       ) : (
         <AnimatePresence mode="wait">
+        {/* Constant key: the skeleton is gated on initialLoading, so this motion.div
+            must NOT remount on every search-keystroke refetch (loading flips) — a
+            changing key made AnimatePresence unmount/remount the table = flicker. */}
         <motion.div
-          key={loading ? 'loading' : 'data'}
+          key="data"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -248,8 +307,8 @@ function WashingVendorCatalog() {
               ))}
             </TableHead>
             <TableBody>
-              {loading || !vendors ? (
-                <TableRowsLoader colsNum={6} rowsNum={10} />
+              {initialLoading ? (
+                <TableRowsLoader colsNum={7} rowsNum={10} />
               ) : vendors.length > 0 ? (
                 table.getRowModel().rows.map(row => (
                   <TableRow key={row.id}>
@@ -286,6 +345,11 @@ function WashingVendorCatalog() {
         onAddSuccess={getWashingVendors}
         editVendor={editVendor}
       />
+      <WashingVendorRateCard
+        open={!!rateCardVendor}
+        onClose={() => setRateCardVendor(null)}
+        vendor={rateCardVendor}
+      />
       <Dialog
         open={confirmOpen}
         onClose={handleCancelToggle}
@@ -307,6 +371,8 @@ function WashingVendorCatalog() {
           </Button>
         </DialogActions>
       </Dialog>
+      </>
+      )}
     </>
   );
 }

@@ -28,6 +28,7 @@ import StitchingManagement from './features/Stitching/StitchingManagement';
 import CuttingBookManagement from './features/CuttingBook/CuttingBookManagement';
 import CuttingMasterCatalog from './features/Catalogs/CuttingMasterCatalog';
 import WaistSizeCatalog from './features/Catalogs/WaistSizeCatalog';
+import CostingManagement from './features/Costing/CostingManagement';
 import { VendorPaymentManagement } from './features/VendorPayments';
 import { InvoiceManagement, DispatchManagement } from './features/Sales';
 import { ClientPaymentManagement } from './features/ClientPayments';
@@ -217,6 +218,7 @@ function App() {
               <Route path="/dashboardxl" element={<DashboardExcel />} />
               <Route path="/stitching" element={<StitchingManagement />} />
               <Route path="/cutting-book" element={<CuttingBookManagement />} />
+              <Route path="/costing" element={<CostingManagement />} />
               <Route path="/stock" element={<StockManagement />} />
               <Route path="/vendor-payments" element={<VendorPaymentManagement />} />
               <Route path="/sales/invoices" element={<InvoiceManagement />} />

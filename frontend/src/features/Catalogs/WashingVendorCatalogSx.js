@@ -8,6 +8,7 @@ function WashingVendorCatalogSx({
   vendors,
   search,
   loading,
+  initialLoading,
   handleToggleActive,
   showSnackbar,
   handleEditVendor,
@@ -88,13 +89,13 @@ function WashingVendorCatalogSx({
         </Box>
         <AnimatePresence mode="wait">
           <motion.div
-            key={!processedVendors ? 'loading' : 'data'}
+            key={initialLoading ? 'loading' : 'data'}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
           >
-            {!processedVendors ? (
+            {initialLoading ? (
               <OrderCardsLoader type="vendor" />
             ) : processedVendors.length > 0 ? (
               processedVendors.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((vendor) => (

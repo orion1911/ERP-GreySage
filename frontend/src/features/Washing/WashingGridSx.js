@@ -108,12 +108,34 @@ function WashingGridSx({
                             // <Box key={index} sx={{ m: 1 }}>
                             <>
                               <Grid size={{ xs: 4, sm: 4 }}><Chip color="success" size="small" label={wd.washColor} /></Grid>
-                              <Grid size={{ xs: 8, sm: 8 }}><Chip color="success" size="small" label={wd.washCreation} /></Grid>
+                              <Grid size={{ xs: 8, sm: 8 }} sx={{ display: 'flex', alignItems: 'center' }}>
+                                {Array.isArray(wd.creations) && wd.creations.length > 0 ? (
+                                  <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                                    {wd.creations.map((c, ci) => (
+                                      <Chip key={ci} color="success" size="small" label={c.name || c.creationId} />
+                                    ))}
+                                  </Stack>
+                                ) : (
+                                  <Chip color="success" size="small" label={wd.washCreation} />
+                                )}
+                              </Grid>
                               <Grid size={{ xs: 4, sm: 4 }}><Chip color="success" size="small" label={`QTY: ${wd.quantity}`} /></Grid>
                               <Grid size={{ xs: 8, sm: 8 }}><Chip color="warning" size="small" label={`QTY SHORT: ${wd.quantityShort ?? 0}`} /></Grid>
+                              <Grid size={{ xs: 12, sm: 12 }}>
+                                <Chip
+                                  color="info"
+                                  size="small"
+                                  label={`RATE: ${wd.rate ?? 0} · AMT: ${Math.round((wd.quantity || 0) * (wd.rate || 0)).toLocaleString('en-IN')}`}
+                                />
+                              </Grid>
                               <Grid size={{ xs: 12, sm: 12 }}><Divider /></Grid>
                             </>
                           ))}
+                          <Grid size={{ xs: 12, sm: 12 }} sx={{ mt: 1 }}>
+                            <Typography variant="caption" fontWeight="bold" color="primary">
+                              TOTAL WASHING: {Math.round(record.washDetails.reduce((s, wd) => s + (wd.quantity || 0) * (wd.rate || 0), 0)).toLocaleString('en-IN')}
+                            </Typography>
+                          </Grid>
                         </Grid>
                       </Typography>
                     </Grid>

@@ -88,21 +88,43 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
                 processedRecords.map((wr, idx) => (
                   <TableRow key={wr._id}>
                     <TableCell></TableCell>
-                    <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0, whiteSpace: 'nowrap' }}>{getFormattedDate(wr.date)}</TableCell>
-                    <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0, maxWidth: 180 }}>
+                    <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0, whiteSpace: 'nowrap', maxWidth: 30 }}>{getFormattedDate(wr.date)}</TableCell>
+                    <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
                       <EllipsisText text={wr.vendorId?.name || 'N/A'} lines={1} sx={{ textAlign: 'center' }} />
                     </TableCell>
-                    <TableCell width="50%" sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
+                    <TableCell width="65%" sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>
                       <Grid container spacing={0.5} sx={{ mt: 1.5, mb: 1.5 }}>
                         {wr.washDetails.map((wd, index) => (
                           <React.Fragment key={index}>
-                            <Grid size={{ sm: 2, md: 2 }}><Chip color="success" size="small" label={wd.washColor} /></Grid>
-                            <Grid size={{ sm: 2, md: 2 }}><Chip color="success" size="small" label={`QTY: ${wd.quantity}`} /></Grid>
-                            <Grid size={{ sm: 2, md: 2 }}><Chip color="warning" size="small" label={`SHORT: ${wd.quantityShort ?? 0}`} /></Grid>
-                            <Grid size={{ sm: 6, md: 6 }}><Chip color="success" size="small" label={wd.washCreation} /></Grid>
+                            {/* <Grid size={{ sm: 2, md: 2 }}><Chip color="success" size="small" label={wd.washColor} /></Grid> */}
+                            <Grid size={{ sm: 2, md: 1.3 }}><Chip color="success" size="small" label={`QTY: ${wd.quantity}`} /></Grid>
+                            <Grid size={{ sm: 2, md: 1.3 }}><Chip color="warning" size="small" label={`SHORT: ${wd.quantityShort ?? 0}`} /></Grid>
+                            <Grid size={{ sm: 5, md: 6.4 }} sx={{ display: 'flex', alignItems: 'center' }}>
+                              {Array.isArray(wd.creations) && wd.creations.length > 0 ? (
+                                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                                  {wd.creations.map((c, ci) => (
+                                    <Chip key={ci} color="success" size="small" label={c.name || c.creationId} />
+                                  ))}
+                                </Stack>
+                              ) : (
+                                <Chip color="success" size="small" label={wd.washCreation} />
+                              )}
+                            </Grid>
+                            <Grid size={{ sm: 3, md: 3 }}>
+                              <Chip
+                                color="info"
+                                size="small"
+                                label={`RATE: ${wd.rate ?? 0} · AMT: ${Math.round((wd.quantity || 0) * (wd.rate || 0)).toLocaleString('en-IN')}`}
+                              />
+                            </Grid>
                             {index != wr.washDetails.length - 1 && <Grid size={{ sm: 12, md: 12 }}><Divider fullWidth /></Grid>}
                           </React.Fragment>
                         ))}
+                        <Grid size={{ sm: 12, md: 12 }} sx={{ mt: 0.5 }}>
+                          <Typography variant="caption" fontWeight="bold" color="primary">
+                            TOTAL WASHING: {Math.round(wr.washDetails.reduce((s, wd) => s + (wd.quantity || 0) * (wd.rate || 0), 0)).toLocaleString('en-IN')}
+                          </Typography>
+                        </Grid>
                       </Grid>
                     </TableCell>
                     <TableCell align='center' sx={{ borderBottom: idx != processedRecords.length && 0, paddingTop: 0, paddingBottom: 0 }}>

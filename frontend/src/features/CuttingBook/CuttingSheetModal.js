@@ -63,6 +63,7 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
   const [masterId, setMasterId] = useState('');
   const [panna, setPanna] = useState('');
   const [layerLength, setLayerLength] = useState('');
+  const [fabricRate, setFabricRate] = useState('');
   const [description, setDescription] = useState('');
   const [sizes, setSizes] = useState([]);
   const [rows, setRows] = useState([]); // created from the lot range
@@ -93,6 +94,7 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
       setMasterId(editSheet.masterId?._id || '');
       setPanna(editSheet.panna ?? '');
       setLayerLength(editSheet.layerLength ?? '');
+      setFabricRate(editSheet.fabricRate ?? '');
       setDescription(editSheet.description || '');
       setSizes(editSheet.sizes || []);
       setRows((editSheet.rows || []).map(r => ({
@@ -117,6 +119,7 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
       setMasterId('');
       setPanna('');
       setLayerLength('');
+      setFabricRate('');
       setDescription('');
       setSizes(activeSizes.filter(ws => ws.isDefault).map(ws => ws.size));
       setRows([]);
@@ -325,6 +328,7 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
       masterId,
       panna: panna === '' || isNaN(Number(panna)) ? undefined : Number(panna),
       layerLength: layerLength === '' || isNaN(Number(layerLength)) ? undefined : Number(layerLength),
+      fabricRate: fabricRate === '' || isNaN(Number(fabricRate)) ? undefined : Number(fabricRate),
       sizes,
       rows: payloadRows,
       description
@@ -487,6 +491,19 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
               placeholder="44.5"
             />
           </Grid>
+          <Grid size={{ xs: 9, md: 4 }}>
+            <TextField
+              label="Fabric Rate /m"
+              value={fabricRate}
+              onChange={(e) => setFabricRate(e.target.value)}
+              margin="normal"
+              variant="standard"
+              fullWidth
+              inputProps={{ inputMode: 'decimal' }}
+              placeholder="240"
+              helperText="Rs. per meter — used by Costing (rate × AVG)"
+            />
+          </Grid>
 
           {/* ── Row 2: Client · Fit Style · Stitching Vendor · Cutting Master ── */}
           <Grid size={{ xs: 12, md: 5 }}>
@@ -642,6 +659,16 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
               <Typography variant="body2">Total: <strong>{totals.meters}</strong> mtr</Typography>
               <Typography variant="body2">Pcs: <strong>{totals.pcs}</strong></Typography>
               <Typography variant="body2">AVG: <strong>{totals.avg}</strong></Typography>
+              {fabricRate !== '' && !isNaN(Number(fabricRate)) && Number(fabricRate) > 0 && (
+                <>
+                  <Typography variant="body2">
+                    Fabric: <strong>{Math.round(totals.meters * Number(fabricRate)).toLocaleString('en-IN')}</strong>
+                  </Typography>
+                  <Typography variant="body2">
+                    Fabric/pc: <strong>{(Number(fabricRate) * totals.avg).toFixed(2)}</strong>
+                  </Typography>
+                </>
+              )}
               {totals.leftoverOut.map(lo => (
                 <Chip key={lo.bookLotNo} size="small" variant="outlined" color="success" label={`${lo.meters}m from ${series}/${lo.bookLotNo} → next sheet`} />
               ))}

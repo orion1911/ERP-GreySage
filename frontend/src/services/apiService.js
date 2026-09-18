@@ -240,6 +240,92 @@ const apiService = {
     },
   },
 
+  // Wash Creations catalog + per-vendor rate card
+  washCreations: {
+    getWashCreations: async (search = '', showInactive = false) => {
+      try {
+        const response = await axiosInstance.get('api/wash-creations', {
+          params: { search, showInactive },
+        });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+    createWashCreation: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/wash-creations', payload);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+    updateWashCreation: async (id, payload) => {
+      try {
+        const response = await axiosInstance.patch(`api/wash-creations/${id}`, payload);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+    toggleWashCreationActive: async (id) => {
+      try {
+        const response = await axiosInstance.put(`api/wash-creations/${id}/toggle-active`);
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+    reorderWashCreations: async (orderedIds) => {
+      try {
+        const response = await axiosInstance.patch('api/wash-creations/reorder', { order: orderedIds });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+    // Rate card for one washing vendor: [{ creationId, name, rate|null }]
+    getWashCreationRates: async (vendorId) => {
+      try {
+        const response = await axiosInstance.get('api/wash-creation-rates', { params: { vendorId } });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+    // Bulk-save: rate 0/blank removes the entry (= "not priced" → blocks washing entries).
+    saveWashCreationRates: async (vendorId, rates) => {
+      try {
+        const response = await axiosInstance.put('api/wash-creation-rates', { vendorId, rates });
+        return response.data;
+      } catch (error) {
+        throw error;
+      }
+    },
+  },
+
+  // Costing per piece (derived live; per-lot uplift/margin overlay saved)
+  costing: {
+    getBoard: async (params = {}) => {
+      try {
+        const response = await axiosInstance.get('api/costing', { params });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getLotCosting: async (lotId) => {
+      try {
+        const response = await axiosInstance.get(`api/costing/lot/${lotId}`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    saveLotCosting: async (lotId, payload) => {
+      try {
+        const response = await axiosInstance.put(`api/costing/lot/${lotId}`, payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+  },
+
   // Finishing-related API calls
   finishing: {
     createFinishing: async (finishingData) => {

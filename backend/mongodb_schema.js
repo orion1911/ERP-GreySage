@@ -136,7 +136,11 @@ const WashingVendorSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true, trim: true },
   contact: { type: String },
   address: { type: String },
-  defaultRate: { type: Number, default: 0 }, // pre-fills the per-piece rate when selected at the stage
+  defaultRate: { type: Number, default: 0 }, // legacy default rate; superseded by the WashCreationRate card for creation-based entries
+  // Costing uplift (% added on top of the weighted-average wash cost). The washer is NOT
+  // paid this — it is the pricing-side overhead/profit-on-stage (the old "+10/12"),
+  // default 12%. Editable per lot on the Costing screen; this is only the default.
+  upliftPercent: { type: Number, default: 12, min: 0 },
   isActive: { type: Boolean, default: true },
   sortOrder: { type: Number, default: 0 }, // user-defined display order for dropdowns/catalog (lower = first)
   createdAt: { type: Date, default: Date.now }
@@ -152,6 +156,28 @@ const FinishingVendorSchema = new mongoose.Schema({
   sortOrder: { type: Number, default: 0 }, // user-defined display order for dropdowns/catalog (lower = first)
   createdAt: { type: Date, default: Date.now }
 });
+
+// ─── Wash Creations + per-vendor rate card ─────────────────────────────────
+// A WashCreation is a named wash treatment (ICE WASH WISKAR S/SPRAY, …). Each washing
+// vendor prices each creation individually (WashCreationRate); a wash detail row that
+// selects several creations is billed the SUM of their rates for THAT vendor.
+// Rate 0 / missing card entry = "not priced for this vendor" — washing entries
+// selecting it are BLOCKED until the master data is complete.
+const WashCreationSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true, uppercase: true },
+  isActive: { type: Boolean, default: true },
+  sortOrder: { type: Number, default: 0 }, // user-defined display order (lower = first)
+  createdAt: { type: Date, default: Date.now }
+});
+WashCreationSchema.index({ name: 1 }, { unique: true });
+
+const WashCreationRateSchema = new mongoose.Schema({
+  vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'WashingVendor', required: true },
+  creationId: { type: mongoose.Schema.Types.ObjectId, ref: 'WashCreation', required: true },
+  rate: { type: Number, required: true, min: 0 },
+  updatedAt: { type: Date, default: Date.now }
+});
+WashCreationRateSchema.index({ vendorId: 1, creationId: 1 }, { unique: true });
 
 // ─── Cutting Book (Stage #0 — the physical cutting register) ─────────────────────────────
 // One CuttingSheet = one dated section of the paper book = one Lot. Its rows are the
@@ -206,6 +232,9 @@ const CuttingSheetSchema = new mongoose.Schema({
   masterId: { type: mongoose.Schema.Types.ObjectId, ref: 'CuttingMaster', required: true },
   panna: { type: Number, min: 0 },                     // fabric width, inches (77.5, 79)
   layerLength: { type: Number, min: 0 },               // marker/layer length, inches (44.5)
+  // Fabric price per meter (Rs.). Costing derives fabric cost per pc as
+  // fabricRate x avgConsumption — never stored as a total, always derived.
+  fabricRate: { type: Number, default: 0, min: 0 },
   sizes: [{ type: Number }],                           // the sheet's size columns, ascending
   rows: [CuttingSheetRowSchema],
   // Derived on every save (never trusted from the client):
@@ -349,7 +378,17 @@ const WashingSchema = new mongoose.Schema({
   vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'WashingVendor', required: true },
   washDetails: [{
     washColor: { type: String, required: true },
+    // Legacy free-text creation. Kept so pre-catalog records display unchanged; new rows
+    // echo the joined creation names here for readability and use creations[] below.
     washCreation: { type: String, required: true },
+    // Creation-based rows (new): each selected creation with its FROZEN name + the vendor's
+    // rate AT SAVE TIME. Row rate = SUM(creations[].rate), computed server-side — the client
+    // cannot inject it. Snapshots mean later catalog/rate-card edits never rewrite history.
+    creations: [{
+      creationId: { type: mongoose.Schema.Types.ObjectId, ref: 'WashCreation' },
+      name: { type: String, trim: true, uppercase: true }, // frozen
+      rate: { type: Number, min: 0 }                       // frozen vendor rate at save time
+    }],
     quantity: { type: Number, required: true, min: 1 },
     rate: { type: Number, required: true, min: 0 },
     quantityShort: { type: Number, default: 0, min: 0 },
@@ -903,11 +942,37 @@ const AuditLogSchema = new mongoose.Schema({
   // ⚠ Keep this in sync with every logAction(...) call site — a value missing here makes the
   // audit write throw, and before logger.js failed open that error FAILED the business
   // operation it was auditing ('ManualDispatch' and 'Lot' were both missing and live).
-  entity: { type: String, enum: ['User', 'Client', 'FitStyle', 'Order', 'Lot', 'Stitching', 'Washing', 'Finishing', 'VendorBalance', 'Invoice', 'ManualDispatch', 'Balance', 'Report', 'ClientBalance', 'ClientPayment', 'CompanySettings', 'AccessoryType', 'AccessoryItem', 'AccessoryPurchase', 'AccessoryPayment', 'AccessoryReturn'], required: true },
+  entity: { type: String, enum: ['User', 'Client', 'FitStyle', 'Order', 'Lot', 'Stitching', 'Washing', 'Finishing', 'VendorBalance', 'Invoice', 'ManualDispatch', 'Balance', 'Report', 'ClientBalance', 'ClientPayment', 'CompanySettings', 'AccessoryType', 'AccessoryItem', 'AccessoryPurchase', 'AccessoryPayment', 'AccessoryReturn', 'WashCreation', 'LotCosting'], required: true },
   entityId: { type: mongoose.Schema.Types.ObjectId, required: true },
   details: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
+
+// ─── COSTING PER PIECE ───────────────────────────────────────────────────────
+// Editable per-lot overlay for the costing module: stage uplifts + profit margin.
+// The COSTS themselves are never stored here — costingService derives them live from
+// CuttingSheet / Stitching / Washing / Finishing / AccessoryConsumption on every read
+// (no second source of truth; same principle that removed the lot-level finalPcs override).
+const LotCostingSchema = new mongoose.Schema({
+  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot', required: true },
+  // Washing uplift % on the weighted-average wash cost. null = fall back to the washing
+  // vendor's upliftPercent (default 12).
+  washingUpliftPercent: { type: Number, min: 0, default: null },
+  // Pricing-side per-pc buffers for the non-washing stages (your "+10" on fabric,
+  // "+40/50" on stitching). Default 0 — a buffer is never silently assumed.
+  fabricUpliftPerPc: { type: Number, min: 0, default: 0 },
+  stitchingUpliftPerPc: { type: Number, min: 0, default: 0 },
+  finishingUpliftPerPc: { type: Number, min: 0, default: 0 },
+  // Manual profit margin per pc (30/50/60 — varies by lot type).
+  profitMarginPerPc: { type: Number, min: 0, default: 0 },
+  // Per-pc Expenses/Miscellaneous charged through to the client on top of the
+  // margin (freight, packing, sundries ...). Default 0.
+  expensesPerPc: { type: Number, min: 0, default: 0 },
+  notes: { type: String, trim: true },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  updatedAt: { type: Date, default: Date.now }
+});
+LotCostingSchema.index({ lotId: 1 }, { unique: true });
 
 // MakingsDiff Schema: cached result of the MAKINGS-excel ↔ MongoDB reconciliation.
 // A single latest-wins doc (key: 'latest') refreshed by the cron/precompute job and
@@ -955,6 +1020,7 @@ const MakingsDiscardSchema = new mongoose.Schema({
 
 module.exports = {
   Counter: mongoose.model('Counter', CounterSchema),
+  LotCosting: mongoose.model('LotCosting', LotCostingSchema),
   MakingsDiff: mongoose.model('MakingsDiff', MakingsDiffSchema),
   MakingsDiscard: mongoose.model('MakingsDiscard', MakingsDiscardSchema),
   User: mongoose.model('User', UserSchema),
@@ -963,6 +1029,8 @@ module.exports = {
   FabricVendor: mongoose.model('FabricVendor', FabricVendorSchema),
   StitchingVendor: mongoose.model('StitchingVendor', StitchingVendorSchema),
   WashingVendor: mongoose.model('WashingVendor', WashingVendorSchema),
+  WashCreation: mongoose.model('WashCreation', WashCreationSchema),
+  WashCreationRate: mongoose.model('WashCreationRate', WashCreationRateSchema),
   FinishingVendor: mongoose.model('FinishingVendor', FinishingVendorSchema),
   CuttingMaster: mongoose.model('CuttingMaster', CuttingMasterSchema),
   WaistSize: mongoose.model('WaistSize', WaistSizeSchema),

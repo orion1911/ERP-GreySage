@@ -14,6 +14,7 @@ import {
   AccountBalance as ClientPayIcon, Business as CompanyIcon,
   Warehouse as WarehouseIcon, Category as CategoryIcon,
   Straighten as StraightenIcon, Engineering as EngineeringIcon,
+  Calculate as CalculateIcon,
   ExpandLess as ExpandLessIcon, ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import { motion } from 'motion/react';
@@ -54,6 +55,7 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
     { label: 'Pending Dispatch', path: '/sales/dispatch', icon: <DispatchIcon /> },
     { label: 'Client Payments', path: '/sales/client-payments', icon: <ClientPayIcon /> },
     { label: 'Vendor Payments', path: '/vendor-payments', icon: <CreditCardIcon /> },
+    { label: 'Costing', path: '/costing', icon: <CalculateIcon /> },
     { label: 'Stock Management', path: '/stock', icon: <WarehouseIcon /> },
     {
       label: 'Masters', icon: <CategoryIcon />, children: [

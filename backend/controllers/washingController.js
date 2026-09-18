@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { Washing, Lot, Stitching, Finishing } = require('../mongodb_schema');
+const { Washing, Lot, Stitching, Finishing, WashCreationRate } = require('../mongodb_schema');
 const { updateVendorBalance, bumpVendorLedgers } = require('../services/vendorBalanceService');
 const { invalidateDashboard } = require('../services/dashboardCache');
 // const { logAction } = require('../utils/logger');
@@ -16,8 +16,65 @@ const recomputeFinishingFromWashing = async (lotId) => {
   if (fin.quantity !== finAvail) { fin.quantity = finAvail; await fin.save(); }
 };
 
+// ─── Creation-based rows: server-side rate resolution ────────────────────────
+// For each detail row that carries creations[], load the vendor's rate card and:
+//   • BLOCK the entry if ANY selected creation has no rate for THIS vendor
+//     (missing rate card = incomplete master data — force it to be fixed, per
+//     the "block, don't override" decision; the error names the creation).
+//   • rate = SUM of the selected creations' rates (the client cannot inject it).
+//   • snapshot each creation's name + rate so later master edits never rewrite
+//     history (old records must keep showing old rates).
+//
+// LEGACY ESCAPE HATCH: a row with NO creations[] but WITH a numeric rate (i.e.
+// a pre-catalog record being edited) is passed through unchanged, so historic
+// entries stay correctable without inventing catalog data.
+const resolveDetailRates = async (vendorId, washDetails) => {
+  // A row is "real creation-based" only if it carries a real catalog creation.
+  // The NA placeholder (name 'NA', no creationId) is legacy — it carries the
+  // row's stored rate and must NOT be resolved against / blocked by the rate card.
+  const isNaPlaceholder = (c) => !(c.creationId || c._id) && String(c.name || '').toUpperCase() === 'NA';
+  const creationRows = (washDetails || []).filter(d =>
+    Array.isArray(d.creations) && d.creations.length > 0 && !d.creations.every(isNaPlaceholder)
+  );
+  if (creationRows.length === 0) return null; // fully legacy/NA payload — nothing to resolve
+
+  const cards = await WashCreationRate.find({ vendorId }).lean();
+  const rateByCreation = new Map(cards.map(c => [String(c.creationId), c.rate]));
+
+  return washDetails.map((d) => {
+    if (!Array.isArray(d.creations) || d.creations.length === 0) return d;
+
+    // Row is entirely the NA legacy placeholder: keep stored rate + washCreation text.
+    if (d.creations.every(isNaPlaceholder)) return d;
+
+    const resolved = [];
+    let sum = 0;
+    for (const c of d.creations) {
+      const id = String(c.creationId || c._id || '');
+      if (!id) continue;
+      const rate = rateByCreation.get(id);
+      // Missing OR 0 means "not priced" for this vendor (0 is the rate-card default).
+      if (rate === undefined || rate === null || Number(rate) <= 0) {
+        // nameSnapshot may carry the display name for a helpful error
+        throw new Error(`No rate set for wash creation "${c.name || id}" for this washing vendor — complete the vendor's rate card first`);
+      }
+      resolved.push({ creationId: id, name: String(c.name || '').toUpperCase(), rate });
+      sum += rate;
+    }
+    if (resolved.length === 0) {
+      throw new Error('Creation-based wash detail rows require at least one valid wash creation');
+    }
+    return {
+      ...d,
+      creations: resolved,
+      rate: Math.round(sum * 100) / 100, // server-computed; client-sent rate ignored
+      washCreation: resolved.map(c => c.name).join(' + '), // readable echo of the snapshot
+    };
+  });
+};
+
 const createWashing = async (req, res) => {
-  const { invoiceNumber, vendorId, quantityShort, rate, date, washOutDate, description, washDetails } = req.body;
+  const { invoiceNumber, vendorId, quantityShort, date, washOutDate, description, washDetails } = req.body;
   let session = null;
   let transactionCommitted = false;
   let washing = null;
@@ -59,6 +116,15 @@ const createWashing = async (req, res) => {
     return res.status(400).json({ error: `Total wash quantity (${totalWashQuantity}) must equal available stitching quantity (${availableQty}) [stitching: ${stitching.quantity} - short: ${stitching.quantityShort || 0}]` });
   }
 
+  // Resolve creation-based rates against the vendor's rate card (blocks on a
+  // missing rate; auto-computes each row's rate as the sum of its creations).
+  let resolvedDetails;
+  try {
+    resolvedDetails = await resolveDetailRates(vendorId, washDetails) || washDetails;
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+
   session = await mongoose.startSession();
 
   try {
@@ -70,9 +136,8 @@ const createWashing = async (req, res) => {
       date: date || new Date(),
       washOutDate,
       vendorId,
-      washDetails,
+      washDetails: resolvedDetails,
       quantityShort: quantityShort || 0,
-      rate,
       description,
       createdAt: new Date(),
     });
@@ -112,7 +177,7 @@ const createWashing = async (req, res) => {
 
 const updateWashing = async (req, res) => {
   const { id } = req.params;
-  const { vendorId, quantityShort, rate, date, washOutDate, description, washDetails } = req.body;
+  const { vendorId, quantityShort, date, washOutDate, description, washDetails } = req.body;
 
   // Find the washing record
   const washing = await Washing.findById(id).populate('lotId vendorId');
@@ -122,9 +187,7 @@ const updateWashing = async (req, res) => {
   const stitching = await Stitching.findOne({ lotId: washing.lotId._id });
   if (!stitching) return res.status(404).json({ error: 'Stitching record not found' });
 
-  if (vendorId) {
-    // Assuming vendorId is a valid reference; add validation if needed
-  }
+  const effectiveVendorId = vendorId || (washing.vendorId._id || washing.vendorId);
 
   // Validate washDetails quantities
   if (washDetails) {
@@ -135,14 +198,25 @@ const updateWashing = async (req, res) => {
     }
   }
 
+  // Resolve creation-based rates (same rules as create — block on missing rate,
+  // auto-compute the row rate). Rows without creations[] keep their stored rate
+  // (legacy escape hatch).
+  let resolvedDetails;
+  if (washDetails) {
+    try {
+      resolvedDetails = await resolveDetailRates(effectiveVendorId, washDetails) || washDetails;
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  }
+
   // Update fields
   if (vendorId) washing.vendorId = vendorId;
   if (quantityShort !== undefined) washing.quantityShort = quantityShort;
-  if (rate !== undefined) washing.rate = rate;
   if (date) washing.date = date;
   if (washOutDate) washing.washOutDate = washOutDate;
   if (description) washing.description = description;
-  if (washDetails) washing.washDetails = washDetails;
+  if (washDetails) washing.washDetails = resolvedDetails;
 
   try {
     await washing.save();

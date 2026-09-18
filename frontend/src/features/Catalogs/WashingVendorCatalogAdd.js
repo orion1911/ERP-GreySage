@@ -13,7 +13,8 @@ function WashingVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSucc
       name: editVendor?.name || '',
       contact: editVendor?.contact || '',
       address: editVendor?.address || '',
-      defaultRate: editVendor?.defaultRate ?? ''
+      defaultRate: editVendor?.defaultRate ?? '',
+      upliftPercent: editVendor?.upliftPercent ?? 12
     },
     mode: 'onChange'
   });
@@ -24,14 +25,19 @@ function WashingVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSucc
       setValue('contact', editVendor.contact || '');
       setValue('address', editVendor.address || '');
       setValue('defaultRate', editVendor.defaultRate ?? '');
+      setValue('upliftPercent', editVendor.upliftPercent ?? 12);
     } else {
-      reset({ name: '', contact: '', address: '', defaultRate: '' });
+      reset({ name: '', contact: '', address: '', defaultRate: '', upliftPercent: 12 });
     }
   }, [editVendor, setValue, reset]);
 
   const onSubmit = (data) => {
     setLoading(true);
-    const payload = { ...data, defaultRate: Number(data.defaultRate) || 0 };
+    const payload = {
+      ...data,
+      defaultRate: Number(data.defaultRate) || 0,
+      upliftPercent: data.upliftPercent === '' || isNaN(Number(data.upliftPercent)) ? 12 : Number(data.upliftPercent)
+    };
     const request = editVendor
       ? apiService.washingVendors.updateWashingVendor(editVendor._id, payload)
       : apiService.washingVendors.createWashingVendor(payload);
@@ -155,6 +161,24 @@ function WashingVendorCatalogAdd({ open, onClose, loading, setLoading, onAddSucc
                     variant="standard"
                     error={!!error}
                     helperText={error ? error.message : 'Pre-fills the rate when this vendor is selected at the stage'}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 12 }}>
+              <Controller
+                name="upliftPercent"
+                control={control}
+                rules={{ pattern: { value: /^\d*\.?\d*$/, message: 'Only numbers allowed' } }}
+                render={({ field, fieldState: { error } }) => (
+                  <TextField
+                    {...field}
+                    label="Costing Uplift %"
+                    fullWidth
+                    margin="normal"
+                    variant="standard"
+                    error={!!error}
+                    helperText={error ? error.message : 'Added on top of the weighted-average wash cost in Costing (default 12). The vendor is NOT paid this.'}
                   />
                 )}
               />

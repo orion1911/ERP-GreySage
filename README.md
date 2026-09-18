@@ -356,4 +356,4 @@ The API and frontend deploy as separate projects.
 
 Adil Khan
 
-Licensed under ISC.
+Licensed under ISC..

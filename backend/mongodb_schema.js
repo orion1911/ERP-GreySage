@@ -137,10 +137,6 @@ const WashingVendorSchema = new mongoose.Schema({
   contact: { type: String },
   address: { type: String },
   defaultRate: { type: Number, default: 0 }, // legacy default rate; superseded by the WashCreationRate card for creation-based entries
-  // Costing uplift (% added on top of the weighted-average wash cost). The washer is NOT
-  // paid this — it is the pricing-side overhead/profit-on-stage (the old "+10/12"),
-  // default 12%. Editable per lot on the Costing screen; this is only the default.
-  upliftPercent: { type: Number, default: 12, min: 0 },
   isActive: { type: Boolean, default: true },
   sortOrder: { type: Number, default: 0 }, // user-defined display order for dropdowns/catalog (lower = first)
   createdAt: { type: Date, default: Date.now }
@@ -232,9 +228,13 @@ const CuttingSheetSchema = new mongoose.Schema({
   masterId: { type: mongoose.Schema.Types.ObjectId, ref: 'CuttingMaster', required: true },
   panna: { type: Number, min: 0 },                     // fabric width, inches (77.5, 79)
   layerLength: { type: Number, min: 0 },               // marker/layer length, inches (44.5)
-  // Fabric price per meter (Rs.). Costing derives fabric cost per pc as
-  // fabricRate x avgConsumption — never stored as a total, always derived.
+  // Fabric price per meter (Rs.), EXCLUSIVE of GST. Costing derives fabric cost per pc as
+  // fabricRate x (1 + fabricGSTPercent/100) x avgConsumption — never stored as a total,
+  // always derived.
   fabricRate: { type: Number, default: 0, min: 0 },
+  // GST % on fabric (5% default for new sheets; 0 when not applicable). Old sheets created
+  // before this field existed read as 0 — their stored rate was entered as the final rate.
+  fabricGSTPercent: { type: Number, default: 5, min: 0, max: 100 },
   sizes: [{ type: Number }],                           // the sheet's size columns, ascending
   rows: [CuttingSheetRowSchema],
   // Derived on every save (never trusted from the client):
@@ -393,6 +393,11 @@ const WashingSchema = new mongoose.Schema({
     }],
     quantity: { type: Number, required: true, min: 1 },
     rate: { type: Number, required: true, min: 0 },
+    // SAMPLE pcs: pieces within the lot that the washer produced and does NOT bill us
+    // for, but which flow into finishing (the finisher bills the whole lot, samples
+    // included). Sample rows always carry rate 0; their quantity is part of the normal
+    // Σ washDetails.quantity = stitching-available validation.
+    isSample: { type: Boolean, default: false },
     quantityShort: { type: Number, default: 0, min: 0 },
     quantityShortDesc: { type: String }
   }],
@@ -875,6 +880,11 @@ const AccessoryConsumptionSchema = new mongoose.Schema({
   accessoryTypeId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccessoryType', required: true },
   accessoryItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'AccessoryItem', required: true },
   nameSnapshot: { type: String, trim: true },
+  // FROZEN master rate at consumption time. Costing reads this FIRST and only falls back
+  // to the live AccessoryItem.rate for rows written before the field existed — without it,
+  // editing an item's rate silently re-priced every historical lot on the costing board.
+  // Same rule the washing rows already follow (washDetails[].creations[].rate).
+  rateSnapshot: { type: Number, min: 0 },
   lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot', required: true },
   stage: { type: String, enum: ['stitching', 'finishing'], required: true },
   qty: { type: Number, required: true, min: 0 },
@@ -957,11 +967,8 @@ const AuditLogSchema = new mongoose.Schema({
 // (no second source of truth; same principle that removed the lot-level finalPcs override).
 const LotCostingSchema = new mongoose.Schema({
   lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot', required: true },
-  // Washing uplift % on the weighted-average wash cost. null = fall back to the washing
-  // vendor's upliftPercent (default 12).
-  washingUpliftPercent: { type: Number, min: 0, default: null },
-  // Pricing-side per-pc buffers for the non-washing stages (your "+10" on fabric,
-  // "+40/50" on stitching). Default 0 — a buffer is never silently assumed.
+  // Pricing-side per-pc buffers (your "+10" on fabric, "+40/50" on stitching).
+  // Default 0 — a buffer is never silently assumed.
   fabricUpliftPerPc: { type: Number, min: 0, default: 0 },
   stitchingUpliftPerPc: { type: Number, min: 0, default: 0 },
   finishingUpliftPerPc: { type: Number, min: 0, default: 0 },

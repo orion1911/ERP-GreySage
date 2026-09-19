@@ -323,6 +323,9 @@ const replaceFinishingConsumption = async (lotId, allocations, userId, session =
       accessoryTypeId: item.accessoryTypeId,
       accessoryItemId: item._id,
       nameSnapshot: item.name,
+      // Freeze the item's rate at consumption time — costing must never re-price a lot
+      // because the accessory master was updated afterwards.
+      rateSnapshot: Number(item.rate) || 0,
       lotId,
       stage: 'finishing',
       qty: Number(a.qty),
@@ -344,20 +347,31 @@ const replaceConsumption = async ({ accessoryTypeId, lotId, stage, items, userId
   const opts = session ? { session } : {};
   await AccessoryConsumption.deleteMany({ lotId, stage }, opts);
 
-  const rows = (items || [])
-    .filter(i => i.accessoryItemId && Number(i.qty) > 0)
-    .map(i => ({
-      accessoryTypeId,
-      accessoryItemId: i.accessoryItemId,
-      nameSnapshot: i.nameSnapshot,
-      lotId,
-      stage,
-      qty: Number(i.qty),
-      clientLinked: !!i.clientLinked,
-      createdBy: userId,
-      date: new Date(),
-      createdAt: new Date()
-    }));
+  const valid = (items || []).filter(i => i.accessoryItemId && Number(i.qty) > 0);
+  if (valid.length === 0) return [];
+
+  // Rate is read from the MASTER HERE, server-side, and frozen onto the row — the caller
+  // (and therefore the client) cannot inject it. Mirrors how the washing controller derives
+  // a row rate from the vendor's rate card instead of trusting the payload.
+  const masters = await AccessoryItem.find(
+    { _id: { $in: valid.map(i => i.accessoryItemId) } },
+    'rate'
+  ).lean();
+  const rateById = new Map(masters.map(m => [String(m._id), Number(m.rate) || 0]));
+
+  const rows = valid.map(i => ({
+    accessoryTypeId,
+    accessoryItemId: i.accessoryItemId,
+    nameSnapshot: i.nameSnapshot,
+    rateSnapshot: rateById.get(String(i.accessoryItemId)) ?? 0,
+    lotId,
+    stage,
+    qty: Number(i.qty),
+    clientLinked: !!i.clientLinked,
+    createdBy: userId,
+    date: new Date(),
+    createdAt: new Date()
+  }));
 
   if (rows.length === 0) return [];
   return AccessoryConsumption.create(rows, session ? { session, ordered: true } : {});

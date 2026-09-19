@@ -139,12 +139,6 @@ function WashingVendorCatalog() {
       cell: ({ row }) => row.original.defaultRate ?? 0
     },
     {
-      accessorKey: 'upliftPercent',
-      header: 'Uplift %',
-      enableSorting: true,
-      cell: ({ row }) => `${row.original.upliftPercent ?? 12}%`
-    },
-    {
       accessorKey: '_id',
       header: 'Actions',
       enableSorting: false,

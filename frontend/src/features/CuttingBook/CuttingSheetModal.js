@@ -29,7 +29,7 @@ const parseLotNumberLocal = (lotNumber) => {
   return { series: parts[0], start, end: parts.length === 3 ? parseInt(parts[2], 10) : start };
 };
 
-const emptyRow = () => ({ meters: '', carryInMeters: '0', rollMeters: '', appliedLeftoverId: null, qty: {} }); // carry-in defaults to 0: most layups have none
+const emptyRow = () => ({ meters: '', carryInMeters: '0', rollMeters: '', rollEdited: false, appliedLeftoverId: null, qty: {} }); // carry-in defaults to 0: most layups have none; rollMeters mirrors meters until edited
 
 // "37/45", "37-45", "37 / 45" or "45" → { start, end }; null when not (yet) valid.
 const MAX_ROWS = 100; // one physical sheet never holds more; guards against "1/1000" typos
@@ -64,6 +64,9 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
   const [panna, setPanna] = useState('');
   const [layerLength, setLayerLength] = useState('');
   const [fabricRate, setFabricRate] = useState('');
+  // GST % on fabric — 5% default (editable; 0 when not applicable). The rate costing
+  // uses is always INCLUSIVE: effRate = fabricRate × (1 + GST/100).
+  const [fabricGST, setFabricGST] = useState('5');
   const [description, setDescription] = useState('');
   const [sizes, setSizes] = useState([]);
   const [rows, setRows] = useState([]); // created from the lot range
@@ -95,12 +98,16 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
       setPanna(editSheet.panna ?? '');
       setLayerLength(editSheet.layerLength ?? '');
       setFabricRate(editSheet.fabricRate ?? '');
+      setFabricGST(String(editSheet.fabricGSTPercent ?? 0)); // old sheets predate GST → 0
       setDescription(editSheet.description || '');
       setSizes(editSheet.sizes || []);
       setRows((editSheet.rows || []).map(r => ({
         meters: r.meters ?? '',
         carryInMeters: String(r.carryInMeters ?? 0),
         rollMeters: r.rollMeters ?? '',
+        // A saved roll that differs from meters was a deliberate entry — it stops
+        // mirroring; an equal one keeps mirroring meters until the user edits it.
+        rollEdited: r.rollMeters != null && Number(r.rollMeters) !== (Number(r.meters) || 0),
         appliedLeftoverId: r.appliedLeftoverId || null,
         qty: Object.fromEntries((r.sizeQty || []).filter(sq => sq.qty > 0).map(sq => [sq.size, String(sq.qty)]))
       })));
@@ -120,6 +127,7 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
       setPanna('');
       setLayerLength('');
       setFabricRate('');
+      setFabricGST('5');
       setDescription('');
       setSizes(activeSizes.filter(ws => ws.isDefault).map(ws => ws.size));
       setRows([]);
@@ -231,7 +239,18 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
 
   // ── Row editing ───────────────────────────────────────────────────────────────────────
   const setRowField = (idx, field, value) => {
-    setRows(rows.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+    setRows(rows.map((r, i) => {
+      if (i !== idx) return r;
+      // ROLL MTR mirrors MTR (the usual case: the roll is fully consumed) until the
+      // user explicitly types a different roll length for this row.
+      if (field === 'meters') {
+        return r.rollEdited ? { ...r, meters: value } : { ...r, meters: value, rollMeters: value };
+      }
+      if (field === 'rollMeters') {
+        return { ...r, rollMeters: value, rollEdited: true };
+      }
+      return { ...r, [field]: value };
+    }));
   };
 
   const setQty = (idx, size, value) => {
@@ -267,6 +286,12 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
   };
 
   // ── Live footer ───────────────────────────────────────────────────────────────────────
+  // Fabric rate as PAID = entered rate inclusive of GST (rate × (1 + GST/100)).
+  // Costing uses this effective rate (rate × AVG consumption).
+  const gstNum = fabricGST === '' || isNaN(Number(fabricGST)) ? 0 : Math.min(Math.max(Number(fabricGST), 0), 100);
+  const effRate = (fabricRate !== '' && !isNaN(Number(fabricRate)) && Number(fabricRate) > 0)
+    ? Math.round(Number(fabricRate) * (1 + gstNum / 100) * 100) / 100
+    : 0;
   const totals = useMemo(() => {
     let meters = 0, pcs = 0;
     const leftoverOut = [];
@@ -329,6 +354,7 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
       panna: panna === '' || isNaN(Number(panna)) ? undefined : Number(panna),
       layerLength: layerLength === '' || isNaN(Number(layerLength)) ? undefined : Number(layerLength),
       fabricRate: fabricRate === '' || isNaN(Number(fabricRate)) ? undefined : Number(fabricRate),
+      fabricGSTPercent: fabricGST === '' || isNaN(Number(fabricGST)) ? undefined : Number(fabricGST),
       sizes,
       rows: payloadRows,
       description
@@ -491,7 +517,7 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
               placeholder="44.5"
             />
           </Grid>
-          <Grid size={{ xs: 9, md: 4 }}>
+          <Grid size={{ xs: 9, md: 3 }}>
             <TextField
               label="Fabric Rate /m"
               value={fabricRate}
@@ -501,7 +527,19 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
               fullWidth
               inputProps={{ inputMode: 'decimal' }}
               placeholder="240"
-              helperText="Rs. per meter — used by Costing (rate × AVG)"
+              helperText={effRate > 0 ? `Incl. GST: Rs. ${effRate}/m` : 'Rs. per meter (excl. GST)'}
+            />
+          </Grid>
+          <Grid size={{ xs: 6, md: 2 }}>
+            <TextField
+              label="GST %"
+              value={fabricGST}
+              onChange={(e) => setFabricGST(e.target.value)}
+              margin="normal"
+              variant="standard"
+              fullWidth
+              inputProps={{ inputMode: 'decimal' }}
+              helperText={effRate > 0 ? `Fabric/pc: ${(effRate * totals.avg).toFixed(2)}` : '5 default · 0 = none'}
             />
           </Grid>
 
@@ -659,13 +697,13 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
               <Typography variant="body2">Total: <strong>{totals.meters}</strong> mtr</Typography>
               <Typography variant="body2">Pcs: <strong>{totals.pcs}</strong></Typography>
               <Typography variant="body2">AVG: <strong>{totals.avg}</strong></Typography>
-              {fabricRate !== '' && !isNaN(Number(fabricRate)) && Number(fabricRate) > 0 && (
+              {effRate > 0 && (
                 <>
                   <Typography variant="body2">
-                    Fabric: <strong>{Math.round(totals.meters * Number(fabricRate)).toLocaleString('en-IN')}</strong>
+                    Fabric: <strong>{Math.round(totals.meters * effRate).toLocaleString('en-IN')}</strong>
                   </Typography>
                   <Typography variant="body2">
-                    Fabric/pc: <strong>{(Number(fabricRate) * totals.avg).toFixed(2)}</strong>
+                    Fabric/pc: <strong>{(effRate * totals.avg).toFixed(2)}</strong>
                   </Typography>
                 </>
               )}

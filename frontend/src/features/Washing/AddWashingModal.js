@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { useForm, useFieldArray, Controller } from 'react-hook-form';
-import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Autocomplete, Chip, Paper, Stack } from '@mui/material';
+import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form';
+import { Box, Modal, Typography, IconButton, Grid, TextField, Button, FormControl, InputLabel, Select, MenuItem, Autocomplete, Chip, Paper, Stack, Checkbox, FormControlLabel, Tooltip } from '@mui/material';
 import { Close as CloseIcon, Add as AddIcon, Delete as DeleteIcon, Save as SaveIcon, Calculate as CalculateIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -27,7 +27,7 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
   const [rateCard, setRateCard] = useState([]);
   const [cardVendorId, setCardVendorId] = useState('');
 
-  const emptyDetail = { washColor: 'NA', creations: [], quantity: lotQuantity || '', rate: '0', quantityShort: '', quantityShortDesc: '', washCreation: '' };
+  const emptyDetail = { washColor: 'NA', creations: [], quantity: lotQuantity || '', rate: '0', quantityShort: '', quantityShortDesc: '', washCreation: '', isSample: false };
 
   const defaultValues = {
     lotNumber: lotNumber || '',
@@ -39,7 +39,7 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
     washDetails: [{ ...emptyDetail }],
   };
 
-  const { control, handleSubmit, reset, setValue, getValues, watch, formState: { errors } } = useForm({
+  const { control, handleSubmit, reset, setValue, getValues, formState: { errors } } = useForm({
     defaultValues,
     mode: 'onChange',
   });
@@ -49,9 +49,14 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
     name: 'washDetails',
   });
 
-  // Watch the vendor + all detail rows so the auto-rate recomputes live.
-  const watchedVendorId = watch('vendorId');
-  const watchedDetails = watch('washDetails');
+  // Subscribe to the vendor + all detail rows so the modal actually RE-RENDERS when a
+  // creation is picked. `watch(name)` only READS a value — it does not subscribe — so the
+  // rate stayed stale until something else happened to re-render (adding/removing a row
+  // moved `fields`, which is what made the "+ Add Colour / Batch" click appear to fix it).
+  // useWatch is the hook form RHF re-renders on. Declared after useFieldArray because it
+  // subscribes to a field-array path.
+  const watchedVendorId = useWatch({ control, name: 'vendorId' });
+  const watchedDetails = useWatch({ control, name: 'washDetails' });
 
   const rateByCreation = useMemo(() => {
     const m = new Map();
@@ -138,6 +143,11 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
   useEffect(() => {
     if (!watchedDetails) return;
     watchedDetails.forEach((wd, idx) => {
+      // Sample rows are never billed — pin their stored rate to 0.
+      if (wd?.isSample) {
+        if (Number(wd.rate) !== 0) setValue(`washDetails.${idx}.rate`, '0', { shouldValidate: false });
+        return;
+      }
       const selected = wd?.creations || [];
       if (selected.length === 0) return; // legacy row — leave its stored rate
       const sum = selected.reduce((s, c) => {
@@ -151,10 +161,28 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
     });
   }, [watchedDetails, rateByCreation, setValue]);
 
+  // Single source of truth for a row's EFFECTIVE rate — recomputed straight from the
+  // current selections × the vendor's rate card, so it is correct on the very render
+  // that a creation is added/removed (no waiting for the setValue effect or the next
+  // "Add Colour / Batch" click). Sample rows are never billed → 0. Legacy rows
+  // (free-text washCreation, no catalog match) keep their stored rate.
+  const rowRateOf = (wd) => {
+    if (wd?.isSample) return 0;
+    const sel = wd?.creations || [];
+    const legacy = sel.length === 0 && !!(wd?.washCreation && String(wd.washCreation).trim()) && wd.rate;
+    if (legacy) return Number(wd.rate) || 0;
+    return Math.round(sel.reduce((s, c) => {
+      const r = rateByCreation.get(String(c.creationId || c._id));
+      return s + (r === undefined || r === null ? 0 : Number(r));
+    }, 0) * 100) / 100;
+  };
+
   // Running totals for the summary chips: Σ row quantity (validated live against
   // the available stitching quantity) and Σ qty × rate = the vendor's wash bill.
+  // Both use rowRateOf above, so the chips can never lag the rows on screen.
   const totalQty = (watchedDetails || []).reduce((s, d) => s + (parseInt(d?.quantity, 10) || 0), 0);
-  const totalAmount = (watchedDetails || []).reduce((s, d) => s + (parseInt(d?.quantity, 10) || 0) * (Number(d?.rate) || 0), 0);
+  const totalAmount = (watchedDetails || []).reduce((s, d) => s + (parseInt(d?.quantity, 10) || 0) * rowRateOf(d), 0);
+  const sampleQty = (watchedDetails || []).reduce((s, d) => s + (d?.isSample ? (parseInt(d?.quantity, 10) || 0) : 0), 0);
   const qtyMismatch = !!lotQuantity && totalQty !== parseInt(lotQuantity, 10);
 
   const creationOptions = rateCard; // [{ creationId, name, rate|null }]
@@ -165,6 +193,8 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
     // must only contain PRICED creations for this vendor.
     for (let i = 0; i < (data.washDetails || []).length; i++) {
       const wd = data.washDetails[i];
+      // Sample rows: never billed — unpriced (or no) creations are fine, rate stays 0.
+      if (wd.isSample) continue;
       if ((wd.creations || []).length === 0) {
         if (!wd.washCreation || !wd.washCreation.trim()) {
           return showSnackbar(`Row ${i + 1}: select at least one wash creation`, 'error');
@@ -187,12 +217,28 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
       // Normalise rows for the API: creation-based rows send {creationId, name}; the
       // server computes the rate. Legacy rows send their free text + rate untouched.
       washDetails: (data.washDetails || []).map(wd => {
+        if (wd.isSample) {
+          // Sample rows: rate forced 0, creations optional (snapshot only), and the
+          // required echo text falls back to a sample marker when nothing is selected.
+          const sel = (wd.creations || []).filter(c => c.creationId || c._id);
+          return {
+            washColor: wd.washColor,
+            quantity: wd.quantity,
+            quantityShort: wd.quantityShort,
+            quantityShortDesc: wd.quantityShortDesc,
+            isSample: true,
+            creations: sel.map(c => ({ creationId: c.creationId || c._id, name: c.name })),
+            rate: 0,
+            washCreation: sel.map(c => c.name).join(' + ') || 'SAMPLE (NOT BILLED)',
+          };
+        }
         if ((wd.creations || []).length > 0) {
           return {
             washColor: wd.washColor,
             quantity: wd.quantity,
             quantityShort: wd.quantityShort,
             quantityShortDesc: wd.quantityShortDesc,
+            isSample: false,
             creations: wd.creations.map(c => ({ creationId: c.creationId || c._id, name: c.name })),
             rate: wd.rate,
             washCreation: (wd.creations || []).map(c => c.name).join(' + '),
@@ -345,20 +391,39 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
               const rowWatch = watchedDetails?.[index] || {};
               const selected = rowWatch.creations || [];
               const isLegacyRow = selected.length === 0 && !!(rowWatch.washCreation && rowWatch.washCreation.trim()) && rowWatch.rate;
+              const isSampleRow = !!rowWatch.isSample;
               const rowQty = parseInt(rowWatch.quantity, 10) || 0;
-              const rowRate = Number(rowWatch.rate) || 0;
+              // Same helper the totals chips use — the row and the wash bill can
+              // never disagree, and both update on the render that toggles a creation.
+              const displayRate = rowRateOf(rowWatch);
+              const rowAmount = Math.round(rowQty * displayRate * 100) / 100;
               return (
               <Grid size={{ xs: 12 }} key={wd.id}>
-                <Paper variant="outlined" sx={{ p: { xs: 1.25, md: 2 }, mb: 1, borderRadius: 2 }}>
+                <Paper variant="outlined" sx={{ p: { xs: 1.25, md: 2 }, mb: 1, borderRadius: 2, bgcolor: isSampleRow ? 'action.hover' : 'background.paper' }}>
                   <Grid container spacing={2}>
                     {/* Wash Colour retired — rows are creation-based now. Legacy rows
                         carry a free-text washCreation and keep their stored rate. */}
-                    <Grid size={{ xs: 8 }} sx={{ alignContent: 'center' }}>
-                      <Typography variant="overline" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-                        Colour / Batch {index + 1}{isLegacyRow ? ' · legacy' : ''}
-                      </Typography>
+                    <Grid size={{ xs: 12, sm: 8 }} sx={{ alignContent: 'center' }}>
+                      <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Typography variant="overline" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                          Colour / Batch {index + 1}{isLegacyRow ? ' · legacy' : ''}
+                        </Typography>
+                        <Tooltip title="Sample pcs: within this lot's quantity, but the washer does NOT bill them — rate stays 0. Finishing bills the whole lot including samples.">
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                size="small"
+                                checked={isSampleRow}
+                                onChange={(e) => setValue(`washDetails.${index}.isSample`, e.target.checked, { shouldDirty: true })}
+                              />
+                            }
+                            label={<Typography variant="caption" color={isSampleRow ? 'warning.main' : 'text.secondary'}>Sample</Typography>}
+                            sx={{ mr: 0, '& .MuiFormControlLabel-label': { fontSize: '0.75rem' } }}
+                          />
+                        </Tooltip>
+                      </Stack>
                     </Grid>
-                    <Grid size={{ xs: 4 }} sx={{ textAlign: 'right' }}>
+                    <Grid size={{ xs: 12, sm: 4 }} sx={{ textAlign: 'right' }}>
                       {index > 0 && (
                         <IconButton size="small" color="error" onClick={() => remove(index)}>
                           <DeleteIcon fontSize="small" />
@@ -397,13 +462,18 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
                         render={({ field }) => (
                           <TextField
                             {...field}
+                            value={isSampleRow ? '0' : String(displayRate)}
                             label="Rate (auto)"
                             fullWidth
                             margin="normal"
                             variant="standard"
                             InputProps={{ readOnly: true }}
                             sx={{ mb: 1 }}
-                            helperText={isLegacyRow ? 'Legacy row — stored rate kept' : 'Sum of the selected creations\u2019 rates'}
+                            helperText={isSampleRow
+                              ? 'Sample — not billed (rate 0)'
+                              : isLegacyRow
+                                ? 'Legacy row — stored rate kept'
+                                : 'Sum of the selected creations\u2019 rates'}
                           />
                         )}
                       />
@@ -411,10 +481,10 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
                     <Grid size={{ xs: 12, md: 4 }} sx={{ alignContent: 'center' }}>
                       <Box sx={{ mt: { xs: 0.5, md: 2.25 } }}>
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                          Row amount (Qty × Rate)
+                          {isSampleRow ? 'Sample — no wash bill' : 'Row amount (Qty × Rate)'}
                         </Typography>
-                        <Typography variant="body1" fontWeight="bold">
-                          ₹{(Math.round(rowQty * rowRate * 100) / 100).toLocaleString('en-IN')}
+                        <Typography variant="body1" fontWeight="bold" color={isSampleRow ? 'text.secondary' : 'inherit'}>
+                          ₹{rowAmount.toLocaleString('en-IN')}
                         </Typography>
                       </Box>
                     </Grid>
@@ -424,6 +494,8 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
                     control={control}
                     rules={{
                       validate: (value) => {
+                        // Sample rows don't need creations (they aren't billed).
+                        if (isSampleRow) return true;
                         // Creation-based row required; legacy text row is the escape hatch.
                         if ((value || []).length > 0) return true;
                         const txt = getValues(`washDetails[${index}].washCreation`);
@@ -537,7 +609,7 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
               <Button
                 variant="text"
                 startIcon={<AddIcon />}
-                onClick={() => append({ washColor: 'NA', creations: [], quantity: '', rate: '0', quantityShort: '', quantityShortDesc: '', washCreation: '' })}
+                onClick={() => append({ washColor: 'NA', creations: [], quantity: '', rate: '0', quantityShort: '', quantityShortDesc: '', washCreation: '', isSample: false })}
               >
                 Add Colour / Batch
               </Button>
@@ -551,6 +623,9 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
                   label={`Σ Qty: ${totalQty}${lotQuantity ? ` / ${lotQuantity} available` : ''}`}
                 />
                 <Chip size="small" variant="outlined" color="primary" label={`Wash bill: ₹${totalAmount.toLocaleString('en-IN')}`} />
+                {sampleQty > 0 && (
+                  <Chip size="small" variant="outlined" color="warning" label={`incl. ${sampleQty} sample (not billed)`} />
+                )}
               </Stack>
               {qtyMismatch && (
                 <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.5 }}>

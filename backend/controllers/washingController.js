@@ -33,8 +33,11 @@ const resolveDetailRates = async (vendorId, washDetails) => {
   // The NA placeholder (name 'NA', no creationId) is legacy — it carries the
   // row's stored rate and must NOT be resolved against / blocked by the rate card.
   const isNaPlaceholder = (c) => !(c.creationId || c._id) && String(c.name || '').toUpperCase() === 'NA';
+  // Sample rows are processed too — they always resolve to rate 0 (the washer does not
+  // bill sample pcs), even with unpriced or no creations.
   const creationRows = (washDetails || []).filter(d =>
-    Array.isArray(d.creations) && d.creations.length > 0 && !d.creations.every(isNaPlaceholder)
+    d.isSample ||
+    (Array.isArray(d.creations) && d.creations.length > 0 && !d.creations.every(isNaPlaceholder))
   );
   if (creationRows.length === 0) return null; // fully legacy/NA payload — nothing to resolve
 
@@ -42,6 +45,21 @@ const resolveDetailRates = async (vendorId, washDetails) => {
   const rateByCreation = new Map(cards.map(c => [String(c.creationId), c.rate]));
 
   return washDetails.map((d) => {
+    // SAMPLE rows: pieces within the lot the washer does not bill us for — rate is
+    // always 0, and unpriced (or no) creations are allowed. The frozen name snapshot
+    // is kept for display; the rate card never blocks a sample row.
+    if (d.isSample) {
+      const sel = (Array.isArray(d.creations) ? d.creations : []).filter(c => c.creationId || c._id);
+      const resolvedSample = sel.map(c => ({ creationId: String(c.creationId || c._id), name: String(c.name || '').toUpperCase(), rate: 0 }));
+      return {
+        ...d,
+        isSample: true,
+        creations: resolvedSample,
+        rate: 0, // server-forced; client-sent rate ignored
+        washCreation: resolvedSample.map(c => c.name).join(' + ') || 'SAMPLE (NOT BILLED)',
+      };
+    }
+
     if (!Array.isArray(d.creations) || d.creations.length === 0) return d;
 
     // Row is entirely the NA legacy placeholder: keep stored rate + washCreation text.

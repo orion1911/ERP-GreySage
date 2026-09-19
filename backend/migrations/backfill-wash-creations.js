@@ -3,8 +3,10 @@
 //   1. Creates one WashCreation per distinct legacy washDetails.washCreation
 //      free-text string (skipping 'NA' / blank), so the catalog starts from the
 //      data that already exists.
-//   2. Sets upliftPercent = 0 on every WashingVendor missing it (schema default
-//      only applies to NEW documents — existing vendors need the field written).
+//
+// (The old step 2 — defaulting WashingVendor.upliftPercent — was removed when the
+// wash costing uplift was dropped: wash pricing is per creation, so the weighted
+// average of the frozen row rates IS the wash cost.)
 //
 // Idempotent: safe to run repeatedly (upserts + $exists guards).
 // No rate-card backfill — historic per-vendor rates are unknowable; enter them
@@ -15,7 +17,7 @@
 //   node migrations/backfill-wash-creations.js           (uses process.env.MONGO_URI)
 
 const mongoose = require('mongoose');
-const { WashCreation, WashingVendor, Washing } = require('../mongodb_schema');
+const { WashCreation, Washing } = require('../mongodb_schema');
 
 const SKIP = new Set(['', 'NA', 'N/A', 'NIL', 'NONE', '-']);
 
@@ -31,8 +33,11 @@ const SKIP = new Set(['', 'NA', 'N/A', 'NIL', 'NONE', '-']);
 
   try {
     // ── 1. Seed the catalog from legacy free-text creations ──────────────
+    // washCreation is an ObjectId ref on newly written docs; only legacy
+    // free-text strings need backfilling, so filter on $type first.
     const names = await Washing.aggregate([
       { $unwind: '$washDetails' },
+      { $match: { 'washDetails.washCreation': { $type: 'string' } } },
       { $group: { _id: { $toUpper: { $trim: { input: '$washDetails.washCreation' } } } } },
       { $project: { _id: 1 } },
     ]);
@@ -51,13 +56,6 @@ const SKIP = new Set(['', 'NA', 'N/A', 'NIL', 'NONE', '-']);
       if (res.upsertedId) created++; else existing++;
     }
     console.log(`WashCreation: ${created} created, ${existing} already present, ${skipped} skipped (blank/NA).`);
-
-    // ── 2. Default the washing-vendor uplift to 0 where missing ─────────
-    const res2 = await WashingVendor.updateMany(
-      { upliftPercent: { $exists: false } },
-      { $set: { upliftPercent: 0 } }
-    );
-    console.log(`WashingVendor: upliftPercent=0 set on ${res2.modifiedCount} vendor(s).`);
 
     console.log('Backfill complete.');
   } catch (err) {

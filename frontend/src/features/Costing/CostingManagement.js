@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import {
   TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination,
   TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent,
-  DialogActions, Chip, Divider, InputAdornment, useTheme,
+  DialogActions, Chip, Divider, InputAdornment, useTheme, Switch, FormControlLabel,
 } from '@mui/material';
 import {
   Calculate as CalculateIcon, Search as SearchIcon, Edit as EditIcon, Save as SaveIcon,
@@ -15,10 +15,11 @@ import { motion, AnimatePresence } from 'motion/react';
 // ─── COSTING PER PIECE ───────────────────────────────────────────────────────
 // Board: lots (status >= 2) with per-stage CP, Adjusted CP and Final SP.
 // Detail dialog: full auditable breakdown + editable pricing overlay
-//   (washing uplift % defaulting from the vendor, ₹ uplifts on the other
-//   stages, manual profit margin) — exactly the sheet maths:
-//   CP = fabric + stitching + washing×(1+uplift%) + finishing + accessories,
-//   SP = CP + margin.
+//   (per-pc uplifts on fabric/stitching/finishing, manual profit margin, expenses).
+//   The washing stage carries NO uplift — wash pricing is per creation, so the
+//   quantity-weighted average of the frozen row rates is already the true wash cost.
+//   CP = fabric + stitching + washing + finishing + accessories,
+//   SP = CP + per-pc uplifts + margin + expenses.
 
 const rs = (n) => (n === null || n === undefined ? '—' : Math.round(n * 100) / 100 === Math.round(n) ? Math.round(n).toLocaleString('en-IN') : (Math.round(n * 100) / 100).toLocaleString('en-IN'));
 
@@ -28,7 +29,7 @@ function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
-    washingUpliftPercent: '', fabricUpliftPerPc: '', stitchingUpliftPerPc: '',
+    fabricUpliftPerPc: '', stitchingUpliftPerPc: '',
     finishingUpliftPerPc: '', profitMarginPerPc: '', expensesPerPc: '', notes: '',
   });
   // showSnackbar gets a fresh identity on every layout render — keeping it out of
@@ -44,7 +45,6 @@ function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
       .then((c) => {
         setData(c);
         setForm({
-          washingUpliftPercent: c.components.washing.available ? String(c.components.washing.upliftPercent ?? '') : '',
           fabricUpliftPerPc: String(c.uplifts.fabricUpliftPerPc ?? 0),
           stitchingUpliftPerPc: String(c.uplifts.stitchingUpliftPerPc ?? 0),
           finishingUpliftPerPc: String(c.uplifts.finishingUpliftPerPc ?? 0),
@@ -60,9 +60,7 @@ function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
   // Live-preview: recompute SP from the form over the fetched components.
   const preview = useMemo(() => {
     if (!data) return null;
-    const washing = data.components.washing.available
-      ? Math.round(data.components.washing.weightedAvg * (1 + (Number(form.washingUpliftPercent) || 0) / 100) * 100) / 100
-      : 0;
+    const washing = data.components.washing.available ? data.components.washing.perPc : 0;
     const base =
       (data.components.fabric.available ? data.components.fabric.perPc : 0) +
       (data.components.stitching.available ? data.components.stitching.rate : 0) +
@@ -80,10 +78,7 @@ function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
 
   const handleSave = () => {
     setSaving(true);
-    apiService.costing.saveLotCosting(lotId, {
-      ...form,
-      washingUpliftPercent: form.washingUpliftPercent === '' ? null : Number(form.washingUpliftPercent),
-    })
+    apiService.costing.saveLotCosting(lotId, { ...form })
       .then((c) => {
         setSaving(false);
         setData(c);
@@ -114,7 +109,7 @@ function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
         {extra && <Typography component="span" variant="caption" color="text.secondary"> — {extra}</Typography>}
         {!c.available && <Typography component="span" variant="caption" color="warning.main"> — {c.reason}</Typography>}
       </Typography>
-      <Typography variant="body2" fontWeight="bold">{c.available ? rs(c.perPc ?? c.adjusted ?? c.rate) : '—'}</Typography>
+      <Typography variant="body2" fontWeight="bold">{c.available ? rs(c.perPc ?? c.rate) : '—'}</Typography>
     </Stack>
   );
 
@@ -144,12 +139,10 @@ function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
                   <Typography variant="body2">
                     Washing
                     <Typography component="span" variant="caption" color="text.secondary">
-                      {' '}— weighted avg {rs(data.components.washing.weightedAvg)} over {data.components.washing.totalPcs} pcs + {form.washingUpliftPercent || 0}% uplift
+                      {' '}— weighted avg {rs(data.components.washing.weightedAvg)} over {data.components.washing.totalPcs} pcs (frozen rates)
                     </Typography>
                   </Typography>
-                  <Typography variant="body2" fontWeight="bold">
-                    {rs(data.components.washing.weightedAvg * (1 + (Number(form.washingUpliftPercent) || 0) / 100))}
-                  </Typography>
+                  <Typography variant="body2" fontWeight="bold">{rs(data.components.washing.perPc)}</Typography>
                 </Stack>
               ) : comp('Washing', data.components.washing)}
               {comp('Finishing', data.components.finishing,
@@ -173,7 +166,6 @@ function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
             </Stack>
 
             <Divider sx={{ mb: 2 }}><Chip size="small" label="PRICING (editable)" /></Divider>
-            {num('Washing uplift %', 'washingUpliftPercent', 'On top of the weighted average. Blank = the washing vendor\u2019s default.')}
             {num('Fabric uplift ₹/pc', 'fabricUpliftPerPc')}
             {num('Stitching uplift ₹/pc', 'stitchingUpliftPerPc')}
             {num('Finishing uplift ₹/pc', 'finishingUpliftPerPc')}
@@ -234,6 +226,9 @@ function CostingManagement() {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [search, setSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState(''); // debounced copy actually sent to the API
+  // Default: only lots with a cutting sheet (fabric is the costing anchor). Toggle off
+  // to see every active lot. Keeps the board fast and focused.
+  const [costedOnly, setCostedOnly] = useState(true);
   const [loading, setLoading] = useState(false);
   // Skeleton shows only on the FIRST load. Per-keystroke search/pagination
   // refetches keep the existing rows on screen (with `loading` set for the
@@ -247,10 +242,10 @@ function CostingManagement() {
   // response must never overwrite a newer filtered one. Each request takes a
   // sequence number; only the latest may apply its result.
   const reqSeqRef = React.useRef(0);
-  const getBoard = (p = page, rpp = rowsPerPage, s = searchQuery) => {
+  const getBoard = (p = page, rpp = rowsPerPage, s = searchQuery, f = costedOnly) => {
     const seq = ++reqSeqRef.current;
     setLoading(true);
-    apiService.costing.getBoard({ search: s, page: p + 1, limit: rpp })
+    apiService.costing.getBoard({ search: s, page: p + 1, limit: rpp, filter: f ? 'costed' : 'all' })
       .then(res => {
         setTimeout(() => {
           if (seq !== reqSeqRef.current) return; // a newer request superseded this one
@@ -276,7 +271,7 @@ function CostingManagement() {
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => { getBoard(page, rowsPerPage, searchQuery); }, [page, rowsPerPage, searchQuery]);
+  useEffect(() => { getBoard(page, rowsPerPage, searchQuery, costedOnly); }, [page, rowsPerPage, searchQuery, costedOnly]);
 
   const openDetail = (lotId) => { setDetailLotId(lotId); setDetailOpen(true); };
 
@@ -300,16 +295,24 @@ function CostingManagement() {
     <>
       <Typography variant="h4" sx={{ mb: 1 }}>Costing</Typography>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <TextField
-          label="Search lot number"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          variant="standard"
-          sx={{ width: 220, maxWidth: '100%' }}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-        />
+        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
+          <TextField
+            label="Search lot number"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            variant="standard"
+            sx={{ width: 220, maxWidth: '100%' }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+          />
+          {/* Default: only lots with a cutting sheet (fabric is the costing anchor) —
+              keeps the board small and fast. Toggle off to see every lot. */}
+          <FormControlLabel
+            control={<Switch size="small" checked={costedOnly} onChange={(e) => { setPage(0); setCostedOnly(e.target.checked); }} />}
+            label={<Typography variant="caption">Costed lots only</Typography>}
+          />
+        </Stack>
         <Typography variant="caption" color="text.secondary">
-          CP = Fabric (rate × AVG) + Stitching + Washing (weighted avg + uplift %) + Finishing + Accessories · SP = CP + margin
+          CP = Fabric (rate × AVG) + Stitching + Washing (weighted avg) + Finishing + Accessories · SP = CP + uplifts + margin
         </Typography>
       </Box>
 

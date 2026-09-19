@@ -3,8 +3,8 @@
 Single-file context for any AI coding assistant working on this repo. Read this first,
 before exploring source.
 
-**Last context refresh:** 2026-07-26, against commit `d368de6` "invoice with sample entry
-option" (2026-07-15).
+**Last context refresh:** 2026-09-19, against commit `9658db6` on `main` (`d368de6` was the
+2026-07-15 baseline before it). §7 now carries the uncommitted costing work.
 
 **This file drifts.** The previous refresh sat six weeks stale and asserted several things
 that were no longer true. Before trusting anything time-sensitive below, run
@@ -229,6 +229,24 @@ skips, but any partial entry must sum to the lot quantity); **buttons / labels /
 polybags** at finishing, with **rivets auto-derived at 4× buttons**. Pocketing is excluded
 from consumption (purchases and payments only).
 
+`AccessoryConsumption.rateSnapshot` freezes the item's master rate at consumption time —
+**costing reads the snapshot, never the live `AccessoryItem.rate`**. `rateSnapshot` on the
+row is written server-side in `accessoryService.replaceConsumption` /
+`replaceFinishingConsumption`, so the client cannot inject it. `AccessoryConsumption` also
+carries `nameSnapshot` for the same reason.
+
+**Costing per piece**: `LotCosting` holds only the *pricing* overlay — per-pc uplifts on
+fabric/stitching/finishing, `profitMarginPerPc`, `expensesPerPc`, notes (unique index on
+`lotId`). No cost is ever stored there: `costingService.computeLotCosting` / `getCostingBoard`
+derive fabric from the `CuttingSheet`, and stitching / washing / finishing / accessories from
+their own stage records, on every read.
+
+CP = fabric (rate × (1+GST%) × AVG) + stitching + washing + finishing + accessories;
+Adjusted CP = CP + the three per-pc uplifts; Final SP = ceil(Adjusted CP + margin + expenses).
+**Washing carries no uplift** — wash pricing is per creation (`WashCreationRate`), so the
+quantity-weighted average of the frozen `washDetails[].rate` values already *is* the wash
+cost; the old vendor/overlay `upliftPercent` was removed for double-counting margin.
+
 **Reconciliation**: `MakingsDiff` — a single stored snapshot with `count`,
 `discrepancies[]`, `excelRows[]` (needed to re-diff one lot after a fix), `scannedRows`,
 and `status` ∈ ok|error.
@@ -306,6 +324,18 @@ embedding editors in other screens.
 version-stamped keys; `bumpVersion(resource)` after a write invalidates a whole family in
 O(1). Fail-open by design: a cache outage must never turn a working request into a 500.
 
+**`watch(name)` does not re-render — use `useWatch`.** In RHF, `watch('foo')` is a plain
+*read*: the string form is `L(name, default, true)`, it registers nothing and subscribes to
+nothing, so a component calling it will not re-render when that field changes. Only the
+**callback** form `watch(cb)` subscribes. `useWatch({ control, name })` is the hook form
+that does. This bit `AddWashingModal`: it read `watch('washDetails')` to drive the auto-rate
+display, so picking a wash creation left the rate stale until an unrelated state change
+(adding/removing a row moved `fields`) re-rendered the modal — making the "Add Colour /
+Batch" click look like the trigger. Declare `useWatch` *after* `useFieldArray` when watching
+a field-array path. `setValue(..., { shouldValidate: false })` writes values without
+notifying the `watch` subscription either, so prefer deriving the displayed value on render
+rather than mirroring it into state.
+
 ---
 
 ## 7. Current checkpoint (most perishable section)
@@ -315,6 +345,42 @@ entry · recon notification UI · MAKINGS recon bell (`a1fd53b`) · public finis
 board (`b363523`) · per-client accessory split + rivet split · Redis integration (`d2cc02a`)
 · low-stock mail via Brevo (`85f07ec`) · invoice combine-lots (`759150d`) · multiple billers
 per client (`3a19342`) · dispatch module (`a527e52`) · Stock Management.
+
+### Costing hardening + Wash Creation costing (uncommitted at the time of writing)
+
+1. **Accessory rates are now frozen per consumption row.** `AccessoryConsumption.rateSnapshot`
+   is written server-side by `accessoryService.replaceConsumption` (zippers, at stitching,
+   inside the transaction) and `replaceFinishingConsumption` (finishing). Costing reads
+   `rateSnapshot ?? accessoryItemId.rate`, so the live-master fallback only affects rows
+   predating the field. `costingService.accessoryRateOf` is the single reader — used by both
+   the single-lot compute and the board.
+2. **Wash costing uplift removed entirely.** Wash pricing is per creation, so the
+   quantity-weighted average is already the true cost; the uplift was stacking margin twice.
+   Removed: `WashingVendor.upliftPercent` (schema, `vendorController.updateVendor` whitelist,
+   catalog column + add-modal field), `LotCosting.washingUpliftPercent`, the uplift params of
+   `computeWashingComponent`, the `LotCosting` overlay field + Costing dialog input, and the
+   obsolete step 2 of `backfill-wash-creations.js`. `computeWashingComponent(washing)` now
+   returns `perPc` (= `weightedAvg`) instead of `adjusted`; the board row key is
+   `washingCP: perPc`. **Existing `LotCosting` docs keep a stale `washingUpliftPercent` field
+   in Mongo — it is no longer in the schema and no longer read.** Existing `WashingVendor`
+   docs likewise keep a stale `upliftPercent`.
+3. **New migration** `backend/migrations/backfill-consumption-rate-snapshot.js` — fills
+   `rateSnapshot` on old rows from the latest `AccessoryPurchase` line dated on/before the
+   consumption date, falling back to the current master rate (reported separately), with
+   `--dry-run`. Plain reads + one `bulkWrite`; no schema change.
+4. **`AddWashingModal` re-render bug fixed** — `watch('washDetails')` → `useWatch`, so the
+   auto-rate now updates the moment a wash creation is picked instead of only after the next
+   "Add Colour / Batch" click. See §6.
+5. `costingController.js` had lost its `Lot` import in a refactor that retained
+   `Lot.findById` — every `GET/PUT /api/costing/lot/:id` returned `{"error":"Lot is not
+   defined"}` as a 400. Restored (imports `Lot` + `LotCosting` at the top; the inline
+   `require` inside `saveLotCosting` was removed).
+
+Verified without a database by stubbing the Mongoose statics and driving
+`computeLotCosting` + `getCostingBoard` (both paths agree: washing 24 = weighted avg with no
+uplift, accessory CP uses the snapshot and is unmoved by a master hike, legacy rows still
+fall back), plus 9 cases on the migration's dated-rate picker. **Not exercised against a real
+DB** — run the migration `--dry-run` before applying.
 
 ### Work prepared 2026-07-26 but NOT yet in the repo
 
@@ -374,6 +440,25 @@ refresh on a **401**, so `middleware/auth.js` returns 401 for an *expired* acces
 403 only for a genuinely invalid one. Return 403 on expiry and the session dies after one
 access-token lifetime. Edit TTLs in `authController.js`, nowhere else.
 
+**Cost rates are point-in-time snapshots, never live masters.** This is the rule that keeps a
+future price hike from rewriting the cost of work already done:
+
+| Cost component | Rate read from | Safe against a master edit? |
+|---|---|---|
+| Fabric | `CuttingSheet.fabricRate`/`fabricGSTPercent`/`avgConsumption` | yes — on the lot's own sheet |
+| Stitching | `Stitching.rate` | yes |
+| Washing | `washDetails[].rate` (backed by `creations[].rate`) | yes |
+| Finishing | `Finishing.rate` | yes |
+| Accessories | `AccessoryConsumption.rateSnapshot` | yes — *was the live `AccessoryItem.rate` until this was fixed* |
+
+`StitchingVendor`/`FinishingVendor`/`WashingVendor.defaultRate` are **prefill only** — they
+fill the stage modal and are never read back for costing. Costing falls back to the live
+accessory master **only** for rows written before `rateSnapshot` existed (a `??` fallback so
+legacy lots keep reproducing their current numbers); run
+`backend/migrations/backfill-consumption-rate-snapshot.js` to close that gap. Because these
+are write-once historical facts rather than recomputable caches, they do **not** belong in
+the recalculation table below.
+
 **Denormalised aggregates drift silently.** `VendorBalance`, `ClientBalance`,
 `AccessoryBalance`, `Lot.invoicedPcs` and `Lot.manualDispatchedPcs` are caches, not sources
 of truth. Every write that affects them must call its recalculation:
@@ -417,6 +502,12 @@ second; the first is dead code pointing at `/api/vendor-payment*` URLs that no l
 CVE-2024-22363 ReDoS) and it parses an externally-fetched workbook in
 `makingsReconService`. Fixing requires the SheetJS CDN, not npm.
 
+**Dropping a schema field does not remove it from existing documents.** Mongoose only applies
+defaults to new docs and ignores unknown paths it is not told about; a removed field lingers
+in Mongo (e.g. `WashingVendor.upliftPercent` and `LotCosting.washingUpliftPercent` after the
+wash-uplift removal) and will reappear on any `.lean()` read. Harmless as long as no code
+reads it — but never assume `$unset` happened just because the schema stopped declaring it.
+
 **Never commit or echo `.env*`.** The Atlas cluster hosts more than one database — confirm
 which one a script targets before running it, and mask passwords in any connection string.
 
@@ -436,6 +527,9 @@ which one a script targets before running it, and mask passwords in any connecti
 | Vendor balance denormalisation | `backend/services/vendorBalanceService.js` |
 | Client balance denormalisation | `backend/services/clientBalanceService.js` |
 | Accessory stock / balance / consumption | `backend/services/accessoryService.js` |
+| Costing per piece (CP/SP maths) | `backend/services/costingService.js` |
+| Costing req/res + overlay upsert | `backend/controllers/costingController.js` |
+| Backfill accessory rate snapshots | `backend/migrations/backfill-consumption-rate-snapshot.js` |
 | Workbook download, parse, diff | `backend/services/makingsReconService.js` |
 | Redis read-through cache | `backend/services/cache.js` |
 | JWT middleware | `backend/middleware/auth.js` |
@@ -471,6 +565,13 @@ which one a script targets before running it, and mask passwords in any connecti
 
 **Decisions already settled — don't re-litigate**
 
+- **Wash costing carries no uplift.** Wash pricing is per creation
+  (`WashCreationRate`), so the quantity-weighted average of the frozen
+  `washDetails[].rate` values already is the washer's true cost. The old
+  `WashingVendor.upliftPercent` / `LotCosting.washingUpliftPercent` stacked margin a
+  second time under a different name and was removed outright, deliberately. Don't
+  reintroduce a wash-specific uplift — apply pricing once, via the overlay.
+- **Costing reads frozen rates, never live masters** — see §8.
 - **Manual dispatch is pieces-only.** It never creates an `Invoice` and never calls
   `clientBalanceService`. Money for those lots was billed outside the system and is carried
   by `ClientBalance.openingBalance`; a balance write would double-count.

@@ -288,7 +288,7 @@ const getLeftovers = async (req, res) => {
 // mode 'new'    — generates the lot number from series + row range, creates the Lot (status 1).
 // mode 'attach' — files the sheet against an existing lot; series/rows must match its number.
 const createCuttingSheet = async (req, res) => {
-  const { mode = 'new', lotId, date, series, clientId, fitStyleId, fabric, fabricRate, stitchingVendorId, masterId, panna, layerLength, description } = req.body;
+  const { mode = 'new', lotId, date, series, clientId, fitStyleId, fabric, fabricRate, fabricGSTPercent, stitchingVendorId, masterId, panna, layerLength, description } = req.body;
 
   if (!date) return res.status(400).json({ error: 'Date is required' });
   if (!clientId) return res.status(400).json({ error: 'Client is required' });
@@ -379,6 +379,9 @@ const createCuttingSheet = async (req, res) => {
       stitchingVendorId,
       masterId,
       fabricRate: fabricRate !== undefined && fabricRate !== null && fabricRate !== '' ? Math.max(Number(fabricRate) || 0, 0) : 0,
+      fabricGSTPercent: (fabricGSTPercent === undefined || fabricGSTPercent === null || fabricGSTPercent === '' || isNaN(Number(fabricGSTPercent)))
+        ? 5
+        : Math.min(Math.max(Number(fabricGSTPercent), 0), 100),
       panna: panna !== undefined && panna !== null && panna !== '' ? Number(panna) : undefined,
       layerLength: layerLength !== undefined && layerLength !== null && layerLength !== '' ? Number(layerLength) : undefined,
       sizes,
@@ -436,7 +439,7 @@ const updateCuttingSheet = async (req, res) => {
   const lot = await Lot.findById(sheet.lotId);
   if (!lot) return res.status(404).json({ error: 'The lot behind this sheet no longer exists' });
 
-  const { date, series, clientId, fitStyleId, fabric, fabricRate, stitchingVendorId, masterId, panna, layerLength, description } = req.body;
+  const { date, series, clientId, fitStyleId, fabric, fabricRate, fabricGSTPercent, stitchingVendorId, masterId, panna, layerLength, description } = req.body;
   if (!date) return res.status(400).json({ error: 'Date is required' });
   if (!clientId) return res.status(400).json({ error: 'Client is required' });
   if (!fitStyleId) return res.status(400).json({ error: 'Fit Style is required' });
@@ -482,6 +485,9 @@ const updateCuttingSheet = async (req, res) => {
       stitchingVendorId,
       masterId,
       fabricRate: fabricRate !== undefined && fabricRate !== null && fabricRate !== '' ? Math.max(Number(fabricRate) || 0, 0) : 0,
+      fabricGSTPercent: (fabricGSTPercent === undefined || fabricGSTPercent === null || fabricGSTPercent === '' || isNaN(Number(fabricGSTPercent)))
+        ? 5
+        : Math.min(Math.max(Number(fabricGSTPercent), 0), 100),
       panna: panna !== undefined && panna !== null && panna !== '' ? Number(panna) : undefined,
       layerLength: layerLength !== undefined && layerLength !== null && layerLength !== '' ? Number(layerLength) : undefined,
       sizes,

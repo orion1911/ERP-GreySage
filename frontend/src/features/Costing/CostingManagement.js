@@ -122,6 +122,12 @@ function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
             {data.lot.fitStyleName}{data.lot.clientName ? ` · ${data.lot.clientName}` : ''}
           </Typography>
         )}
+        {(data?.lot?.invoiceNumber || data?.lot?.fabric) && (
+          <Typography variant="caption" display="block" color="text.secondary">
+            {data.lot.invoiceNumber ? `Bill ${data.lot.invoiceNumber}` : ''}
+            {data.lot.fabric ? `${data.lot.invoiceNumber ? ' · ' : ''}Fabric ${data.lot.fabric}` : ''}
+          </Typography>
+        )}
       </DialogTitle>
       <DialogContent dividers>
         {loading || !data ? (
@@ -131,7 +137,9 @@ function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
             <Typography variant="subtitle2" sx={{ mb: 1 }}>COST PER PIECE (derived live)</Typography>
             <Stack spacing={0.5} sx={{ mb: 2 }}>
               {comp('Fabric', data.components.fabric,
-                data.components.fabric.available ? `${data.components.fabric.fabricRate}/m × AVG ${data.components.fabric.avgConsumption}` : null)}
+                data.components.fabric.available
+                  ? `${data.components.fabric.fabric ? `${data.components.fabric.fabric} · ` : ''}${data.components.fabric.fabricRate}/m × AVG ${data.components.fabric.avgConsumption}`
+                  : null)}
               {comp('Stitching', data.components.stitching,
                 data.components.stitching.available ? data.components.stitching.vendorName : null)}
               {data.components.washing.available ? (
@@ -148,15 +156,33 @@ function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
               {comp('Finishing', data.components.finishing,
                 data.components.finishing.available ? data.components.finishing.vendorName : null)}
               {data.components.accessories.available ? (
-                <Stack direction="row" justifyContent="space-between" alignItems="baseline">
-                  <Typography variant="body2">
-                    Accessories
-                    <Typography component="span" variant="caption" color="text.secondary">
-                      {' '}— {data.components.accessories.byType.map(t => t.typeName).join(', ')} over {data.components.accessories.basisPcs} pcs
+                <Box>
+                  <Stack direction="row" justifyContent="space-between" alignItems="baseline">
+                    <Typography variant="body2">
+                      Accessories
+                      <Typography component="span" variant="caption" color="text.secondary">
+                        {' '}— over {data.components.accessories.basisPcs} pcs
+                      </Typography>
                     </Typography>
-                  </Typography>
-                  <Typography variant="body2" fontWeight="bold">{rs(data.components.accessories.perPc)}</Typography>
-                </Stack>
+                    <Typography variant="body2" fontWeight="bold">{rs(data.components.accessories.perPc)}</Typography>
+                  </Stack>
+                  {/* Per-item calculation: qty × frozen unit rate = money. Each
+                      consumption row's rateSnapshot (a later master hike never
+                      rewrites these lines). */}
+                  {data.components.accessories.byType.map(t => (
+                    <Box key={t.typeId} sx={{ pl: 2 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+                        {t.typeName} — {rs(t.perPc)}/pc
+                      </Typography>
+                      {(t.items || []).map((it, i) => (
+                        <Typography key={i} variant="caption" display="block" color="text.secondary">
+                          {it.name}: {it.qty} × {rs(it.rate)} = {rs(it.money)}
+                          {it.sent != null && it.sent - it.qty > 0.009 && ` (sent ${rs(it.sent)} — ${rs(it.sent - it.qty)} extra at vendor)`}
+                        </Typography>
+                      ))}
+                    </Box>
+                  ))}
+                </Box>
               ) : comp('Accessories', data.components.accessories)}
               {!data.complete && (
                 <Typography variant="caption" color="warning.main">
@@ -278,9 +304,11 @@ function CostingManagement() {
   const columns = [
     { accessorKey: 'lotNumber', header: 'Lot' },
     { accessorKey: 'fitStyleName', header: 'Fit / Client' },
-    { accessorKey: 'fabricCP', header: 'Fabric' },
+    { accessorKey: 'fabric', header: 'Fabric' },
+    { accessorKey: 'invoiceNumber', header: 'Bill No' },
+    { accessorKey: 'fabricCP', header: 'Fabric/pc' },
     { accessorKey: 'stitchingCP', header: 'Stitch' },
-    { accessorKey: 'washingCP', header: 'Wash (+%)' },
+    { accessorKey: 'washingCP', header: 'Wash' },
     { accessorKey: 'finishingCP', header: 'Finish' },
     { accessorKey: 'accessoriesCP', header: 'Acc' },
     { accessorKey: 'adjustedCP', header: 'CP' },
@@ -384,6 +412,8 @@ function CostingManagement() {
                           <Typography variant="body2">{r.fitStyleName || '—'}</Typography>
                           <Typography variant="caption" color="text.secondary">{r.clientName || ''}</Typography>
                         </TableCell>
+                        <TableCell style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>{r.fabric || '—'}</TableCell>
+                        <TableCell style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>{r.invoiceNumber || '—'}</TableCell>
                         <TableCell style={{ textAlign: 'center' }}>{rs(r.fabricCP)}</TableCell>
                         <TableCell style={{ textAlign: 'center' }}>{rs(r.stitchingCP)}</TableCell>
                         <TableCell style={{ textAlign: 'center' }}>{rs(r.washingCP)}</TableCell>

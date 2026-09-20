@@ -177,13 +177,25 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
     }, 0) * 100) / 100;
   };
 
-  // Running totals for the summary chips: Σ row quantity (validated live against
-  // the available stitching quantity) and Σ qty × rate = the vendor's wash bill.
-  // Both use rowRateOf above, so the chips can never lag the rows on screen.
+  // Running totals for the summary chips: Σ row quantity and Σ qty × rate = the
+  // vendor's wash bill. Both use rowRateOf above, so the chips can never lag the
+  // rows on screen.
+  //
+  // Two valid entry conventions (the server reconciles them the same way):
+  //   A) Qty = pcs sent to wash       → Σ Qty must equal the available qty.
+  //   B) Qty = good pcs returned,
+  //      Short = the missing few      → Σ (Qty + Short) must equal it.
+  // A short-counted (B-style) entry is normalised server-side to A before it is
+  // saved, so the bill is always on the pcs the washer was given — hence the
+  // bill chip adds each row's short to its qty when the short is what counted.
+  const availQty = parseInt(lotQuantity, 10) || 0;
   const totalQty = (watchedDetails || []).reduce((s, d) => s + (parseInt(d?.quantity, 10) || 0), 0);
-  const totalAmount = (watchedDetails || []).reduce((s, d) => s + (parseInt(d?.quantity, 10) || 0) * rowRateOf(d), 0);
+  const totalShort = (watchedDetails || []).reduce((s, d) => s + (parseInt(d?.quantityShort, 10) || 0), 0);
+  const shortCounted = totalQty !== availQty && totalShort > 0 && totalQty + totalShort === availQty;
+  const billedRowQty = (d) => (parseInt(d?.quantity, 10) || 0) + (shortCounted ? (parseInt(d?.quantityShort, 10) || 0) : 0);
+  const totalAmount = (watchedDetails || []).reduce((s, d) => s + billedRowQty(d) * rowRateOf(d), 0);
   const sampleQty = (watchedDetails || []).reduce((s, d) => s + (d?.isSample ? (parseInt(d?.quantity, 10) || 0) : 0), 0);
-  const qtyMismatch = !!lotQuantity && totalQty !== parseInt(lotQuantity, 10);
+  const qtyMismatch = !!lotQuantity && !(totalQty === availQty || shortCounted);
 
   const creationOptions = rateCard; // [{ creationId, name, rate|null }]
   const getOptionRate = (opt) => rateByCreation.get(String(opt.creationId));
@@ -620,7 +632,7 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
                   size="small"
                   variant={qtyMismatch ? 'filled' : 'outlined'}
                   color={qtyMismatch ? 'error' : 'success'}
-                  label={`Σ Qty: ${totalQty}${lotQuantity ? ` / ${lotQuantity} available` : ''}`}
+                  label={`Σ Qty: ${totalQty}${shortCounted ? ` + ${totalShort} short` : ''}${lotQuantity ? ` / ${lotQuantity} available` : ''}`}
                 />
                 <Chip size="small" variant="outlined" color="primary" label={`Wash bill: ₹${totalAmount.toLocaleString('en-IN')}`} />
                 {sampleQty > 0 && (
@@ -629,7 +641,7 @@ function AddWashingModal({ open, onClose, lotNumber, lotId, invoiceNumber, lotQu
               </Stack>
               {qtyMismatch && (
                 <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.5 }}>
-                  Total wash quantity must equal the available quantity ({lotQuantity}).
+                  Total wash quantity (+ Short) must equal the available quantity ({lotQuantity}).
                 </Typography>
               )}
             </Grid>

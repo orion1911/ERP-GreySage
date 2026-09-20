@@ -207,6 +207,7 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
     setRows(Array.from({ length: parsed.end - parsed.start + 1 }, () => emptyRow()));
     setClientId(lot.clientId?._id || '');
     setFitStyleId(lot.fitStyleId?._id || '');
+    setVendorId(lot.stitchingVendorId?._id || ''); // the vendor that stitched this lot
     setFabric(lot.fabric || '');
     if (lot.date) setDate(dayjs(lot.date));
   };
@@ -503,6 +504,7 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
               margin="normal"
               variant="standard"
               fullWidth
+              inputProps={{ inputMode: 'decimal' }}
               placeholder="77.5"
             />
           </Grid>
@@ -514,6 +516,7 @@ function CuttingSheetModal({ open, onClose, mode, editSheet, clients, fitStyles,
               margin="normal"
               variant="standard"
               fullWidth
+              inputProps={{ inputMode: 'decimal' }}
               placeholder="44.5"
             />
           </Grid>

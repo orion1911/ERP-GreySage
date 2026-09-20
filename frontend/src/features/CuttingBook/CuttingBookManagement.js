@@ -214,14 +214,14 @@ function CuttingBookManagement() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  {['DATE', 'LOT NO', 'CLIENT', 'FIT STYLE', 'FABRIC', 'VENDOR', 'MASTER', 'TOTAL MTR', 'TOTAL PCS', 'AVG', 'STATUS', 'ACTIONS'].map(h => (
+                  {['DATE', 'LOT NO', 'CLIENT', 'FIT STYLE', 'FABRIC', 'PANNA', 'LEN', 'VENDOR', 'MASTER', 'TOTAL MTR', 'TOTAL PCS', 'AVG', 'STATUS', 'ACTIONS'].map(h => (
                     <TableCell key={h} style={{ textAlign: 'center', textWrap: 'nowrap' }}>{h}</TableCell>
                   ))}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {loading ? (
-                  <TableRowsLoader colsNum={12} rowsNum={10} />
+                  <TableRowsLoader colsNum={14} rowsNum={10} />
                 ) : sheets.length > 0 ? (
                   sheets.map(sheet => (
                     <TableRow key={sheet._id} hover>
@@ -232,6 +232,8 @@ function CuttingBookManagement() {
                       <TableCell style={{ textAlign: 'center' }}>{sheet.clientId?.name || '—'}</TableCell>
                       <TableCell style={{ textAlign: 'center' }}>{sheet.fitStyleId?.name || '—'}</TableCell>
                       <TableCell style={{ textAlign: 'center' }}>{sheet.fabric}</TableCell>
+                      <TableCell style={{ textAlign: 'center' }}>{sheet.panna ?? '—'}</TableCell>
+                      <TableCell style={{ textAlign: 'center' }}>{sheet.layerLength ?? '—'}</TableCell>
                       <TableCell style={{ textAlign: 'center' }}>{sheet.stitchingVendorId?.name || '—'}</TableCell>
                       <TableCell style={{ textAlign: 'center' }}>{sheet.masterId?.name || '—'}</TableCell>
                       <TableCell style={{ textAlign: 'center' }}>{sheet.totalMeters}</TableCell>

@@ -259,7 +259,17 @@ const getAvailableLots = async (req, res) => {
     .populate('clientId', 'name')
     .populate('fitStyleId', 'name')
     .lean();
-  res.json(lots);
+  // Attach-mode lots are stitching-first, so carry the lot's own stitching vendor so the
+  // sheet modal can pre-select it (the vendor that actually stitched this lot).
+  const ids = lots.map((l) => l._id);
+  const stitches = ids.length
+    ? await Stitching.find({ lotId: { $in: ids } }, 'lotId vendorId').populate('vendorId', 'name').lean()
+    : [];
+  const vendorByLot = new Map(stitches.map((s) => [
+    String(s.lotId?._id || s.lotId),
+    s.vendorId?._id ? { _id: s.vendorId._id, name: s.vendorId.name } : null,
+  ]));
+  res.json(lots.map((l) => ({ ...l, stitchingVendorId: vendorByLot.get(String(l._id)) || null })));
 };
 
 // GET /api/cutting-sheets/cut-lots — status-1 lots for the Add Stitching picker, with their

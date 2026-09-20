@@ -423,6 +423,45 @@ when both sides have a value.
 
 ---
 
+### Wash entry conventions + costing display (2026-09-20, uncommitted)
+
+1. **Washing accepts two quantity entry conventions.** `washingController.reconcileWashQuantities`
+   (used by create + update) accepts `Σ washDetails.quantity == stitching available` (Qty =
+   pcs sent — the stored convention) **or** `Σ(quantity + short) == available` (Qty = good
+   pcs returned, Short = the missing few, what staff naturally enter). The latter is
+   normalised before saving by folding each row's short into its quantity, so every stored
+   record keeps `quantity` = pcs sent (washer billed on pcs sent; `Σ(quantity − short)`
+   cascades into Finishing; `washingShort` in the makings recon unchanged). `AddWashingModal`
+   chips mirror it (Σ Qty shows "+ N short" when the short is what counted; the wash-bill
+   chip bills on qty + short in that case).
+2. **Costing shows fabric + maker bill and itemised accessories.** Board rows and
+   `computeLotCosting`'s `lot` payload carry `fabric` (sheet's fabric, falling back to
+   `Lot.fabric`) and `invoiceNumber` (the UPSTREAM/maker bill — NOT the sales invoice).
+   `computeAccessoriesComponent.byType[].items[]` now carries per-item audit lines
+   (`name, stage, qty, rate, money`) — lines merge only when item AND rate match, so a
+   re-frozen snapshot can't hide in a merged row. CostingManagement shows FABRIC and
+   BILL NO columns and prints each item as `qty × rate = money` in the dialog.
+3. **Cutting Book: PANNA + LEN now visible.** Columns added to the desktop table and the
+   mobile cards; Panna/Length inputs got decimal keyboards. NOTE: the panna save path
+   (schema → create/update controller → list API → modal prefill → payload) was audited
+   end-to-end and verified correct at `32e4a7a` — including a schema-level Mongoose cast
+   test. No defect was found; if a stale bundle/serverless function was serving when the
+   "panna not saved" report was made, a redeploy + hard refresh is the likely fix. Attach
+   mode now also pre-selects the stitching vendor: `getAvailableLots` carries each lot's
+   own Stitching record's vendor (`stitchingVendorId`), and `handleAttachLot` prefills it
+   (lots without stitching still fall back to a manual pick).
+4. **Accessory costing charges USED, not SENT.** Finishing consumption rows record what was
+   handed to the vendor — deliberately more than needed, with the buffer kept there (the
+   Finishing Vendor Extras board tracks it as `extra = sent − needed`). Costing now uses
+   `accessoryUsedQtyOf`: `min(sent, needed)` where
+   `needed = (row.basisPcs ?? Finishing.accessoryBasisPcs ?? Finishing.quantity) × ratio`
+   and ratio is 4 for rivets / 1 for everything else — the same "needed" the extras board
+   computes. Stitching (zipper) rows are exempt (exact counts; capping would under-charge
+   zippers destroyed with wash shorts). The DENOMINATOR is unchanged — it already is the
+   finishing basis, i.e. the actual pcs present at finishing. Item lines carry `sent` so
+   the dialog prints "sent N — M extra at vendor". Stock/ledgers untouched: the buffer did
+   leave stock, it just is not this lot's cost.
+
 ## 8. Gotchas
 
 **`autoIndex: false` in production.** None of the 40+ `Schema.index(...)` declarations are
@@ -473,8 +512,13 @@ of truth. Every write that affects them must call its recalculation:
 
 There is **no drift-detection job**. Correctness depends entirely on convention.
 
-**The stage chain is validated, not free-form.** `updateWashing` rejects unless
-`Σ washDetails.quantity` equals `stitching.quantity − stitching.quantityShort`.
+**The stage chain is validated, not free-form.** `updateWashing` (and
+`createWashing`) accepts **two entry conventions** via `reconcileWashQuantities`:
+`Σ washDetails.quantity` equals `stitching.quantity − stitching.quantityShort`
+(Qty = pcs sent, the stored convention), **or** `Σ(quantity + short)` equals it
+(Qty = good pcs returned, Short = the missing few — normalised by folding each
+row's short into its quantity before saving, so the bill basis stays pcs-sent
+and `Σ(quantity − short)` still cascades into Finishing).
 `updateFinishing` rejects unless `quantity` **exactly equals**
 `Σ(washDetails.quantity − quantityShort)` — finishing quantity cannot be set directly, only
 its short. `updateStitching` requires thread colours to re-sum to any new quantity, then

@@ -15,6 +15,37 @@ const recomputeFinishingFromWashing = async (lotId) => {
     : 0;
   if (fin.quantity !== finAvail) { fin.quantity = finAvail; await fin.save(); }
 };
+// ─── Wash quantity reconciliation: two valid entry conventions ──────────────
+// Stored convention: a row's `quantity` = pcs SENT to the wash and
+// `quantityShort` = pcs missing at wash-out, so Σ quantity must equal the
+// stitching-available qty (the washer bills the pcs he was given; the net
+// Σ(quantity − short) cascades into Finishing). But staff naturally enter what
+// came BACK: Qty = good pcs returned, Short = the missing few. Both readings
+// describe the same physical fact, so both are accepted and converge on the
+// same stored record: a short-counted payload has each row's short folded INTO
+// its quantity before saving. Payloads already in the stored convention
+// (Σ quantity == available) are stored untouched.
+const reconcileWashQuantities = (washDetails, availableQty, ctx = '') => {
+  const rows = (washDetails || []).map((d) => ({
+    ...d,
+    quantity: parseInt(d?.quantity, 10) || 0,
+    quantityShort: parseInt(d?.quantityShort, 10) || 0,
+  }));
+  const gross = rows.reduce((s, d) => s + d.quantity, 0);
+  const short = rows.reduce((s, d) => s + d.quantityShort, 0);
+  if (gross === availableQty) return { details: rows, countedShort: false };
+  if (short > 0 && gross + short === availableQty) {
+    return {
+      countedShort: true,
+      details: rows.map((d) => (d.quantityShort > 0 ? { ...d, quantity: d.quantity + d.quantityShort } : d)),
+    };
+  }
+  return {
+    error: `Total wash quantity (${gross}${short > 0 ? ` (+${short} short = ${gross + short})` : ''}) must equal available stitching quantity (${availableQty}) ${ctx}`.trim(),
+  };
+};
+
+// ─── Creation-based rows: server-side rate resolution ────────────────────────
 
 // ─── Creation-based rows: server-side rate resolution ────────────────────────
 // For each detail row that carries creations[], load the vendor's rate card and:
@@ -129,16 +160,20 @@ const createWashing = async (req, res) => {
   }
 
   const availableQty = stitching.quantity - (stitching.quantityShort || 0);
-  const totalWashQuantity = washDetails.reduce((sum, item) => sum + parseInt(item.quantity || 0), 0);
-  if (totalWashQuantity !== availableQty) {
-    return res.status(400).json({ error: `Total wash quantity (${totalWashQuantity}) must equal available stitching quantity (${availableQty}) [stitching: ${stitching.quantity} - short: ${stitching.quantityShort || 0}]` });
+
+  // Accepts both entry conventions — "Qty = pcs sent" as-is, or "Qty = good pcs
+  // returned, Short = missing" normalised into it (see reconcileWashQuantities).
+  const qtyCheck = reconcileWashQuantities(washDetails, availableQty, `[stitching: ${stitching.quantity} - short: ${stitching.quantityShort || 0}]`);
+  if (qtyCheck.error) {
+    return res.status(400).json({ error: qtyCheck.error });
   }
+  const washDetailsNormalized = qtyCheck.details;
 
   // Resolve creation-based rates against the vendor's rate card (blocks on a
   // missing rate; auto-computes each row's rate as the sum of its creations).
   let resolvedDetails;
   try {
-    resolvedDetails = await resolveDetailRates(vendorId, washDetails) || washDetails;
+    resolvedDetails = await resolveDetailRates(vendorId, washDetailsNormalized) || washDetailsNormalized;
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
@@ -207,13 +242,16 @@ const updateWashing = async (req, res) => {
 
   const effectiveVendorId = vendorId || (washing.vendorId._id || washing.vendorId);
 
-  // Validate washDetails quantities
+  // Validate washDetails quantities — both entry conventions accepted (see
+  // reconcileWashQuantities); the payload is normalised to the stored
+  // "quantity = pcs sent" convention before it is saved.
+  let washDetailsNormalized = null;
   if (washDetails) {
-    const availableQty = stitching.quantity - (stitching.quantityShort || 0);
-    const totalWashQuantity = washDetails.reduce((sum, detail) => sum + parseInt(detail.quantity || 0), 0);
-    if (totalWashQuantity !== availableQty) {
-      return res.status(400).json({ error: `Total wash quantity (${totalWashQuantity}) must equal available stitching quantity (${availableQty}) [stitching: ${stitching.quantity} - short: ${stitching.quantityShort || 0}]` });
+    const qtyCheck = reconcileWashQuantities(washDetails, stitching.quantity - (stitching.quantityShort || 0), `[stitching: ${stitching.quantity} - short: ${stitching.quantityShort || 0}]`);
+    if (qtyCheck.error) {
+      return res.status(400).json({ error: qtyCheck.error });
     }
+    washDetailsNormalized = qtyCheck.details;
   }
 
   // Resolve creation-based rates (same rules as create — block on missing rate,
@@ -222,7 +260,7 @@ const updateWashing = async (req, res) => {
   let resolvedDetails;
   if (washDetails) {
     try {
-      resolvedDetails = await resolveDetailRates(effectiveVendorId, washDetails) || washDetails;
+      resolvedDetails = await resolveDetailRates(effectiveVendorId, washDetailsNormalized) || washDetailsNormalized;
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }
@@ -286,4 +324,4 @@ const getWashing = async (req, res) => {
   }
 };
 
-module.exports = { createWashing, updateWashing, updateWashingStatus, getWashing };
+module.exports = { createWashing, updateWashing, updateWashingStatus, getWashing, reconcileWashQuantities };

@@ -29,8 +29,10 @@ build
 
 .env
 *.zip
+.*/
 .env.development
 .claude/settings.local.json
 mongo_init
 
 z_run_coder.bat
+skills-lock.json

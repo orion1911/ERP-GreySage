@@ -76,21 +76,56 @@ const accessoryRateOf = (row) => {
   return Number(row?.accessoryItemId?.rate) || 0;
 };
 
+// Rivets are consumed 4 per pc (mirrors accessoryService.getFinishingVendorExtras and the
+// finishing modal's rivet multiplier). Every other item is 1 per pc.
+const RIVET_RATIO = 4;
+const accessoryRatioOf = (row) => (row?.accessoryItemId?.subType === 'rivet' ? RIVET_RATIO : 1);
+
+// Actual pcs of an item USED on the lot. Finishing consumption is recorded as what was
+// SENT to the vendor — deliberately more than the pcs need, because the buffer protects
+// the stage and the unused remainder stays with the vendor (tracked as "extra held" on
+// the Finishing Vendor Extras board, recoverable via returns / future lots). Charging the
+// buffer to this lot would overstate its cost, so costing uses the NEEDED qty — the pcs
+// the line covers (its basisPcs, else the finishing basis) × the item's per-pc ratio —
+// capped at what was actually sent (an under-sent line used everything it had). Stitching
+// rows (zippers) are counted exactly (no buffer) and are exempt: capping them at the
+// finishing qty would under-charge zippers destroyed with wash shorts. A row with no
+// resolvable basis falls back to the sent qty, so legacy data keeps its numbers.
+const accessoryUsedQtyOf = (row, finishingBasis) => {
+  const sent = Number(row?.qty) || 0;
+  if (!row || row.stage !== 'finishing') return sent;
+  const basis = Number.isFinite(Number(row.basisPcs)) ? Number(row.basisPcs) : (Number(finishingBasis) || 0);
+  const needed = basis * accessoryRatioOf(row);
+  return needed > 0 ? Math.min(sent, needed) : sent;
+};
+
 const computeAccessoriesComponent = async (lotId, finishing) => {
   const rows = await AccessoryConsumption.find({ lotId })
     .populate('accessoryTypeId', 'name key')
-    .populate('accessoryItemId', 'name rate')
+    .populate('accessoryItemId', 'name rate subType')
     .lean();
 
   if (!rows || rows.length === 0) {
     return { available: false, reason: 'No accessory consumption recorded for this lot' };
   }
 
+  // Denominator — the pcs the accessories were FOR: the finishing basis (the
+  // accessoryBasisPcs override, else the finishing quantity = the pcs actually
+  // present at the finishing stage).
+  const basisPcs = Number(finishing?.accessoryBasisPcs) || Number(finishing?.quantity) || 0;
+  if (basisPcs <= 0) {
+    return { available: false, reason: 'No finishing record to divide accessory cost over' };
+  }
+
   const byType = new Map();
   let totalMoney = 0;
   for (const r of rows) {
     const itemRate = accessoryRateOf(r);
-    const money = (Number(r.qty) || 0) * itemRate;
+    // Cost the USED qty (needed, capped at sent) — not the buffer sent to the
+    // finishing vendor. See accessoryUsedQtyOf.
+    const usedQty = accessoryUsedQtyOf(r, basisPcs);
+    const sentQty = Number(r.qty) || 0;
+    const money = usedQty * itemRate;
     totalMoney += money;
     const key = String(r.accessoryTypeId?._id || r.accessoryTypeId);
     if (!byType.has(key)) {
@@ -100,16 +135,27 @@ const computeAccessoriesComponent = async (lotId, finishing) => {
         stage: r.stage,
         qty: 0,
         money: 0,
+        items: [],
       });
     }
     const g = byType.get(key);
-    g.qty += Number(r.qty) || 0;
+    g.qty += usedQty;
     g.money = round2(g.money + money);
-  }
-
-  const basisPcs = Number(finishing?.accessoryBasisPcs) || Number(finishing?.quantity) || 0;
-  if (basisPcs <= 0) {
-    return { available: false, reason: 'No finishing record to divide accessory cost over' };
+    // Per-item calculation line: each consumption row is one AccessoryItem at
+    // its own frozen rate (rateSnapshot ?? live master — the single reader).
+    // Lines merge only when item + rate match, so a rate re-frozen at a later
+    // edit can never hide behind a merged number. `qty` = used, `sent` = what
+    // actually left stock (the difference sits at the vendor).
+    const itemName = r.nameSnapshot || r.accessoryItemId?.name || 'Unknown item';
+    const itemKey = `${key}|${String(r.accessoryItemId?._id || r.accessoryItemId || itemName)}|${itemRate}`;
+    let line = g.items.find((it) => it._key === itemKey);
+    if (!line) {
+      line = { _key: itemKey, name: itemName, stage: r.stage, qty: 0, sent: 0, rate: itemRate, money: 0 };
+      g.items.push(line);
+    }
+    line.qty += usedQty;
+    line.sent = round2(line.sent + sentQty);
+    line.money = round2(line.money + money);
   }
 
   return {
@@ -117,7 +163,13 @@ const computeAccessoriesComponent = async (lotId, finishing) => {
     totalMoney: round2(totalMoney),
     basisPcs,
     perPc: round2(totalMoney / basisPcs),
-    byType: [...byType.values()].map(g => ({ ...g, perPc: round2(g.money / basisPcs) })),
+    byType: [...byType.values()].map(g => ({
+      ...g,
+      perPc: round2(g.money / basisPcs),
+      // per-item audit lines (used qty × frozen unit rate = money); internal
+      // merge key stripped
+      items: g.items.map(({ _key, ...it }) => it),
+    })),
   };
 };
 
@@ -197,6 +249,7 @@ const computeLotCosting = async (lot) => {
     lot: {
       _id: lot._id,
       lotNumber: lot.lotNumber,
+      invoiceNumber: lot.invoiceNumber ?? null, // the UPSTREAM/maker bill, not the sales invoice
       status: lot.status,
       fabric: lot.fabric,
       clientId: lot.clientId?._id || lot.clientId || null,
@@ -264,10 +317,12 @@ const computeBoardRows = (lots, docs) => {
     // d) Finishing
     const finishingCP = finishing ? Number(finishing.rate) || 0 : null;
 
-    // e) Accessories — Σ(qty × frozen rate) over the finishing basis pcs
+    // e) Accessories — Σ(USED qty × frozen rate) over the finishing basis pcs.
+    //    Used = needed (basis × ratio), capped at sent — the finishing buffer
+    //    sitting at the vendor is not this lot's cost (accessoryUsedQtyOf).
     const basisPcs = Number(finishing?.accessoryBasisPcs) || Number(finishing?.quantity) || 0;
     let accMoney = 0;
-    for (const r of accRows) accMoney += (Number(r.qty) || 0) * accessoryRateOf(r);
+    for (const r of accRows) accMoney += accessoryUsedQtyOf(r, basisPcs) * accessoryRateOf(r);
     const accessoriesCP = basisPcs > 0 ? round2(accMoney / basisPcs) : null;
 
     const baseCP = round2(
@@ -283,6 +338,8 @@ const computeBoardRows = (lots, docs) => {
     return {
       lotId: lot._id,
       lotNumber: lot.lotNumber,
+      invoiceNumber: lot.invoiceNumber ?? null, // maker bill number, for reference
+      fabric: (sheet?.fabric) || lot.fabric || null,
       status: lot.status,
       clientName: lot.clientId?.name || null,
       fitStyleName: lot.fitStyleId?.name || null,
@@ -333,7 +390,7 @@ const getCostingBoard = async ({ search = '', page = 1, limit = 25, filter = 'co
     LotCosting.find({ lotId: { $in: ids } }).lean(),
     AccessoryConsumption.find({ lotId: { $in: ids } })
       .populate('accessoryTypeId', 'name key')
-      .populate('accessoryItemId', 'name rate')
+      .populate('accessoryItemId', 'name rate subType')
       .lean(),
   ]);
 

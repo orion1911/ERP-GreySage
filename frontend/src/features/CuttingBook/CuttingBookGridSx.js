@@ -98,10 +98,12 @@ function CuttingBookGridSx({
                       </Typography>
                     </Grid>
                     <Grid size={{ xs: 12 }}>
-                      <Stack direction="row" spacing={2} sx={{ mt: 0.5 }}>
+                      <Stack direction="row" spacing={2} useFlexGap flexWrap="wrap" sx={{ mt: 0.5 }}>
                         <Typography variant="body2"><strong>{sheet.totalMeters}</strong> mtr</Typography>
                         <Typography variant="body2"><strong>{sheet.totalPcs}</strong> pcs</Typography>
                         <Typography variant="body2">AVG <strong>{sheet.avgConsumption}</strong></Typography>
+                        <Typography variant="body2">Panna <strong>{sheet.panna ?? '—'}</strong></Typography>
+                        <Typography variant="body2">Len <strong>{sheet.layerLength ?? '—'}</strong></Typography>
                       </Stack>
                     </Grid>
                   </Grid>

@@ -8,6 +8,7 @@ function FinishingVendorCatalogSx({
   vendors,
   search,
   loading,
+  initialLoading,
   handleToggleActive,
   showSnackbar,
   handleEditVendor,
@@ -86,14 +87,14 @@ function FinishingVendorCatalogSx({
         </Stack>
       </Box>
       <AnimatePresence mode="wait">
-        <motion.div
-          key={!processedVendors ? 'loading' : 'data'}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+        <Box
+          key="data"
+          sx={{
+            '@keyframes gridFadeIn': { from: { opacity: 0 }, to: { opacity: 1 } },
+            animation: 'gridFadeIn 0.25s ease-in',
+          }}
         >
-          {!processedVendors ? (
+          {initialLoading ? (
             <OrderCardsLoader type="vendor" />
           ) : processedVendors.length > 0 ? (
             processedVendors.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((vendor) => (
@@ -169,7 +170,7 @@ function FinishingVendorCatalogSx({
               rowsPerPageOptions={[10, 25, 50]}
             />
           )}
-        </motion.div>
+        </Box>
       </AnimatePresence>
     </Box>
   );

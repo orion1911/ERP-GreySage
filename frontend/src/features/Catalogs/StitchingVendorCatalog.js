@@ -23,18 +23,21 @@ function StitchingVendorCatalog() {
   const [reorderMode, setReorderMode] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  // Skeleton shows ONLY before first response. Gating on `loading` blinked to the
+  // skeleton on every keystroke (fetch effect depends on search term).
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const getStitchingVendors = () => {
     setLoading(true);
     apiService.stitchingVendors.getStitchingVendors(search, showInactive)
       .then(res => {
-        setTimeout(() => {
-          setVendors(res);
-          setLoading(false);
-        }, process.env.REACT_APP_DATA_LOAD_TIMEOUT || 0);
+        setVendors(res);
+        setLoading(false);
+        setInitialLoading(false);
       })
       .catch(err => {
         setLoading(false);
+        setInitialLoading(false);
         console.log(err);
         showSnackbar(err);
       });
@@ -207,6 +210,7 @@ function StitchingVendorCatalog() {
           vendors={vendors}
           search={search}
           loading={loading}
+          initialLoading={initialLoading}
           handleToggleActive={handleToggleActive}
           showSnackbar={showSnackbar}
           handleEditVendor={handleEditVendor}
@@ -215,12 +219,15 @@ function StitchingVendorCatalog() {
         />
       ) : (
         <AnimatePresence mode="wait">
-        <motion.div
-          key={loading ? 'loading' : 'data'}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+        {/* Constant key: skeleton gated on initialLoading, so no remount on
+            search-keystroke refetches (loading flips) — changing key = flicker.
+            Data branch gets the same CSS fade-in as StitchingManagement. */}
+        <Box
+          key="data"
+          sx={{
+            '@keyframes gridFadeIn': { from: { opacity: 0 }, to: { opacity: 1 } },
+            animation: 'gridFadeIn 0.25s ease-in',
+          }}
         >
         <TableContainer>
           <Table>
@@ -248,7 +255,7 @@ function StitchingVendorCatalog() {
               ))}
             </TableHead>
             <TableBody>
-              {loading || !vendors ? (
+              {initialLoading ? (
                 <TableRowsLoader colsNum={6} rowsNum={10} />
               ) : vendors.length > 0 ? (
                 table.getRowModel().rows.map(row => (
@@ -275,7 +282,7 @@ function StitchingVendorCatalog() {
             rowsPerPageOptions={[10, 25, 50]}
           />
         </TableContainer>
-        </motion.div>
+        </Box>
         </AnimatePresence>
       )}
       <StitchingVendorCatalogAdd

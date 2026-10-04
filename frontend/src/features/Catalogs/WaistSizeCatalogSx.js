@@ -4,21 +4,21 @@ import { Delete as DeleteIcon, Check as CheckIcon } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
 import { motion, AnimatePresence } from 'motion/react';
 
-function WaistSizeCatalogSx({ sizes, loading, handleToggleDefault, handleToggleActive, onAdd }) {
+function WaistSizeCatalogSx({ sizes, loading, initialLoading, handleToggleDefault, handleToggleActive, onAdd }) {
   return (
     <Box sx={{ pt: 1 }}>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2, justifyContent: 'flex-end', alignItems: 'center' }}>
         <Button size="small" variant="contained" onClick={onAdd} disabled={loading}>Add</Button>
       </Box>
       <AnimatePresence mode="wait">
-        <motion.div
-          key={!sizes ? 'loading' : 'data'}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+        <Box
+          key="data"
+          sx={{
+            '@keyframes gridFadeIn': { from: { opacity: 0 }, to: { opacity: 1 } },
+            animation: 'gridFadeIn 0.25s ease-in',
+          }}
         >
-          {!sizes ? (
+          {initialLoading ? (
             <OrderCardsLoader type="vendor" />
           ) : sizes.length > 0 ? (
             sizes.map((ws) => (
@@ -62,7 +62,7 @@ function WaistSizeCatalogSx({ sizes, loading, handleToggleDefault, handleToggleA
           ) : (
             <Typography variant="body1" sx={{ textAlign: 'center' }}>No records found</Typography>
           )}
-        </motion.div>
+        </Box>
       </AnimatePresence>
     </Box>
   );

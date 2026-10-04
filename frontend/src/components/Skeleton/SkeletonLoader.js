@@ -1,8 +1,10 @@
 import { TableCell, TableRow, Table, TableBody, Skeleton, Box, Stack, Grid, Card, CardContent, Chip, Paper, Typography } from '@mui/material';
 
-export const TableRowsLoader = ({ colsNum, rowsNum }) => {
+// rowHeight ≈ one real row in this theme (30px small IconButton + 2×8px cell padding + 1px border),
+// so the table doesn't change height when rows replace the skeleton. Override per table if needed.
+export const TableRowsLoader = ({ colsNum, rowsNum, rowHeight = 47 }) => {
     return [...Array(rowsNum)].map((row, index) => (
-        <TableRow key={index}>
+        <TableRow key={index} sx={{ height: rowHeight }}>
             {[...Array(colsNum)].map((col, idx) => {
                 return (
                     <TableCell key={idx}>

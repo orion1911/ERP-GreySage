@@ -427,7 +427,7 @@ const Dashboard = () => {
             {/* KPI Cards */}
             <AnimatePresence mode="wait">
                 <motion.div
-                    key={loading ? 'kpi-loading' : 'kpi-data'}
+                    key="kpi"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
@@ -483,7 +483,7 @@ const Dashboard = () => {
             {/* Charts */}
             <AnimatePresence mode="wait">
                 <motion.div
-                    key={loading ? 'charts-loading' : 'charts-data'}
+                    key="charts"
                     initial={loading ? { opacity: 0 } : { opacity: 0, y: 24 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, transition: { duration: 0.15 } }}
@@ -574,7 +574,7 @@ const Dashboard = () => {
                 <Grid size={{ xs: 12, md: 6 }}>
                     <AnimatePresence mode="wait">
                         <motion.div
-                            key={loading ? 'client-loading' : 'client-data'}
+                            key="client-summary"
                             initial={loading ? { opacity: 0 } : { opacity: 0, y: 24 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, transition: { duration: 0.15 } }}
@@ -658,7 +658,7 @@ const Dashboard = () => {
                 <Grid size={{ xs: 12, md: 6 }}>
                     <AnimatePresence mode="wait">
                         <motion.div
-                            key={loading ? 'stitching-vendor-loading' : 'stitching-vendor-data'}
+                            key="stitching-vendor-summary"
                             initial={loading ? { opacity: 0 } : { opacity: 0, y: 24 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, transition: { duration: 0.15 } }}
@@ -730,7 +730,7 @@ const Dashboard = () => {
                 <Grid size={{ xs: 12, md: 6 }}>
                     <AnimatePresence mode="wait">
                         <motion.div
-                            key={loading ? 'washer-loading' : 'washer-data'}
+                            key="washer-summary"
                             initial={loading ? { opacity: 0 } : { opacity: 0, y: 24 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, transition: { duration: 0.15 } }}
@@ -808,7 +808,7 @@ const Dashboard = () => {
                 <Grid size={{ xs: 12, md: 6 }}>
                     <AnimatePresence mode="wait">
                         <motion.div
-                            key={loading ? 'finishing-vendor-loading' : 'finishing-vendor-data'}
+                            key="finishing-vendor-summary"
                             initial={loading ? { opacity: 0 } : { opacity: 0, y: 24 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, transition: { duration: 0.15 } }}
@@ -899,7 +899,7 @@ const Dashboard = () => {
                         </Box>
                         <AnimatePresence mode="wait">
                             <motion.div
-                                key={loading ? 'stitching-breakdown-loading' : 'stitching-breakdown-data'}
+                                key="stitching-breakdown"
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
@@ -1028,7 +1028,7 @@ const Dashboard = () => {
                 </Box>
                 <AnimatePresence mode="wait">
                     <motion.div
-                        key={loading ? 'breakdown-loading' : 'breakdown-data'}
+                        key="washing-breakdown"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}

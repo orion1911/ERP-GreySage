@@ -41,11 +41,9 @@ function WashCreationCatalog() {
     setLoading(true);
     apiService.washCreations.getWashCreations(debouncedSearch, showInactive)
       .then(res => {
-        setTimeout(() => {
-          setCreations(res);
-          setLoading(false);
-          setInitialLoading(false);
-        }, process.env.REACT_APP_DATA_LOAD_TIMEOUT || 0);
+        setCreations(res);
+        setLoading(false);
+        setInitialLoading(false);
       })
       .catch(err => {
         setLoading(false);
@@ -215,15 +213,16 @@ function WashCreationCatalog() {
         />
       ) : (
         <AnimatePresence mode="wait">
-        {/* Constant key: the skeleton is gated on initialLoading, so this motion.div
+        {/* Constant key: the skeleton is gated on initialLoading, so this wrapper
             must NOT remount on every search-keystroke refetch (loading flips) — a
-            changing key made AnimatePresence unmount/remount the table = flicker. */}
-        <motion.div
+            changing key made AnimatePresence unmount/remount the table = flicker.
+            Data branch gets the same CSS fade-in as StitchingManagement. */}
+        <Box
           key="data"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+          sx={{
+            '@keyframes gridFadeIn': { from: { opacity: 0 }, to: { opacity: 1 } },
+            animation: 'gridFadeIn 0.25s ease-in',
+          }}
         >
         <TableContainer>
           <Table>
@@ -278,7 +277,7 @@ function WashCreationCatalog() {
             rowsPerPageOptions={[10, 25, 50]}
           />
         </TableContainer>
-        </motion.div>
+        </Box>
         </AnimatePresence>
       )}
       <WashCreationCatalogAdd

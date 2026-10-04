@@ -30,6 +30,9 @@ function CuttingBookManagement() {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
+  // Skeleton shows ONLY before the first response — search/page refetches keep
+  // the last rows on screen instead of blinking to the skeleton.
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('new'); // 'new' | 'attach'
@@ -49,14 +52,14 @@ function CuttingBookManagement() {
     setLoading(true);
     apiService.cuttingBook.getSheets({ search, page: page + 1, limit: rowsPerPage })
       .then(res => {
-        setTimeout(() => {
-          setSheets(res.sheets || []);
-          setTotal(res.total || 0);
-          setLoading(false);
-        }, process.env.REACT_APP_DATA_LOAD_TIMEOUT || 0);
+        setSheets(res.sheets || []);
+        setTotal(res.total || 0);
+        setLoading(false);
+        setInitialLoading(false);
       })
       .catch(err => {
         setLoading(false);
+        setInitialLoading(false); // never stay stuck on the skeleton after a failed load
         console.log(err);
         showSnackbar(err);
       });
@@ -165,6 +168,8 @@ function CuttingBookManagement() {
         <CuttingBookGridSx
           sheets={sheets}
           loading={loading}
+          initialLoading={initialLoading}
+          isMobile={isMobile}
           total={total}
           page={page}
           rowsPerPage={rowsPerPage}
@@ -202,13 +207,15 @@ function CuttingBookManagement() {
           </Button>
         </Stack>
       </Box>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={loading ? 'loading' : 'data'}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+        <Box
+          key={initialLoading ? 'cb-skeleton' : 'cb-data'}
+          sx={!initialLoading ? {
+            // CSS keyframe (not framer initial): from-state paints on first frame,
+            // data eases in with no flash. Skeleton (key cb-skeleton) has no
+            // animation, so it shows instantly.
+            '@keyframes gridFadeIn': { from: { opacity: 0 }, to: { opacity: 1 } },
+            animation: 'gridFadeIn 0.25s ease-in',
+          } : undefined}
         >
           <TableContainer>
             <Table size="small">
@@ -220,7 +227,7 @@ function CuttingBookManagement() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {loading ? (
+                {initialLoading ? (
                   <TableRowsLoader colsNum={14} rowsNum={10} />
                 ) : sheets.length > 0 ? (
                   sheets.map(sheet => (
@@ -272,10 +279,8 @@ function CuttingBookManagement() {
               rowsPerPageOptions={[10, 25, 50]}
             />
           </TableContainer>
-        </motion.div>
-      </AnimatePresence>
+        </Box>
       {sheetModal}
-      {deleteDialog}
     </>
   );
 }

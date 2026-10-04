@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, flexRender } from '@tanstack/react-table';
 import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Switch, useTheme } from '@mui/material';
 import { Style as StyleIcon, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon, SwapVert } from '@mui/icons-material';
+import { TableRowsLoader } from '../../components/Skeleton/SkeletonLoader';
 import apiService from '../../services/apiService';
 import ProductCatalogSx from './ProductCatalogSx';
 import ProductCatalogAdd from './ProductCatalogAdd';
@@ -21,6 +22,9 @@ function ProductCatalog() {
   const [reorderMode, setReorderMode] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  // Skeleton shows ONLY before first response. Gating on `loading` blinked to the
+  // skeleton on every keystroke (fetch effect depends on search term).
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const getFitStyles = () => {
     setLoading(true);
@@ -28,9 +32,11 @@ function ProductCatalog() {
       .then(res => {
         setProducts(res);
         setLoading(false);
+        setInitialLoading(false);
       })
       .catch(err => {
         setLoading(false);
+        setInitialLoading(false);
         console.log(err);
         showSnackbar(err);
       });
@@ -192,6 +198,7 @@ function ProductCatalog() {
           products={products}
           search={search}
           loading={loading}
+          initialLoading={initialLoading}
           handleToggleActive={handleToggleActive}
           showSnackbar={showSnackbar}
           handleEditProduct={handleEditProduct}
@@ -225,7 +232,9 @@ function ProductCatalog() {
               ))}
             </TableHead>
             <TableBody>
-              {table.getRowModel().rows.length > 0 ? (
+              {initialLoading ? (
+                <TableRowsLoader colsNum={7} rowsNum={10} />
+              ) : table.getRowModel().rows.length > 0 ? (
                 table.getRowModel().rows.map(row => (
                   <TableRow key={row.id}>
                     {row.getVisibleCells().map(cell => (

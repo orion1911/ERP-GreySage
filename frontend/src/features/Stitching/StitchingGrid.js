@@ -554,11 +554,15 @@ function StitchingGrid({
     ? { color: theme.palette.error.light, borderColor: theme.palette.error.light }
     : {};
 
-  const TotalsBar = () => (
+  // Called as a plain function, not rendered as a JSX component: a component declared inside render
+  // gets a new identity every render, so React unmounted and remounted the whole chip bar each time.
+  const renderTotalsBar = () => (
     <Box
       sx={{
         mb: 1.5,
         px: { xs: 0, sm: 0.5 },
+        // Keep the bar's space while loading instead of flashing zero totals.
+        visibility: processedRecords ? 'visible' : 'hidden',
         // sm+: the same wrapping flex row as before (desktop alignment already approved).
         // xs: a strict 3-column grid — 9 chips form a tidy 3×3 with all edges aligned,
         // instead of the ragged wrap the flex row produces at narrow widths.
@@ -587,7 +591,7 @@ function StitchingGrid({
 
   return isMobile ? (
     <Box>
-      <TotalsBar />
+      {renderTotalsBar()}
     <StitchingGridSx
       onAdd={onAdd}
       noZipperFilter={noZipperFilter}
@@ -629,16 +633,18 @@ function StitchingGrid({
     />
     </Box>
   ) : (
-    <AnimatePresence mode="wait">
-    <motion.div
-      key={!processedRecords ? 'loading' : 'data'}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
+    <Box>
+    {renderTotalsBar()}
+    <TableContainer
+      key={processedRecords ? 'grid' : 'loading'}
+      sx={processedRecords ? {
+        // CSS keyframe (not framer initial): the from-state paints on the first frame,
+        // so the data eases in with no flash-of-content. Skeleton (key 'loading') has no
+        // animation, so it shows instantly and never flickers.
+        '@keyframes gridFadeIn': { from: { opacity: 0 }, to: { opacity: 1 } },
+        animation: 'gridFadeIn 0.25s ease-in',
+      } : undefined}
     >
-    <TotalsBar />
-    <TableContainer>
       <Table>
         <TableHead>
           {table.getHeaderGroups().map(headerGroup => (
@@ -773,8 +779,7 @@ function StitchingGrid({
         rowsPerPageOptions={[10, 25, 50]}
       />
     </TableContainer>
-    </motion.div>
-    </AnimatePresence>
+    </Box>
   );
 }
 

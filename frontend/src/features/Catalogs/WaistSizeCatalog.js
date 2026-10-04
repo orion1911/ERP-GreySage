@@ -20,18 +20,21 @@ function WaistSizeCatalog() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sizeToToggle, setSizeToToggle] = useState(null);
   const [showInactive, setShowInactive] = useState(false);
+  // Skeleton shows ONLY before first response. Gating on `loading` blinked to the
+  // skeleton on every activation-toggle fetch (initial mount reads showInactive too).
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const getWaistSizes = () => {
     setLoading(true);
     apiService.waistSizes.getWaistSizes(showInactive)
       .then(res => {
-        setTimeout(() => {
-          setSizes(res);
-          setLoading(false);
-        }, process.env.REACT_APP_DATA_LOAD_TIMEOUT || 0);
+        setSizes(res);
+        setLoading(false);
+        setInitialLoading(false);
       })
       .catch(err => {
         setLoading(false);
+        setInitialLoading(false);
         console.log(err);
         showSnackbar(err);
       });
@@ -99,18 +102,22 @@ function WaistSizeCatalog() {
         <WaistSizeCatalogSx
           sizes={sizes}
           loading={loading}
+          initialLoading={initialLoading}
           handleToggleDefault={handleToggleDefault}
           handleToggleActive={handleToggleActive}
           onAdd={() => setOpenModal(true)}
         />
       ) : (
         <AnimatePresence mode="wait">
-        <motion.div
-          key={loading ? 'loading' : 'data'}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+        {/* Constant key: skeleton gated on initialLoading, so no remount on
+            showInactive refetches (loading flips) — changing key = flicker.
+            Data branch gets the same CSS fade-in as StitchingManagement. */}
+        <Box
+          key="data"
+          sx={{
+            '@keyframes gridFadeIn': { from: { opacity: 0 }, to: { opacity: 1 } },
+            animation: 'gridFadeIn 0.25s ease-in',
+          }}
         >
         <TableContainer>
           <Table>
@@ -123,7 +130,7 @@ function WaistSizeCatalog() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {loading || !sizes ? (
+              {initialLoading ? (
                 <TableRowsLoader colsNum={4} rowsNum={9} />
               ) : sizes.length > 0 ? (
                 sizes.map(ws => (
@@ -153,7 +160,7 @@ function WaistSizeCatalog() {
             </TableBody>
           </Table>
         </TableContainer>
-        </motion.div>
+        </Box>
         </AnimatePresence>
       )}
       <WaistSizeCatalogAdd

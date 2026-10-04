@@ -61,12 +61,16 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
     <>
       {/* <strong>Washing Records</strong><br /> */}
       <AnimatePresence mode="wait">
-      <motion.div
-        key={!processedRecords ? 'loading' : 'data'}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.15 }}
+      {/* Constant key: processedRecords flips undefined↔array on every parent
+          refetch — a changing key made AnimatePresence unmount/remount the
+          whole table = the skeleton blank skeleton flicker.
+          Data branch gets the same CSS fade-in as StitchingManagement. */}
+      <Box
+        key="data"
+        sx={{
+          '@keyframes gridFadeIn': { from: { opacity: 0 }, to: { opacity: 1 } },
+          animation: 'gridFadeIn 0.25s ease-in',
+        }}
       >
       <Box sx={{ p: 0, pl: 0 }}>
         <TableContainer>
@@ -166,7 +170,7 @@ function WashingGrid({ washingRecords, hasWashing, lotId, handleUpdateWashOut, o
           </Table>
         </TableContainer>
       </Box>
-      </motion.div>
+      </Box>
       </AnimatePresence>
     </>
   );

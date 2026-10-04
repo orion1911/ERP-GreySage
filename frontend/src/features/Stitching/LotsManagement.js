@@ -34,7 +34,7 @@ export default function LotsManagement() {
       ]);
       setWashingRecords(groupByLot(washingRes));
       setFinishingRecords(groupByLot(finishingRes));
-      setTimeout(() => setStitchingRecords(res), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
+      setStitchingRecords(res); // same render as washing/finishing (React 18 batches after await)
     } catch (err) {
       console.log(err);
       showSnackbar(err);

@@ -200,12 +200,12 @@ function StitchingGridSx({
         </Box>
       </Box>
       <AnimatePresence mode="wait">
-        <motion.div
-          key={!processedRecords ? 'loading' : 'data'}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+        <Box
+          key="data"
+          sx={{
+            '@keyframes gridFadeIn': { from: { opacity: 0 }, to: { opacity: 1 } },
+            animation: 'gridFadeIn 0.25s ease-in',
+          }}
         >
           {!processedRecords ? (
             <OrderCardsLoader type="stitching" />
@@ -412,7 +412,7 @@ function StitchingGridSx({
               rowsPerPageOptions={[10, 25, 50]}
             />
           )}
-        </motion.div>
+        </Box>
       </AnimatePresence>
     </Box>
   );

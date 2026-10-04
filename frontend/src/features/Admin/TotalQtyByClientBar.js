@@ -31,7 +31,7 @@ export default function TotalQtyByClientBar({ dateRange }) {
         const [response] = await Promise.all([
           apiService.admin.dashboard.getAllClientStats(params)
         ]);
-        setTimeout(() => setChartData(response.series), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
+        setChartData(response.series); // same render as totals/labels (React 18 batches after await)
 
         setTotalQuantity(response.totalQuantity);
         setHouseQuantity(response.houseQuantity || 0);

@@ -70,7 +70,7 @@ function StitchingManagement() {
         apiService.client.getClients(),
         apiService.fitStyles.getFitstyles()
       ]);
-      setTimeout(() => setStitchingRecords(stitchingRes), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
+      setStitchingRecords(stitchingRes); // same render as washing/finishing (React 18 batches after await)
       setWashingRecords(groupByLot(washingRes));
       setFinishingRecords(groupByLot(finishingRes));
       setStitchingVendors(stitchingVendorsRes);

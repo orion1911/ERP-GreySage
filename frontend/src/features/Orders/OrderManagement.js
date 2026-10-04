@@ -23,7 +23,7 @@ function OrderManagement() {
         apiService.client.getClients(),
         apiService.fitStyles.getFitstyles()
       ]);
-      setTimeout(() => setOrders(ordersRes), process.env.REACT_APP_DATA_LOAD_TIMEOUT);
+      setOrders(ordersRes); // same render as clients/fitStyles (React 18 batches after await)
       setClients(clientsRes);
       setFitStyles(fitStylesRes);
     } catch (err) {

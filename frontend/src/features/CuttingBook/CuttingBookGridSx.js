@@ -2,15 +2,16 @@ import React from 'react';
 import { Box, Card, CardContent, Stack, Button, IconButton, Typography, Grid, Tooltip, TablePagination } from '@mui/material';
 import { Edit as EditIcon, Delete as DeleteIcon, PlaylistAdd as PlaylistAddIcon, Launch as LaunchIcon } from '@mui/icons-material';
 import { OrderCardsLoader } from '../../components/Skeleton/SkeletonLoader';
-import { motion, AnimatePresence } from 'motion/react';
 import dayjs from 'dayjs';
 import { lotStatusChip } from './CuttingBookManagement';
 
 // Mobile-first card list for the Cutting Book. Per repo convention the Add buttons live
 // HERE on mobile (they sit in the page header on desktop).
 function CuttingBookGridSx({
-  sheets,
+  sheets = [],
   loading,
+  initialLoading,
+  isMobile,
   total,
   page,
   rowsPerPage,
@@ -22,110 +23,102 @@ function CuttingBookGridSx({
   onDelete,
   onGoToStitching
 }) {
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+
   return (
     <Box sx={{ pt: 1 }}>
+      {/* Mobile Action Buttons */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2, justifyContent: 'flex-end', alignItems: 'center' }}>
         <Stack direction="row" spacing={1}>
-          <Button size="small" variant="outlined" startIcon={<PlaylistAddIcon />} onClick={onAttach} disabled={loading}>Attach</Button>
-          <Button size="small" variant="contained" onClick={onNew} disabled={loading}>New Sheet</Button>
+          <Button size="small" variant="outlined" startIcon={<PlaylistAddIcon />} onClick={onAttach} disabled={loading}>
+            Attach
+          </Button>
+          <Button size="small" variant="contained" onClick={onNew} disabled={loading}>
+            New Sheet
+          </Button>
         </Stack>
       </Box>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={loading ? 'loading' : 'data'}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+
+      {/* Conditional Layout Loader / Card Grid */}
+      {initialLoading ? (
+        <OrderCardsLoader type="cuttingbook" />
+      ) : sheets.length > 0 ? (
+        <Box
+          sx={{
+            '@keyframes gridFadeIn': { from: { opacity: 0 }, to: { opacity: 1 } },
+            animation: 'gridFadeIn 0.25s ease-in',
+          }}
         >
-          {loading ? (
-            <OrderCardsLoader type="cuttingbook" />
-          ) : sheets.length > 0 ? (
-            sheets.map((sheet) => (
-              <Card key={sheet._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1 }}>
-                <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                  <Grid container spacing={1}>
-                    <Grid size={{ xs: 7 }} sx={{ textAlign: 'left' }}>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="subtitle1" fontWeight="bold">
-                          {sheet.lotId?.lotNumber || '—'}
-                        </Typography>
-                        {lotStatusChip(sheet.lotId?.status)}
-                      </Stack>
-                      <Typography variant="caption" color="text.secondary">
-                        {dayjs(sheet.date).format('DD-MMM-YYYY')}
+          {sheets.map((sheet) => (
+            <Card key={sheet._id} variant="outlined" sx={{ pt: 1, mb: 2, boxShadow: 1 }}>
+              <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                <Grid container spacing={1} alignItems="center">
+                  
+                  {/* Left Side: Sheet Information */}
+                  <Grid item xs={7} sx={{ textAlign: 'left' }}>
+                    <Stack direction="column" spacing={0.5}>
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        {sheet.sheetNumber || `Sheet #${sheet._id.slice(-4)}`}
                       </Typography>
-                    </Grid>
-                    <Grid size={{ xs: 5 }} sx={{ textAlign: 'right' }}>
-                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                        {sheet.lotId?.status > 1 && (
-                          <Tooltip title="Open in Stitching">
-                            <IconButton size="small" onClick={() => onGoToStitching(sheet)}>
-                              <LaunchIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        <IconButton size="small" color="primary" disabled={loading} onClick={() => onEdit(sheet)}>
+                      <Typography variant="body2" color="text.secondary">
+                        {sheet.date ? dayjs(sheet.date).format('DD MMM YYYY') : 'No Date'}
+                      </Typography>
+                      <Box sx={{ mt: 0.5 }}>
+                        {lotStatusChip ? lotStatusChip(sheet.status) : sheet.status}
+                      </Box>
+                    </Stack>
+                  </Grid>
+
+                  {/* Right Side: Action Row */}
+                  <Grid item xs={5} sx={{ textAlign: 'right' }}>
+                    <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      <Tooltip title="Go to Stitching">
+                        <IconButton size="small" color="primary" onClick={() => onGoToStitching(sheet)} disabled={loading}>
+                          <LaunchIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Edit">
+                        <IconButton size="small" color="info" onClick={() => onEdit(sheet)} disabled={loading}>
                           <EditIcon fontSize="small" />
                         </IconButton>
-                        <IconButton size="small" color="error" disabled={loading} onClick={() => onDelete(sheet)}>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton size="small" color="error" onClick={() => onDelete(sheet._id)} disabled={loading}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
-                      </Stack>
-                    </Grid>
-                    <Grid size={{ xs: 6 }} sx={{ textAlign: 'left' }}>
-                      <Typography variant="body2">
-                        <strong>Client</strong><br />
-                        {sheet.clientId?.name || 'N/A'}
-                      </Typography>
-                    </Grid>
-                    <Grid size={{ xs: 6 }} sx={{ textAlign: 'left' }}>
-                      <Typography variant="body2">
-                        <strong>Fabric</strong><br />
-                        {sheet.fabric || 'N/A'}
-                      </Typography>
-                    </Grid>
-                    <Grid size={{ xs: 6 }} sx={{ textAlign: 'left' }}>
-                      <Typography variant="body2">
-                        <strong>Vendor</strong><br />
-                        {sheet.stitchingVendorId?.name || 'N/A'}
-                      </Typography>
-                    </Grid>
-                    <Grid size={{ xs: 6 }} sx={{ textAlign: 'left' }}>
-                      <Typography variant="body2">
-                        <strong>Master</strong><br />
-                        {sheet.masterId?.name || 'N/A'}
-                      </Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12 }}>
-                      <Stack direction="row" spacing={2} useFlexGap flexWrap="wrap" sx={{ mt: 0.5 }}>
-                        <Typography variant="body2"><strong>{sheet.totalMeters}</strong> mtr</Typography>
-                        <Typography variant="body2"><strong>{sheet.totalPcs}</strong> pcs</Typography>
-                        <Typography variant="body2">AVG <strong>{sheet.avgConsumption}</strong></Typography>
-                        <Typography variant="body2">Panna <strong>{sheet.panna ?? '—'}</strong></Typography>
-                        <Typography variant="body2">Len <strong>{sheet.layerLength ?? '—'}</strong></Typography>
-                      </Stack>
-                    </Grid>
+                      </Tooltip>
+                    </Stack>
                   </Grid>
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            <Typography variant="body1" sx={{ textAlign: 'center' }}>No records found</Typography>
-          )}
-          {!loading && total > 0 && (
-            <TablePagination
-              component="div"
-              count={total}
-              page={page}
-              onPageChange={(_, newPage) => setPage(newPage)}
-              rowsPerPage={rowsPerPage}
-              onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
-              rowsPerPageOptions={[10, 25, 50]}
-            />
-          )}
-        </motion.div>
-      </AnimatePresence>
+
+                </Grid>
+              </CardContent>
+            </Card>
+          ))}
+
+          {/* Pagination Controls */}
+          <TablePagination
+            component="div"
+            count={total || 0}
+            page={page}
+            onPageChange={handleChangePage}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            rowsPerPageOptions={[5, 10, 25]}
+            labelRowsPerPage={isMobile ? "Rows:" : "Rows per page:"}
+          />
+        </Box>
+      ) : (
+        <Box sx={{ textAlign: 'center', py: 4 }}>
+          <Typography color="text.secondary">No cutting sheets found.</Typography>
+        </Box>
+      )}
     </Box>
   );
 }

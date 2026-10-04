@@ -273,13 +273,11 @@ function CostingManagement() {
     setLoading(true);
     apiService.costing.getBoard({ search: s, page: p + 1, limit: rpp, filter: f ? 'costed' : 'all' })
       .then(res => {
-        setTimeout(() => {
-          if (seq !== reqSeqRef.current) return; // a newer request superseded this one
-          setRows(res.rows || []);
-          setTotal(res.total || 0);
-          setLoading(false);
-          setInitialLoading(false); // never stay stuck on the skeleton
-        }, process.env.REACT_APP_DATA_LOAD_TIMEOUT || 0);
+        if (seq !== reqSeqRef.current) return; // a newer request superseded this one
+        setRows(res.rows || []);
+        setTotal(res.total || 0);
+        setLoading(false);
+        setInitialLoading(false); // never stay stuck on the skeleton
       })
       .catch(err => {
         if (seq !== reqSeqRef.current) return; // superseded — drop the stale error too
@@ -345,12 +343,13 @@ function CostingManagement() {
       </Box>
 
       {isMobile ? (
-        <AnimatePresence mode="wait">
-          <motion.div
-            key="data"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
+      <Box
+        key={initialLoading ? 'costing-sx-skeleton' : 'costing-sx-data'}
+        sx={!initialLoading ? {
+          '@keyframes gridFadeIn': { from: { opacity: 0 }, to: { opacity: 1 } },
+          animation: 'gridFadeIn 0.25s ease-in',
+        } : undefined}
+      >
             {initialLoading ? <OrderCardsLoader type="costing" /> : (
               rows.length > 0 ? rows.map(r => (
                 <Box key={r.lotId} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.5, mb: 1 }} onClick={() => openDetail(r.lotId)}>
@@ -381,15 +380,15 @@ function CostingManagement() {
               onRowsPerPageChange={(e) => { setPage(0); setRowsPerPage(Number(e.target.value)); }}
               rowsPerPageOptions={[10, 25, 50]}
             />
-          </motion.div>
-        </AnimatePresence>
+          </Box>
       ) : (
-        <AnimatePresence mode="wait">
-          <motion.div
-            key="data"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
+        <Box
+          key={initialLoading ? 'costing-skeleton' : 'costing-data'}
+          sx={!initialLoading ? {
+            '@keyframes gridFadeIn': { from: { opacity: 0 }, to: { opacity: 1 } },
+            animation: 'gridFadeIn 0.25s ease-in',
+          } : undefined}
+        >
             <TableContainer>
               <Table size="small">
                 <TableHead>
@@ -448,8 +447,7 @@ function CostingManagement() {
                 rowsPerPageOptions={[10, 25, 50]}
               />
             </TableContainer>
-          </motion.div>
-        </AnimatePresence>
+        </Box>
       )}
 
       <CostingDetailDialog

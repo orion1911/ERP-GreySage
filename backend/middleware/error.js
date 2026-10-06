@@ -1,4 +1,19 @@
 const errorHandler = (err, req, res, next) => {
+  // Expected business-rule failures (utils/httpError.js) — return the message itself so the
+  // user sees WHY, e.g. "Line 1: lot A/1/5 only has 12 pcs remaining (...)".
+  if (err && err.isHttpError) {
+    return res.status(err.status).json({ success: false, error: err.message });
+  }
+
+  // A transaction that kept hitting write conflicts until withTransaction gave up (another
+  // request was changing the same lot / counter at the same moment). Safe to retry.
+  if (err && typeof err.hasErrorLabel === 'function' && err.hasErrorLabel('TransientTransactionError')) {
+    return res.status(409).json({
+      success: false,
+      error: 'Another change to the same records was in progress. Please try again.',
+    });
+  }
+
   // MongoDB duplicate key error
   if (err.name === 'MongoServerError' && err.code === 11000) {
     const field = Object.keys(err.keyValue)[0];

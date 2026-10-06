@@ -10,19 +10,26 @@ const {
   Client,
   FitStyle,
   ManualDispatch,
-  ManualDispatchHistory
+  ManualDispatchHistory,
+  CompanySettings
 } = require('../mongodb_schema');
+const { withSession, sessionOpts } = require('../utils/transaction');
+
+const DEFAULT_INVOICE_PREFIX = 'INV';
+// India has no DST, so a fixed +05:30 offset is exact for financial-year boundaries.
+const IST_OFFSET_MS = 330 * 60 * 1000;
 
 /**
  * Derive the final dispatchable pcs for a lot from production records.
  * Fallback chain: Finishing → Washing → Stitching. Returns 0 if no production exists.
+ * `session` is optional — pass it when called inside a transaction.
  */
-const getFinalPcsForLot = async (lotId) => {
-  const finishingDocs = await Finishing.find({ lotId });
+const getFinalPcsForLot = async (lotId, session = null) => {
+  const finishingDocs = await withSession(Finishing.find({ lotId }), session);
   if (finishingDocs.length > 0) {
     return finishingDocs.reduce((sum, f) => sum + (f.quantity - (f.quantityShort || 0)), 0);
   }
-  const washingDocs = await Washing.find({ lotId });
+  const washingDocs = await withSession(Washing.find({ lotId }), session);
   if (washingDocs.length > 0) {
     let total = 0;
     for (const w of washingDocs) {
@@ -32,7 +39,7 @@ const getFinalPcsForLot = async (lotId) => {
     }
     return total;
   }
-  const stitchingDocs = await Stitching.find({ lotId });
+  const stitchingDocs = await withSession(Stitching.find({ lotId }), session);
   return stitchingDocs.reduce((sum, s) => sum + (s.quantity - (s.quantityShort || 0)), 0);
 };
 
@@ -96,8 +103,9 @@ const getFinalPcsForLots = async (lotIds = []) => {
  *   - single-lot line  → lines.pcs when lines.lotId == lot
  *   - merged line      → sum of lines.sources[].pcs where source.lotId == lot
  * isDamaged is line-level, so the good/damaged filter applies to the whole line either way.
+ * Inside a transaction (session given) it also sees that transaction's own uncommitted writes.
  */
-const sumLinePcsForLot = async (lotId, { excludeInvoiceId = null, lineType = 'all' } = {}) => {
+const sumLinePcsForLot = async (lotId, { excludeInvoiceId = null, lineType = 'all', session = null } = {}) => {
   const lotObjId = new mongoose.Types.ObjectId(lotId);
   const match = {
     status: { $ne: 'cancelled' },
@@ -110,7 +118,7 @@ const sumLinePcsForLot = async (lotId, { excludeInvoiceId = null, lineType = 'al
   if (lineType === 'good') lineMatch['lines.isDamaged'] = { $ne: true };
   else if (lineType === 'damaged') lineMatch['lines.isDamaged'] = true;
 
-  const result = await Invoice.aggregate([
+  const result = await withSession(Invoice.aggregate([
     { $match: match },
     { $unwind: '$lines' },
     ...(Object.keys(lineMatch).length ? [{ $match: lineMatch }] : []),
@@ -142,38 +150,55 @@ const sumLinePcsForLot = async (lotId, { excludeInvoiceId = null, lineType = 'al
       }
     },
     { $group: { _id: null, total: { $sum: '$pcsForLot' } } }
-  ]);
+  ]), session);
   return result.length > 0 ? result[0].total : 0;
 };
 
 // Good (client-dispatchable) pcs invoiced — what Lot.invoicedPcs caches.
-const sumGoodInvoicedForLot = (lotId, excludeInvoiceId = null) =>
-  sumLinePcsForLot(lotId, { excludeInvoiceId, lineType: 'good' });
+const sumGoodInvoicedForLot = (lotId, excludeInvoiceId = null, session = null) =>
+  sumLinePcsForLot(lotId, { excludeInvoiceId, lineType: 'good', session });
 
 // Damaged pcs sold to third parties — what Lot.damagedSoldPcs caches.
-const sumDamagedSoldForLot = (lotId, excludeInvoiceId = null) =>
-  sumLinePcsForLot(lotId, { excludeInvoiceId, lineType: 'damaged' });
+const sumDamagedSoldForLot = (lotId, excludeInvoiceId = null, session = null) =>
+  sumLinePcsForLot(lotId, { excludeInvoiceId, lineType: 'damaged', session });
 
 // Back-compat alias: the historical name meant good/client pcs.
 const sumInvoicedPcsForLot = sumGoodInvoicedForLot;
+
+/**
+ * The production-stage status a lot's records support, mirroring exactly what the stage
+ * controllers set: Stitching create → 2, Washing create → 3, Finishing create → 4,
+ * finish-out (Finishing.finishOutDate) → 5. Used only to restore a lot's status after its
+ * dispatch is fully reversed. A lot with no stitching record can't have had pcs to dispatch,
+ * so the 1 fallback is defensive.
+ */
+const deriveProductionStatus = async (lotId, session = null) => {
+  const fin = await withSession(Finishing.findOne({ lotId }).select('finishOutDate'), session).lean();
+  if (fin) return fin.finishOutDate ? 5 : 4;
+  if (await withSession(Washing.exists({ lotId }), session)) return 3;
+  if (await withSession(Stitching.exists({ lotId }), session)) return 2;
+  return 1;
+};
 
 /**
  * Recompute and persist BOTH Lot.invoicedPcs (good) and Lot.damagedSoldPcs (damaged),
  * AND keep the lot's dispatch status in sync (reversible):
  *   good dispatched & none remaining → 7 (Dispatched)
  *   good dispatched & some remaining → 6 (Partially Dispatched)
- *   nothing dispatched & was 6/7      → 5 (Finished/Ready — e.g. a cancel returned all pcs)
+ *   nothing dispatched & was 6/7      → the production stage its records support
+ *                                       (deriveProductionStatus) — NOT blindly 5: a lot
+ *                                       invoiced straight off stitching/washing never finished
  *   otherwise                         → status untouched (still in production / already 5)
  * Call after every invoice create/update/cancel/delete and after a damaged-pcs edit.
  */
-const recalcLotInvoiced = async (lotId) => {
+const recalcLotInvoiced = async (lotId, session = null) => {
   if (!lotId) return;
-  const [invoicedPcs, damagedSoldPcs, finalPcs, lot] = await Promise.all([
-    sumGoodInvoicedForLot(lotId),
-    sumDamagedSoldForLot(lotId),
-    getFinalPcsForLot(lotId),
-    Lot.findById(lotId)
-  ]);
+  // Sequential on purpose: operations sharing one transaction session must not run in
+  // parallel. Outside a transaction this costs a few ms more than a Promise.all.
+  const invoicedPcs = await sumGoodInvoicedForLot(lotId, null, session);
+  const damagedSoldPcs = await sumDamagedSoldForLot(lotId, null, session);
+  const finalPcs = await getFinalPcsForLot(lotId, session);
+  const lot = await withSession(Lot.findById(lotId), session);
   if (!lot) return { invoicedPcs, damagedSoldPcs };
 
   lot.invoicedPcs = invoicedPcs;
@@ -189,14 +214,14 @@ const recalcLotInvoiced = async (lotId) => {
   if (totalDispatched > 0) {
     nextStatus = goodRemaining <= 0 ? 7 : 6;
   } else if (lot.status === 6 || lot.status === 7) {
-    nextStatus = 5; // dispatch fully reversed → back to Finished/Ready
+    nextStatus = await deriveProductionStatus(lot._id, session); // dispatch fully reversed
   }
   if (nextStatus !== lot.status) {
     lot.status = nextStatus;
     lot.statusHistory.push({ status: nextStatus, changedAt: new Date() });
   }
 
-  await lot.save();
+  await lot.save(sessionOpts(session));
   return { invoicedPcs, damagedSoldPcs, status: lot.status };
 };
 
@@ -211,26 +236,27 @@ const recalcLotInvoiced = async (lotId) => {
  * MUST be called after every ManualDispatch create/update/delete — same denormalisation
  * contract as vendor/client balances.
  */
-const recalcLotManualDispatch = async (lotId) => {
+const recalcLotManualDispatch = async (lotId, session = null) => {
   if (!lotId) return;
-  const agg = await ManualDispatch.aggregate([
+  const agg = await withSession(ManualDispatch.aggregate([
     { $match: { lotId: new mongoose.Types.ObjectId(lotId) } },
     { $group: {
         _id: null,
         good: { $sum: { $ifNull: ['$goodPcs', 0] } },
         damaged: { $sum: { $ifNull: ['$damagedPcs', 0] } }
     } }
-  ]);
+  ]), session);
   const good = agg[0]?.good || 0;
   const damaged = agg[0]?.damaged || 0;
 
   await Lot.updateOne(
     { _id: lotId },
-    { $set: { manualDispatchedPcs: good, manualDamagedSoldPcs: damaged } }
+    { $set: { manualDispatchedPcs: good, manualDamagedSoldPcs: damaged } },
+    sessionOpts(session)
   );
 
   // Re-derives status and keeps invoicedPcs authoritative in the same pass.
-  return recalcLotInvoiced(lotId);
+  return recalcLotInvoiced(lotId, session);
 };
 
 /**
@@ -238,23 +264,23 @@ const recalcLotManualDispatch = async (lotId) => {
  * than the lot physically has. Returns what's still available, optionally ignoring one
  * existing entry (so editing that entry doesn't count itself as already-consumed).
  */
-const getManualDispatchCapacity = async (lotId, excludeEntryId = null) => {
-  const lot = await Lot.findById(lotId).lean();
+const getManualDispatchCapacity = async (lotId, excludeEntryId = null, session = null) => {
+  const lot = await withSession(Lot.findById(lotId), session).lean();
   if (!lot) return null;
 
-  const finalPcs = await getFinalPcsForLot(lotId);
+  const finalPcs = await getFinalPcsForLot(lotId, session);
   const damagedPcs = lot.damagedPcs || 0;
 
   const match = { lotId: new mongoose.Types.ObjectId(lotId) };
   if (excludeEntryId) match._id = { $ne: new mongoose.Types.ObjectId(excludeEntryId) };
-  const agg = await ManualDispatch.aggregate([
+  const agg = await withSession(ManualDispatch.aggregate([
     { $match: match },
     { $group: {
         _id: null,
         good: { $sum: { $ifNull: ['$goodPcs', 0] } },
         damaged: { $sum: { $ifNull: ['$damagedPcs', 0] } }
     } }
-  ]);
+  ]), session);
   const otherManualGood = agg[0]?.good || 0;
   const otherManualDamaged = agg[0]?.damaged || 0;
 
@@ -273,10 +299,11 @@ const getManualDispatchCapacity = async (lotId, excludeEntryId = null) => {
   };
 };
 
-const recordManualDispatchHistory = async (entryId, lotId, action, beforeData, afterData, userId) => {
-  await ManualDispatchHistory.create({
-    entryId, lotId, action, beforeData, afterData, changedBy: userId
-  });
+const recordManualDispatchHistory = async (entryId, lotId, action, beforeData, afterData, userId, session = null) => {
+  await ManualDispatchHistory.create(
+    [{ entryId, lotId, action, beforeData, afterData, changedBy: userId }],
+    sessionOpts(session)
+  );
 };
 
 const listManualDispatches = async (lotId) =>
@@ -289,9 +316,9 @@ const getRemainingPcsForLot = async (lotId, excludeInvoiceId = null) => {
   const [finalPcs, invoicedPcs, lot] = await Promise.all([
     getFinalPcsForLot(lotId),
     sumGoodInvoicedForLot(lotId, excludeInvoiceId),
-    Lot.findById(lotId).select('damagedPcs').lean()
+    Lot.findById(lotId).select('damagedPcs manualDispatchedPcs').lean()
   ]);
-  return Math.max(0, finalPcs - (lot?.damagedPcs || 0) - invoicedPcs);
+  return Math.max(0, finalPcs - (lot?.damagedPcs || 0) - invoicedPcs - (lot?.manualDispatchedPcs || 0));
 };
 
 /**
@@ -561,29 +588,67 @@ const getPendingDispatch = async ({ search, status, page = 0, limit = 25 } = {})
 };
 
 /**
- * Fiscal year code "YYYY-1,YYYY-2 short" e.g. for May 2026 → '2627'.
- * FY starts April 1.
+ * Fiscal-year code, e.g. any date in FY 2026-27 → '2627'. FY starts 1 April, evaluated in
+ * IST regardless of the server's timezone (Vercel runs UTC). Previously getMonth() ran in
+ * UTC, so an invoice raised 00:00–05:29 IST on 1 April got the PREVIOUS year's series.
  */
 const fyShortFor = (date) => {
-  const d = new Date(date);
-  const year = d.getFullYear();
-  const startYear = d.getMonth() >= 3 ? year : year - 1; // months are 0-indexed
+  const ist = new Date(new Date(date).getTime() + IST_OFFSET_MS);
+  const year = ist.getUTCFullYear();
+  const startYear = ist.getUTCMonth() >= 3 ? year : year - 1; // months are 0-indexed
   const endYear = startYear + 1;
   return `${String(startYear).slice(-2)}${String(endYear).slice(-2)}`;
 };
 
+/** '2627' → true; '2628', '26', 'abcd' → false. */
+const isValidFyShort = (fy) => {
+  const s = String(fy || '');
+  if (!/^\d{4}$/.test(s)) return false;
+  return (parseInt(s.slice(0, 2), 10) + 1) % 100 === parseInt(s.slice(2), 10);
+};
+
+/**
+ * Split an invoice number into { fy, seq } — prefix-agnostic, so it works for any prefix
+ * ever used. 'INV2627/42' → { fy: '2627', seq: 42 }. Trailing whitespace tolerated (same
+ * rule as scripts/rollbackInvoices.js). Returns null for anything else.
+ */
+const INVOICE_NUMBER_RE = /(\d{4})\/(\d+)\s*$/;
+const parseInvoiceNumber = (invoiceNumber) => {
+  const m = INVOICE_NUMBER_RE.exec(String(invoiceNumber || ''));
+  if (!m || !isValidFyShort(m[1])) return null;
+  return { fy: m[1], seq: parseInt(m[2], 10) };
+};
+
+/** The invoice-number prefix stored in CompanySettings (locked: the API never updates it). */
+const getInvoicePrefix = async (session = null) => {
+  const s = await withSession(CompanySettings.findOne().select('defaultInvoicePrefix'), session).lean();
+  return s?.defaultInvoicePrefix || DEFAULT_INVOICE_PREFIX;
+};
+
+/**
+ * Write-lock lots for the rest of the current transaction. Call FIRST inside
+ * runInTransaction, before reading any availability figure: a concurrent transaction that
+ * touches the same lot then gets a WriteConflict and is retried after this one commits, so
+ * its availability check sees our pcs. See Lot.dispatchLockSeq in mongodb_schema.js.
+ */
+const lockLotsForDispatch = async (lotIds, session) => {
+  const ids = [...new Set((lotIds || []).filter(Boolean).map(String))];
+  if (!ids.length) return;
+  await Lot.updateMany({ _id: { $in: ids } }, { $inc: { dispatchLockSeq: 1 } }, sessionOpts(session));
+};
+
 /**
  * Atomically generate the next invoiceNumber for the given date's FY.
- * Uses the Counter collection with _id = "invoice-{fyShort}".
- * Prefix is taken from CompanySettings.defaultInvoicePrefix when caller passes it.
+ * Counter `_id` = "invoice-{fyShort}" — ONE series per FY shared by every document type.
+ * Call inside a transaction so the increment rolls back if the invoice save fails.
  */
-const generateInvoiceNumber = async (date, prefix = 'INV') => {
+const generateInvoiceNumber = async (date, prefix = DEFAULT_INVOICE_PREFIX, session = null) => {
   const fy = fyShortFor(date);
   const counterId = `invoice-${fy}`;
   const counter = await Counter.findByIdAndUpdate(
     { _id: counterId },
     { $inc: { sequence: 1 } },
-    { new: true, upsert: true }
+    { new: true, upsert: true, ...sessionOpts(session) }
   );
   return `${prefix}${fy}/${counter.sequence}`;
 };
@@ -591,31 +656,37 @@ const generateInvoiceNumber = async (date, prefix = 'INV') => {
 /**
  * Generate internal invoiceId (mirror of LT-…) e.g. INV-20260516007.
  */
-const generateInvoiceInternalId = async () => {
+const generateInvoiceInternalId = async (session = null) => {
   const counter = await Counter.findByIdAndUpdate(
     { _id: 'invoiceInternalId' },
     { $inc: { sequence: 1 } },
-    { new: true, upsert: true }
+    { new: true, upsert: true, ...sessionOpts(session) }
   );
   const seq = counter.sequence.toString().padStart(3, '0');
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   return `INV-${dateStr}${seq}`;
 };
 
+// Money is computed in integer paise so float drift (0.1 + 0.2 style) can't reach a stored
+// amount. Rates and round-off are validated to ≤ 2 decimals before they get here, so
+// toPaise() is exact for them.
+const toPaise = (n) => Math.round((Number(n) || 0) * 100);
+
 /**
  * Recompute subTotal, total, totalQty from lines + roundOff. Mutates `invoice` in place.
  */
 const recomputeInvoiceTotals = (invoice) => {
-  let subTotal = 0;
+  let subTotalPaise = 0;
   let totalQty = 0;
   invoice.lines.forEach((line, idx) => {
     line.lineNo = idx + 1;
-    line.amount = (line.pcs || 0) * (line.rate || 0);
-    subTotal += line.amount;
+    const amountPaise = (line.pcs || 0) * toPaise(line.rate);
+    line.amount = amountPaise / 100;
+    subTotalPaise += amountPaise;
     totalQty += line.pcs || 0;
   });
-  invoice.subTotal = subTotal;
-  invoice.total = subTotal + (invoice.roundOff || 0);
+  invoice.subTotal = subTotalPaise / 100;
+  invoice.total = (subTotalPaise + toPaise(invoice.roundOff)) / 100;
   invoice.totalQty = totalQty;
   invoice.amountInWords = amountInWordsIndian(invoice.total);
   return invoice;
@@ -667,7 +738,7 @@ const amountInWordsIndian = (amount) => {
 /**
  * Record one entry in InvoiceHistory.
  */
-const recordInvoiceHistory = async (invoiceId, action, beforeData, afterData, userId) => {
+const recordInvoiceHistory = async (invoiceId, action, beforeData, afterData, userId, session = null) => {
   const entry = new InvoiceHistory({
     invoiceId,
     action,
@@ -675,7 +746,7 @@ const recordInvoiceHistory = async (invoiceId, action, beforeData, afterData, us
     afterData: afterData || null,
     changedBy: userId
   });
-  await entry.save();
+  await entry.save(sessionOpts(session));
   return entry;
 };
 
@@ -691,6 +762,7 @@ module.exports = {
   sumInvoicedPcsForLot,
   sumGoodInvoicedForLot,
   sumDamagedSoldForLot,
+  deriveProductionStatus,
   recalcLotInvoiced,
   recalcLotManualDispatch,
   getManualDispatchCapacity,
@@ -701,6 +773,11 @@ module.exports = {
   getLotsWithDamagedAvailable,
   getPendingDispatch,
   fyShortFor,
+  isValidFyShort,
+  parseInvoiceNumber,
+  getInvoicePrefix,
+  lockLotsForDispatch,
+  DEFAULT_INVOICE_PREFIX,
   generateInvoiceNumber,
   generateInvoiceInternalId,
   recomputeInvoiceTotals,

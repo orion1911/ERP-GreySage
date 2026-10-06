@@ -63,9 +63,14 @@ const createFinishing = async (req, res) => {
     // Record accessory stock-out (button / label / tag / polybag) for this lot
     await accessoryService.replaceFinishingConsumption(lot._id, accessoryConsumption, req.user?.userId, session);
 
-    lot.status = 4;
-    lot.statusHistory.push({ status: 4, changedAt: new Date() });
-    await lot.save({ session });
+    // Advance to In Finishing (4) only from an earlier stage. A lot already (partially)
+    // dispatched (6/7) — invoiced straight off washing — keeps its dispatch status;
+    // overwriting it would put a shipped lot back on the production boards.
+    if (lot.status < 4) {
+      lot.status = 4;
+      lot.statusHistory.push({ status: 4, changedAt: new Date() });
+      await lot.save({ session });
+    }
 
     // Auto-set the wash-out date to this finishing entry's selected date.
     washing.washOutDate = date || new Date();
@@ -151,9 +156,14 @@ const updateFinishingStatus = async (req, res) => {
     finishing.finishOutDate = finishOutDate;
     await finishing.save({ session });
 
-    lot.status = 5;
-    lot.statusHistory.push({ status: 5, changedAt: new Date() });
-    await lot.save({ session });
+    // Finish-out advances the lot to Finished/Ready (5) — but never downgrades a lot that
+    // has already been (partially) dispatched (6/7). The finishOutDate is still recorded,
+    // so if that dispatch is later reversed, invoiceService.deriveProductionStatus returns 5.
+    if (lot.status < 5) {
+      lot.status = 5;
+      lot.statusHistory.push({ status: 5, changedAt: new Date() });
+      await lot.save({ session });
+    }
 
     await session.commitTransaction();
     session.endSession();

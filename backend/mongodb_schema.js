@@ -341,6 +341,15 @@ const LotSchema = new mongoose.Schema({
   manualDispatchedPcs: { type: Number, default: 0, min: 0 },
   manualDamagedSoldPcs: { type: Number, default: 0, min: 0 },
 
+  // Write-lock counter (the value itself is meaningless). Every invoice / manual-dispatch /
+  // damaged-pcs transaction increments this on each lot it touches BEFORE validating
+  // availability (invoiceService.lockLotsForDispatch), so two concurrent requests on the same
+  // lot collide with a WriteConflict and are serialised — withTransaction retries the loser
+  // after the winner commits, and the retry sees the winner's pcs.
+  // ⚠ Must stay in the schema: strict mode silently strips unknown paths from updates, which
+  // would turn the lock into a no-op without any error.
+  dispatchLockSeq: { type: Number, default: 0 },
+
   createdAt: { type: Date, default: Date.now }
 });
 LotSchema.index({ lotNumber: 1, invoiceNumber: 1 });
@@ -624,6 +633,11 @@ const InvoiceSchema = new mongoose.Schema({
   totalQty: { type: Number, default: 0, min: 0 },
   amountInWords: { type: String, trim: true },
   status: { type: String, enum: ['draft', 'issued', 'cancelled'], default: 'issued' },
+  // Set by salesInvoiceController.cancelInvoice. A cancelled invoice keeps its number, so the
+  // series has no gap.
+  cancelReason: { type: String, trim: true },
+  cancelledAt: { type: Date },
+  cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   pdfMeta: { filename: String, generatedAt: Date },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

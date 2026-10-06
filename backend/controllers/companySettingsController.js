@@ -14,9 +14,17 @@ const getSettings = async (req, res) => {
 
 /**
  * PUT /api/company-settings — upsert the singleton. Admin-only.
+ *
+ * defaultInvoicePrefix is LOCKED: it is part of every issued invoice number, and the per-FY
+ * counter doesn't know about prefixes, so changing it mid-series would fork the numbering.
+ * It is silently ignored here (older frontends still send it on every save); change it only
+ * by a deliberate DB edit. _id is stripped because it is immutable.
  */
 const updateSettings = async (req, res) => {
-  const payload = { ...req.body, updatedAt: new Date() };
+  const payload = { ...(req.body || {}) };
+  delete payload.defaultInvoicePrefix;
+  delete payload._id;
+  payload.updatedAt = new Date();
   const settings = await CompanySettings.findOneAndUpdate(
     {},
     payload,

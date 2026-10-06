@@ -90,6 +90,14 @@ function InvoiceManagement() {
   const [appliedSearch, setAppliedSearch] = useState(''); // committed search term (on Enter / Search click)
   const [sortBy, setSortBy] = useState('date');           // default: date (calendar day, time ignored) desc, then invoice # desc
   const [sortDir, setSortDir] = useState('desc');
+  const [cancelReason, setCancelReason] = useState('');
+
+  // Edit / cancel are admin-only on the server (routes/salesInvoices.js). Mirror it here so
+  // non-admins see disabled actions instead of a 403 after clicking. Same localStorage
+  // source App.js's ProtectedRoute reads.
+  const isAdmin = (() => {
+    try { return JSON.parse(localStorage.getItem('user'))?.role === 'admin'; } catch (e) { return false; }
+  })();
 
   const load = () => {
     setLoading(true);
@@ -143,13 +151,15 @@ function InvoiceManagement() {
   const handleEdit = (inv) => { setEditInvoice(inv); setModalOpen(true); };
   const handleSaved = () => { load(); };
 
+  const closeCancel = () => { setCancelTarget(null); setCancelReason(''); };
+
   const handleCancel = () => {
-    if (!cancelTarget) return;
+    if (!cancelTarget || cancelReason.trim().length < 3) return;
     setLoading(true);
-    apiService.salesInvoices.cancelInvoice(cancelTarget._id)
+    apiService.salesInvoices.cancelInvoice(cancelTarget._id, cancelReason.trim())
       .then(() => {
         showSnackbar('Invoice cancelled', 'success');
-        setCancelTarget(null);
+        closeCancel();
         load();
       })
       .catch((e) => { showSnackbar(e); setLoading(false); });
@@ -338,14 +348,14 @@ function InvoiceManagement() {
                   </MenuItem>
                   <MenuItem
                     dense divider
-                    disabled={inv.status === 'cancelled'}
+                    disabled={!isAdmin || inv.status === 'cancelled'}
                     onClick={() => { handleEdit(inv); handleMenuClose(); }}
                   >
                     <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
                   </MenuItem>
                   <MenuItem
                     dense
-                    disabled={inv.status === 'cancelled'}
+                    disabled={!isAdmin || inv.status === 'cancelled'}
                     onClick={() => { setCancelTarget(inv); handleMenuClose(); }}
                   >
                     <CancelIcon fontSize="small" sx={{ mr: 1 }} /> Cancel
@@ -451,11 +461,11 @@ function InvoiceManagement() {
                   <Tooltip title="Download PDF"><span>
                     <IconButton size="small" onClick={() => handlePdf(inv)}><PdfIcon fontSize="small" /></IconButton>
                   </span></Tooltip>
-                  <Tooltip title="Edit"><span>
-                    <IconButton size="small" disabled={inv.status === 'cancelled'} onClick={() => handleEdit(inv)}><EditIcon fontSize="small" /></IconButton>
+                  <Tooltip title={isAdmin ? 'Edit' : 'Edit (admins only)'}><span>
+                    <IconButton size="small" disabled={!isAdmin || inv.status === 'cancelled'} onClick={() => handleEdit(inv)}><EditIcon fontSize="small" /></IconButton>
                   </span></Tooltip>
-                  <Tooltip title="Cancel"><span>
-                    <IconButton size="small" disabled={inv.status === 'cancelled'} onClick={() => setCancelTarget(inv)}><CancelIcon fontSize="small" /></IconButton>
+                  <Tooltip title={isAdmin ? 'Cancel' : 'Cancel (admins only)'}><span>
+                    <IconButton size="small" disabled={!isAdmin || inv.status === 'cancelled'} onClick={() => setCancelTarget(inv)}><CancelIcon fontSize="small" /></IconButton>
                   </span></Tooltip>
                 </Box>
               </TableCell>
@@ -498,14 +508,28 @@ function InvoiceManagement() {
         editInvoice={editInvoice}
       />
 
-      <Dialog open={!!cancelTarget} onClose={() => setCancelTarget(null)} fullWidth maxWidth="xs">
+      <Dialog open={!!cancelTarget} onClose={closeCancel} fullWidth maxWidth="xs">
         <DialogTitle>Cancel invoice {cancelTarget?.invoiceNumber}?</DialogTitle>
         <DialogContent>
-          The invoice will be marked cancelled and its lots' pcs returned to the available pool. This cannot be undone (you'd need to create a new invoice).
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            The invoice will be marked cancelled and its lots' pcs returned to the available pool.
+            The number stays used, so the series has no gap. This cannot be undone (you'd need to
+            create a new invoice).
+          </Typography>
+          <TextField
+            label="Reason for cancellation"
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            fullWidth multiline minRows={2} variant="standard" autoFocus
+            helperText="Required — saved with the invoice"
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCancelTarget(null)}>Keep</Button>
-          <Button color="error" variant="contained" onClick={handleCancel}>Cancel Invoice</Button>
+          <Button onClick={closeCancel}>Keep</Button>
+          <Button color="error" variant="contained" onClick={handleCancel}
+            disabled={loading || cancelReason.trim().length < 3}>
+            Cancel Invoice
+          </Button>
         </DialogActions>
       </Dialog>
 

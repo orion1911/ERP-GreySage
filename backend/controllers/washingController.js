@@ -196,9 +196,13 @@ const createWashing = async (req, res) => {
     });
     await washing.save({ session });
 
-    lot.status = 3;
-    lot.statusHistory.push({ status: 3, changedAt: new Date() });
-    await lot.save({ session });
+    // Advance to In Washing (3) only from an earlier stage. A lot already (partially)
+    // dispatched (6/7) — invoiced straight off stitching — keeps its dispatch status.
+    if (lot.status < 3) {
+      lot.status = 3;
+      lot.statusHistory.push({ status: 3, changedAt: new Date() });
+      await lot.save({ session });
+    }
 
     // Auto-set the stitch-out date to this washing entry's selected date.
     stitching.stitchOutDate = date || new Date();

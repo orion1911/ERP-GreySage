@@ -796,9 +796,10 @@ const apiService = {
         return response.data;
       } catch (error) { throw error; }
     },
-    cancelInvoice: async (id) => {
+    // Admin-only. `reason` is required by the API (stored on the invoice + audit log).
+    cancelInvoice: async (id, reason) => {
       try {
-        const response = await axiosInstance.post(`api/sales-invoices/${id}/cancel`);
+        const response = await axiosInstance.post(`api/sales-invoices/${id}/cancel`, { reason });
         return response.data;
       } catch (error) { throw error; }
     },

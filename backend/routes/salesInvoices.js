@@ -20,7 +20,7 @@ const {
   getInvoiceCounter,
   setInvoiceCounter
 } = require('../controllers/salesInvoiceController');
-const { authenticateToken, restrictTo } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 router.get('/lots-available', authenticateToken, getLotsAvailable);
 router.get('/lots-damaged-available', authenticateToken, getLotsDamagedAvailable);
@@ -37,13 +37,15 @@ router.post('/manual-dispatch', authenticateToken, createManualDispatch);
 router.put('/manual-dispatch/:id', authenticateToken, updateManualDispatch);
 router.delete('/manual-dispatch/:id', authenticateToken, deleteManualDispatch);
 router.get('/counter', authenticateToken, getInvoiceCounter);
-router.put('/counter', authenticateToken, restrictTo('admin'), setInvoiceCounter);
+router.put('/counter', requireAdmin, setInvoiceCounter);
 router.get('/', authenticateToken, listInvoices);
 router.post('/', authenticateToken, createInvoice);
 router.get('/:id', authenticateToken, getInvoiceById);
-router.patch('/:id', authenticateToken, updateInvoice);
-router.post('/:id/cancel', authenticateToken, cancelInvoice);
-router.delete('/:id', authenticateToken, deleteInvoice);
+// An issued invoice is a document the customer already holds: changing, cancelling or
+// deleting it is an admin action.
+router.patch('/:id', requireAdmin, updateInvoice);
+router.post('/:id/cancel', requireAdmin, cancelInvoice);
+router.delete('/:id', requireAdmin, deleteInvoice);
 router.get('/:id/history', authenticateToken, getInvoiceChangeHistory);
 
 module.exports = router;

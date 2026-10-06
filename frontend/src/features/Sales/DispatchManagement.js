@@ -348,7 +348,7 @@ function DispatchManagement() {
             fullWidth variant="standard"
             inputProps={{ min: 0, style: { textAlign: 'right' } }}
             helperText={damagedTarget
-              ? `Final ${damagedTarget.finalPcs} · dispatched ${damagedTarget.invoicedPcs} · already sold ${damagedTarget.damagedSoldPcs}`
+              ? `Final ${damagedTarget.finalPcs} · dispatched ${damagedTarget.dispatchedPcs ?? damagedTarget.invoicedPcs} · already sold ${(damagedTarget.damagedSoldPcs || 0) + (damagedTarget.manualDamagedSoldPcs || 0)}`
               : ''}
           />
         </DialogContent>

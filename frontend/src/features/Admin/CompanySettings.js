@@ -84,7 +84,12 @@ function CompanySettings() {
       .catch((e) => showSnackbar(e));
   };
 
-  useEffect(() => { loadCounter(counterFy); /* eslint-disable-next-line */ }, [counterFy]);
+  // Only query once a full 4-digit FY is typed — the API rejects partial values ("26"),
+  // which would otherwise flash an error on every keystroke.
+  useEffect(() => {
+    if (/^\d{4}$/.test(counterFy)) loadCounter(counterFy);
+    /* eslint-disable-next-line */
+  }, [counterFy]);
 
   const handleSetCounter = () => {
     const seq = parseInt(counterDraft, 10);
@@ -137,6 +142,7 @@ function CompanySettings() {
       ...data,
       addressLines: (data.addressLines || []).map((l) => l.value).filter((s) => s && s.trim())
     };
+    delete payload.defaultInvoicePrefix; // locked server-side; never sent
     apiService.companySettings.updateSettings(payload)
       .then(() => showSnackbar('Settings saved', 'success'))
       .catch((e) => showSnackbar(e))
@@ -246,7 +252,11 @@ function CompanySettings() {
             </Grid>
             <Grid size={{ xs: 6, md: 2 }}>
               <Controller name="defaultInvoicePrefix" control={control}
-                render={({ field }) => <TextField {...field} label="Invoice # Prefix" fullWidth variant="standard" helperText="e.g. INV" />} />
+                render={({ field }) => (
+                  <TextField {...field} label="Invoice # Prefix" fullWidth variant="standard"
+                    InputProps={{ readOnly: true }}
+                    helperText="Locked — part of every issued number" />
+                )} />
             </Grid>
             <Grid size={{ xs: 6, md: 2 }}>
               <Controller name="defaultDocumentType" control={control}
@@ -308,7 +318,7 @@ function CompanySettings() {
                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                   <Typography variant="body2" color="text.secondary">Next invoice will be:</Typography>
                   <Chip
-                    label={`INV${counterFy}/${(parseInt(counterDraft, 10) || 0) + 1}`}
+                    label={`${counterInfo.prefix || 'INV'}${counterFy}/${(parseInt(counterDraft, 10) || 0) + 1}`}
                     color="primary"
                     variant="outlined"
                   />

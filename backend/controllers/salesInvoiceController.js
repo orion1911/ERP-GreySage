@@ -4,7 +4,9 @@ const {
   Client,
   Lot,
   CompanySettings,
-  ManualDispatch
+  ManualDispatch,
+  ClientPaymentEntry,
+  Counter
 } = require('../mongodb_schema');
 const {
   getLotsAvailableForDispatch,
@@ -22,13 +24,21 @@ const {
   generateInvoiceInternalId,
   recomputeInvoiceTotals,
   recordInvoiceHistory,
-  getInvoiceHistory
+  getInvoiceHistory,
+  fyShortFor,
+  isValidFyShort,
+  parseInvoiceNumber,
+  getInvoicePrefix,
+  lockLotsForDispatch,
+  DEFAULT_INVOICE_PREFIX
 } = require('../services/invoiceService');
 const { updateClientBalance } = require('../services/clientBalanceService');
 const { bumpVersion } = require('../services/cache');
 const { invalidateDashboard } = require('../services/dashboardCache');
 const CLEDGER = 'cledger'; // must match clientBalanceController's client-ledger cache namespace
 const { logAction } = require('../utils/logger');
+const { HttpError } = require('../utils/httpError');
+const { runInTransaction, withSession, sessionOpts } = require('../utils/transaction');
 
 const toPlainAddress = (addr) => (addr?.toObject ? addr.toObject() : (addr || {}));
 
@@ -69,24 +79,91 @@ const collectLotIds = (lines = []) => {
   return [...ids];
 };
 
+// ─── Request parsing helpers ─────────────────────────────────────────────────
+// All throw HttpError(400) so middleware/error.js returns the message to the user.
+
+const DOCUMENT_TYPES = ['BILL_OF_SUPPLY', 'TAX_INVOICE'];
+// Round-off only nudges the total to a whole rupee, so it must stay strictly inside ±1.
+const MAX_ABS_ROUND_OFF = 1;
+const MIN_CANCEL_REASON_LENGTH = 3;
+
+const hasAtMost2Decimals = (n) => Math.abs(Math.round(n * 100) - n * 100) < 1e-6;
+
+const parseInvoiceDate = (value) => {
+  const d = new Date(value);
+  if (value === undefined || value === null || value === '' || Number.isNaN(d.getTime())) {
+    throw new HttpError(400, 'Date is invalid');
+  }
+  return d;
+};
+
+const parseRoundOff = (value) => {
+  if (value === undefined || value === null || value === '') return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n)) throw new HttpError(400, 'Round off must be a number');
+  if (Math.abs(n) >= MAX_ABS_ROUND_OFF) {
+    throw new HttpError(400, `Round off must be between -0.99 and 0.99 (got ${n})`);
+  }
+  if (!hasAtMost2Decimals(n)) throw new HttpError(400, 'Round off can have at most 2 decimal places');
+  return n;
+};
+
+const parseDocumentType = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  if (!DOCUMENT_TYPES.includes(value)) throw new HttpError(400, `Unknown document type: ${value}`);
+  return value;
+};
+
+// Only the two fields the schema stores; anything else in the request is ignored.
+const parsePlaceOfSupply = (value) => {
+  if (!value || typeof value !== 'object') return null;
+  return {
+    stateCode: value.stateCode ? String(value.stateCode).trim() : '',
+    stateName: value.stateName ? String(value.stateName).trim() : ''
+  };
+};
+
+/**
+ * Lot ids referenced by a RAW request payload, before validation — used to lock lots before
+ * any availability is read. Mirrors the fields buildAndValidateLines consumes; malformed
+ * entries are skipped here and rejected by the validator itself.
+ */
+const rawLotIds = (lines) => {
+  if (!Array.isArray(lines)) return [];
+  const ids = new Set();
+  for (const l of lines) {
+    if (!l || typeof l !== 'object' || l.isSample) continue;
+    if (l.lotId) ids.add(String(l.lotId));
+    if (Array.isArray(l.sources)) {
+      for (const s of l.sources) if (s && s.lotId) ids.add(String(s.lotId));
+    }
+  }
+  return [...ids];
+};
+
 /**
  * Validate the incoming line payload — return the line subdoc shape after enrichment.
  * Each line draws from either the lot's GOOD pool (finalPcs − damagedPcs) or, when
  * `isDamaged` is set, the DAMAGED pool (damagedPcs). Verifies pcs ≤ remaining for the
- * relevant pool (excluding the invoice we're editing).
+ * relevant pool, net of other invoices (excluding the one being edited) AND of pcs recorded
+ * as manually dispatched — the lot picker already hides those, but the picker is only a UI
+ * filter; this is the authoritative check.
+ *
+ * Call inside runInTransaction AFTER lockLotsForDispatch(), passing the session, so the
+ * figures read here can't change before the invoice is saved.
  *
  * `invoiceClientId` is the party being BILLED. It is deliberately NOT required to match
  * the lot's owner — full or partial qty of a lot produced for one client is routinely
  * sold to another. What the mismatch does trigger is:
  *   • lotClientIdSnapshot frozen onto the line/source, so the sale stays reconcilable
  *     against production attribution forever, and
- *   • a mandatory remark on GOOD cross-client lines, so a mis-picked lot can't be billed
- *     to the wrong client silently. Damaged and house-label lines are exempt: both are
- *     cross-client by design, not by exception.
+ *   • a mandatory internal note on GOOD cross-client lines, so a mis-picked lot can't be
+ *     billed to the wrong client silently. Damaged and house-label lines are exempt: both
+ *     are cross-client by design, not by exception.
  */
-const buildAndValidateLines = async (rawLines, excludeInvoiceId = null, invoiceClientId = null) => {
+const buildAndValidateLines = async (rawLines, excludeInvoiceId = null, invoiceClientId = null, session = null) => {
   if (!Array.isArray(rawLines) || rawLines.length === 0) {
-    throw new Error('Invoice must have at least one line item');
+    throw new HttpError(400, 'Invoice must have at least one line item');
   }
   const lines = [];
   // Track per-lot pcs added in this single invoice, separately per pool (good vs damaged).
@@ -99,44 +176,48 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null, invoiceC
     if (!cid) return false;
     const key = String(cid);
     if (!internalByClient.has(key)) {
-      const c = await Client.findById(cid).select('isInternal').lean();
+      const c = await withSession(Client.findById(cid).select('isInternal'), session).lean();
       internalByClient.set(key, !!c?.isInternal);
     }
     return internalByClient.get(key);
   };
 
-  // Reserve `pcs` from one lot's good/damaged pool, validating against what remains (excluding
-  // this invoice) plus what earlier lines/sources in THIS invoice already consumed. Returns the
-  // lot's frozen snapshot fields. Shared by single-lot lines AND each source of a merged line,
-  // so a lot referenced from several lines/sources is still validated against one shared pool.
+  // Reserve `pcs` from one lot's good/damaged pool, validating against what remains plus
+  // what earlier lines/sources in THIS invoice already consumed. Returns the lot's frozen
+  // snapshot fields. Shared by single-lot lines AND each source of a merged line, so a lot
+  // referenced from several lines/sources is still validated against one shared pool.
   const consumeFromLot = async (lotId, pcs, isDamaged, label) => {
-    const lot = await Lot.findById(lotId).lean();
-    if (!lot) throw new Error(`${label}: lot not found`);
+    const lot = await withSession(Lot.findById(lotId), session).lean();
+    if (!lot) throw new HttpError(400, `${label}: lot not found`);
     const damagedPcs = lot.damagedPcs || 0;
 
     if (isDamaged) {
       // Combined-damaged third-party sale — draws from the lot's damaged pool.
-      const otherSold = await sumDamagedSoldForLot(lot._id, excludeInvoiceId);
+      const otherSold = await sumDamagedSoldForLot(lot._id, excludeInvoiceId, session);
+      const manualSold = lot.manualDamagedSoldPcs || 0; // disposed of outside invoicing
       const already = damagedInThisInvoice.get(String(lot._id)) || 0;
-      const remaining = damagedPcs - otherSold - already;
+      const remaining = damagedPcs - otherSold - manualSold - already;
       if (pcs > remaining) {
-        throw new Error(
-          `${label}: lot ${lot.lotNumber} only has ${remaining} DAMAGED pcs available ` +
+        throw new HttpError(400,
+          `${label}: lot ${lot.lotNumber} only has ${Math.max(0, remaining)} DAMAGED pcs available ` +
           `(damaged ${damagedPcs}, already sold elsewhere ${otherSold}` +
+          (manualSold > 0 ? `, recorded sold manually ${manualSold}` : '') +
           (already > 0 ? `, in this invoice ${already}` : '') + ')'
         );
       }
       damagedInThisInvoice.set(String(lot._id), already + pcs);
     } else {
-      // Good dispatch to the assigned client — draws from finalPcs − damagedPcs.
-      const finalPcs = await getFinalPcsForLot(lot._id);
-      const otherInvoicedPcs = await sumGoodInvoicedForLot(lot._id, excludeInvoiceId);
+      // Good dispatch — draws from finalPcs − damagedPcs.
+      const finalPcs = await getFinalPcsForLot(lot._id, session);
+      const otherInvoicedPcs = await sumGoodInvoicedForLot(lot._id, excludeInvoiceId, session);
+      const manualDispatched = lot.manualDispatchedPcs || 0; // left the building without an invoice
       const already = goodInThisInvoice.get(String(lot._id)) || 0;
-      const remaining = finalPcs - damagedPcs - otherInvoicedPcs - already;
+      const remaining = finalPcs - damagedPcs - otherInvoicedPcs - manualDispatched - already;
       if (pcs > remaining) {
-        throw new Error(
-          `${label}: lot ${lot.lotNumber} only has ${remaining} pcs remaining ` +
+        throw new HttpError(400,
+          `${label}: lot ${lot.lotNumber} only has ${Math.max(0, remaining)} pcs remaining ` +
           `(final ${finalPcs}, damaged set-aside ${damagedPcs}, already invoiced elsewhere ${otherInvoicedPcs}` +
+          (manualDispatched > 0 ? `, marked dispatched manually ${manualDispatched}` : '') +
           (already > 0 ? `, in this invoice ${already}` : '') + ')'
         );
       }
@@ -162,14 +243,18 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null, invoiceC
   for (let i = 0; i < rawLines.length; i++) {
     const raw = rawLines[i];
     const label = `Line ${i + 1}`;
+    if (!raw || typeof raw !== 'object') throw new HttpError(400, `${label}: invalid line`);
     const isSample = !!raw.isSample;
     // Sample lines are non-chargeable regardless of any rate the client sends.
     const rate = isSample ? 0 : Number(raw.rate);
     if (!Number.isFinite(rate) || rate < 0) {
-      throw new Error(`${label}: rate must be a non-negative number`);
+      throw new HttpError(400, `${label}: rate must be a non-negative number`);
+    }
+    if (!hasAtMost2Decimals(rate)) {
+      throw new HttpError(400, `${label}: rate can have at most 2 decimal places (got ${raw.rate})`);
     }
     if (!raw.description || !String(raw.description).trim()) {
-      throw new Error(`${label}: description is required`);
+      throw new HttpError(400, `${label}: description is required`);
     }
 
     const isMerged = !isSample && Array.isArray(raw.sources) && raw.sources.length > 0;
@@ -194,7 +279,7 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null, invoiceC
       // the printed "samples included" count is meaningful; totalQty picks it up downstream.
       const pcs = parseInt(raw.pcs, 10);
       if (!Number.isInteger(pcs) || pcs < 1) {
-        throw new Error(`${label}: sample pcs must be a positive integer`);
+        throw new HttpError(400, `${label}: sample pcs must be a positive integer`);
       }
       line.pcs = pcs;
       line.isSample = true;
@@ -211,11 +296,12 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null, invoiceC
       for (let j = 0; j < raw.sources.length; j++) {
         const s = raw.sources[j];
         const sLabel = `${label} source ${j + 1}`;
+        if (!s || typeof s !== 'object') throw new HttpError(400, `${sLabel}: invalid source`);
         const sPcs = parseInt(s.pcs, 10);
         if (!Number.isInteger(sPcs) || sPcs < 1) {
-          throw new Error(`${sLabel}: pcs must be a positive integer`);
+          throw new HttpError(400, `${sLabel}: pcs must be a positive integer`);
         }
-        if (!s.lotId) throw new Error(`${sLabel}: lotId is required`);
+        if (!s.lotId) throw new HttpError(400, `${sLabel}: lotId is required`);
         const { needsJustification, ...snap } = await consumeFromLot(s.lotId, sPcs, isDamaged, sLabel);
         if (needsJustification) crossClientLine = true;
         builtSources.push({ ...snap, pcs: sPcs });
@@ -225,7 +311,7 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null, invoiceC
       // If the client also sent an explicit pcs, it must agree with the sources.
       const rawPcs = raw.pcs;
       if (rawPcs !== undefined && rawPcs !== null && rawPcs !== '' && parseInt(rawPcs, 10) !== total) {
-        throw new Error(`${label}: pcs (${parseInt(rawPcs, 10)}) must equal the sum of its source pcs (${total})`);
+        throw new HttpError(400, `${label}: pcs (${parseInt(rawPcs, 10)}) must equal the sum of its source pcs (${total})`);
       }
       line.pcs = total;
       line.sources = builtSources;
@@ -233,7 +319,7 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null, invoiceC
     } else {
       const pcs = parseInt(raw.pcs, 10);
       if (!Number.isInteger(pcs) || pcs < 1) {
-        throw new Error(`${label}: pcs must be a positive integer`);
+        throw new HttpError(400, `${label}: pcs must be a positive integer`);
       }
       line.pcs = pcs;
       if (raw.lotId) {
@@ -252,13 +338,13 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null, invoiceC
     // lot looks identical to a deliberate reassignment. internalNote — NOT remark — because
     // remark prints on the PDF and the buyer must not see the other client's name.
     if (crossClientLine && !line.internalNote) {
-      throw new Error(
+      throw new HttpError(400,
         `${label}: this lot was produced for another client. Add an internal note explaining ` +
         `the reassignment (not printed on the invoice).`
       );
     }
 
-    line.amount = line.pcs * rate;
+    line.amount = (line.pcs * Math.round(rate * 100)) / 100; // recomputeInvoiceTotals re-derives it
     lines.push(line);
   }
   return lines;
@@ -303,7 +389,8 @@ const getPendingDispatchList = async (req, res) => {
 /**
  * PATCH /api/sales-invoices/lots/:lotId/damaged  — body { damagedPcs }
  * Set/adjust the damaged-pieces pool held back from the assigned client.
- * Guards against stranding already-dispatched good pcs or unsetting already-sold damaged pcs.
+ * Guards against stranding already-dispatched good pcs (invoiced OR marked manually) or
+ * unsetting already-sold damaged pcs (invoiced OR recorded manually).
  */
 const updateLotDamaged = async (req, res) => {
   const { lotId } = req.params;
@@ -312,64 +399,77 @@ const updateLotDamaged = async (req, res) => {
     return res.status(400).json({ error: 'damagedPcs must be a non-negative integer' });
   }
 
-  const lot = await Lot.findById(lotId);
-  if (!lot) return res.status(404).json({ error: 'Lot not found' });
+  const r = await runInTransaction(async (session) => {
+    await lockLotsForDispatch([lotId], session);
+    const lot = await withSession(Lot.findById(lotId), session);
+    if (!lot) throw new HttpError(404, 'Lot not found');
 
-  const finalPcs = await getFinalPcsForLot(lot._id);
-  const invoicedPcs = lot.invoicedPcs || 0;     // good pcs already dispatched
-  const damagedSoldPcs = lot.damagedSoldPcs || 0; // damaged pcs already sold
+    const finalPcs = await getFinalPcsForLot(lot._id, session);
+    const invoicedPcs = lot.invoicedPcs || 0;
+    const manualDispatchedPcs = lot.manualDispatchedPcs || 0;
+    const goodDispatched = invoicedPcs + manualDispatchedPcs;
+    const damagedSoldPcs = lot.damagedSoldPcs || 0;
+    const manualDamagedSoldPcs = lot.manualDamagedSoldPcs || 0;
+    const damagedGone = damagedSoldPcs + manualDamagedSoldPcs;
 
-  // Can't set aside more than what's left after good dispatch.
-  if (damagedPcs > finalPcs - invoicedPcs) {
-    return res.status(400).json({
-      error: `Cannot set ${damagedPcs} damaged — only ${finalPcs - invoicedPcs} pcs remain undispatched ` +
-        `(final ${finalPcs}, good dispatched ${invoicedPcs}).`
-    });
-  }
-  // Can't drop the pool below what's already been sold to third parties.
-  if (damagedPcs < damagedSoldPcs) {
-    return res.status(400).json({
-      error: `Cannot set ${damagedPcs} damaged — ${damagedSoldPcs} damaged pcs have already been sold.`
-    });
-  }
+    // Can't set aside more than what's left after good dispatch.
+    if (damagedPcs > finalPcs - goodDispatched) {
+      throw new HttpError(400,
+        `Cannot set ${damagedPcs} damaged — only ${Math.max(0, finalPcs - goodDispatched)} pcs remain undispatched ` +
+        `(final ${finalPcs}, good invoiced ${invoicedPcs}` +
+        (manualDispatchedPcs > 0 ? `, marked dispatched manually ${manualDispatchedPcs}` : '') + ').'
+      );
+    }
+    // Can't drop the pool below what's already been sold to third parties.
+    if (damagedPcs < damagedGone) {
+      throw new HttpError(400,
+        `Cannot set ${damagedPcs} damaged — ${damagedGone} damaged pcs have already been sold` +
+        (manualDamagedSoldPcs > 0 ? ` (${manualDamagedSoldPcs} of them recorded manually)` : '') + '.'
+      );
+    }
 
-  lot.damagedPcs = damagedPcs;
-  await lot.save();
-  await recalcLotInvoiced(lot._id); // keep caches consistent
+    lot.damagedPcs = damagedPcs;
+    await lot.save(sessionOpts(session));
+    await recalcLotInvoiced(lot._id, session); // keep caches consistent
 
-  await logAction(req.user.userId, 'update_lot_damaged', 'Lot', lot._id,
-    `Set damaged pcs to ${damagedPcs} for lot ${lot.lotNumber}`);
+    return {
+      _id: lot._id,
+      lotNumber: lot.lotNumber,
+      finalPcs,
+      damagedPcs,
+      damagedSoldPcs,
+      manualDamagedSoldPcs,
+      invoicedPcs,
+      manualDispatchedPcs,
+      goodRemaining: Math.max(0, finalPcs - damagedPcs - goodDispatched),
+      damagedRemaining: Math.max(0, damagedPcs - damagedGone)
+    };
+  });
 
+  await logAction(req.user.userId, 'update_lot_damaged', 'Lot', r._id,
+    `Set damaged pcs to ${damagedPcs} for lot ${r.lotNumber}`);
   await invalidateDashboard(); // damagedPcs feeds the awaiting-dispatch subtraction
 
-  res.json({
-    _id: lot._id,
-    lotNumber: lot.lotNumber,
-    finalPcs,
-    damagedPcs: lot.damagedPcs,
-    damagedSoldPcs,
-    invoicedPcs,
-    goodRemaining: Math.max(0, finalPcs - lot.damagedPcs - invoicedPcs),
-    damagedRemaining: Math.max(0, lot.damagedPcs - damagedSoldPcs)
-  });
+  res.json(r);
 };
 
 /**
  * POST /api/sales-invoices
+ *
+ * Everything that reads availability or writes money/pcs happens in ONE transaction:
+ *   lock lots → validate lines → allocate number → save → recalc lots → client balance → history.
+ * If any step fails the counter increment rolls back too, so a failed save no longer burns
+ * an invoice number. Cache bumps and the audit log run after commit (both fail-open).
  */
 const createInvoice = async (req, res) => {
-  const {
-    date,
-    clientId,
-    billingFirmId,
-    placeOfSupply,
-    lines,
-    roundOff = 0,
-    documentType
-  } = req.body;
+  const { date, clientId, billingFirmId, placeOfSupply, lines, roundOff, documentType } = req.body;
 
   if (!date) return res.status(400).json({ error: 'Date is required' });
   if (!clientId) return res.status(400).json({ error: 'Client is required' });
+  const invoiceDate = parseInvoiceDate(date);
+  const roundOffValue = parseRoundOff(roundOff);
+  const requestedDocType = parseDocumentType(documentType);
+  const requestedPos = parsePlaceOfSupply(placeOfSupply);
 
   const client = await Client.findById(clientId);
   if (!client) return res.status(404).json({ error: 'Client not found' });
@@ -386,17 +486,8 @@ const createInvoice = async (req, res) => {
   const firm = billingFirmId ? client.billingFirms.id(billingFirmId) : null;
   if (billingFirmId && !firm) return res.status(400).json({ error: 'Billing firm not found on client' });
 
-  const builtLines = await buildAndValidateLines(lines, null, clientId);
-
-  const settings = await CompanySettings.findOne();
-  const prefix = settings?.defaultInvoicePrefix || 'INV';
-  const docType = documentType || settings?.defaultDocumentType || 'BILL_OF_SUPPLY';
-
-  const invoiceNumber = await generateInvoiceNumber(date, prefix);
-  const invoiceId = await generateInvoiceInternalId();
-
   // Derive Place of Supply from the chosen firm's shipping address (fall back to billing),
-  // then to the client's. Client request may still override with an explicit placeOfSupply.
+  // then to the client's. An explicit placeOfSupply in the request still overrides it.
   const ship = (firm ? firm.shippingAddress : client.shippingAddress);
   const bill = (firm ? firm.billingAddress : client.billingAddress);
   const posSrc = (ship?.state || ship?.stateCode) ? ship : bill;
@@ -405,139 +496,235 @@ const createInvoice = async (req, res) => {
     stateCode: posSrc?.stateCode || ''
   };
 
-  const invoice = new Invoice({
-    invoiceId,
-    invoiceNumber,
-    documentType: docType,
-    date: new Date(date),
-    clientId,
-    billingFirmId: firm?._id || null,
-    ...snapshotClient(client, firm),
-    placeOfSupply: placeOfSupply || derivedPos,
-    lines: builtLines,
-    roundOff: Number(roundOff) || 0,
-    status: 'issued',
-    createdBy: req.user.userId
-  });
-  recomputeInvoiceTotals(invoice);
-  await invoice.save();
+  const invoice = await runInTransaction(async (session) => {
+    // 1. Lock every referenced lot BEFORE reading availability (see lockLotsForDispatch).
+    await lockLotsForDispatch(rawLotIds(lines), session);
 
-  // Update per-lot invoicedPcs cache and the client balance
-  const affectedLotIds = collectLotIds(builtLines);
-  await Promise.all(affectedLotIds.map((id) => recalcLotInvoiced(id)));
-  await updateClientBalance(clientId);
+    // 2. Validate against the locked pools.
+    const builtLines = await buildAndValidateLines(lines, null, clientId, session);
+
+    const settings = await withSession(CompanySettings.findOne(), session);
+    const prefix = settings?.defaultInvoicePrefix || DEFAULT_INVOICE_PREFIX;
+    const docType = requestedDocType || settings?.defaultDocumentType || 'BILL_OF_SUPPLY';
+
+    const doc = new Invoice({
+      documentType: docType,
+      date: invoiceDate,
+      clientId,
+      billingFirmId: firm?._id || null,
+      ...snapshotClient(client, firm),
+      placeOfSupply: requestedPos || derivedPos,
+      lines: builtLines,
+      roundOff: roundOffValue,
+      status: 'issued',
+      createdBy: req.user.userId
+    });
+    recomputeInvoiceTotals(doc);
+    if (doc.total < 0) throw new HttpError(400, 'Invoice total cannot be negative — check the round off');
+
+    // 3. Number allocated last, inside the transaction — rolls back with any failure.
+    doc.invoiceNumber = await generateInvoiceNumber(invoiceDate, prefix, session);
+    doc.invoiceId = await generateInvoiceInternalId(session);
+    await doc.save(sessionOpts(session));
+
+    // 4. Derived caches + history, same transaction.
+    for (const lotId of collectLotIds(builtLines)) {
+      await recalcLotInvoiced(lotId, session);
+    }
+    await updateClientBalance(clientId, session);
+    await recordInvoiceHistory(doc._id, 'create', null, doc.toObject(), req.user.userId, session);
+    return doc;
+  });
+
   await bumpVersion(CLEDGER); // invalidate cached client ledgers (invoice changes totalInvoiced)
   await invalidateDashboard(); // invoicedPcs recalc moves Dispatched / Pending Dispatch KPIs
-
-  await recordInvoiceHistory(invoice._id, 'create', null, invoice.toObject(), req.user.userId);
-  await logAction(req.user.userId, 'create_invoice', 'Invoice', invoice._id, `Created invoice ${invoiceNumber} for ${client.name}`);
+  await logAction(req.user.userId, 'create_invoice', 'Invoice', invoice._id,
+    `Created invoice ${invoice.invoiceNumber} for ${client.name}`);
 
   res.status(201).json(invoice);
 };
 
 /**
- * PATCH /api/sales-invoices/:id  — update an issued invoice
+ * PATCH /api/sales-invoices/:id — update an issued invoice. ADMIN ONLY (route layer).
+ * The date may change only within the invoice number's financial year.
  */
 const updateInvoice = async (req, res) => {
   const { id } = req.params;
-  const existing = await Invoice.findById(id);
-  if (!existing) return res.status(404).json({ error: 'Invoice not found' });
-  if (existing.status === 'cancelled') {
-    return res.status(400).json({ error: 'Cancelled invoices cannot be edited' });
-  }
+  const { date, placeOfSupply, lines, roundOff, documentType } = req.body;
 
-  const before = existing.toObject();
-  const prevLotIds = new Set(collectLotIds(existing.lines));
+  // Parse up front so a malformed field fails before any transaction work.
+  const newDate = (date !== undefined && date !== null && date !== '') ? parseInvoiceDate(date) : null;
+  const newRoundOff = roundOff !== undefined ? parseRoundOff(roundOff) : undefined;
+  const newDocType = parseDocumentType(documentType);
+  const newPos = parsePlaceOfSupply(placeOfSupply);
 
-  const {
-    date,
-    placeOfSupply,
-    lines,
-    roundOff,
-    documentType
-  } = req.body;
+  const invoice = await runInTransaction(async (session) => {
+    const existing = await withSession(Invoice.findById(id), session);
+    if (!existing) throw new HttpError(404, 'Invoice not found');
+    if (existing.status === 'cancelled') throw new HttpError(400, 'Cancelled invoices cannot be edited');
 
-  if (Array.isArray(lines)) {
-    // existing.clientId, not the request — the bill-to party is frozen at issue and an edit
-    // must be judged cross-client against the same client the invoice was raised for.
-    existing.lines = await buildAndValidateLines(lines, existing._id, existing.clientId);
-  }
-  if (date) existing.date = new Date(date);
-  if (placeOfSupply) existing.placeOfSupply = placeOfSupply;
-  if (roundOff !== undefined) existing.roundOff = Number(roundOff) || 0;
-  if (documentType) existing.documentType = documentType;
+    const before = existing.toObject();
+    const prevLotIds = collectLotIds(existing.lines);
+    // Lock lots on the invoice now AND lots the edit adds.
+    await lockLotsForDispatch([...prevLotIds, ...rawLotIds(lines)], session);
 
-  // Refresh client snapshot if the underlying client was updated since issue?
-  // Spec: snapshots are FROZEN. Do not refresh.
+    if (Array.isArray(lines)) {
+      // existing.clientId, not the request — the bill-to party is frozen at issue and an edit
+      // must be judged cross-client against the same client the invoice was raised for.
+      existing.lines = await buildAndValidateLines(lines, existing._id, existing.clientId, session);
+    }
 
-  existing.updatedBy = req.user.userId;
-  existing.updatedAt = new Date();
-  recomputeInvoiceTotals(existing);
-  await existing.save();
+    if (newDate && newDate.getTime() !== new Date(existing.date).getTime()) {
+      // The number encodes the FY. Re-dating across FYs would leave e.g. INV2627/12 dated in
+      // FY 2025-26 — refuse; the fix is cancel + re-issue in the right year.
+      const numbered = parseInvoiceNumber(existing.invoiceNumber);
+      const invoiceFy = numbered ? numbered.fy : fyShortFor(existing.date);
+      const newFy = fyShortFor(newDate);
+      if (newFy !== invoiceFy) {
+        throw new HttpError(400,
+          `${existing.invoiceNumber} belongs to FY ${invoiceFy}; the new date falls in FY ${newFy}. ` +
+          `Cancel this invoice and raise a new one in the correct year instead.`
+        );
+      }
+      existing.date = newDate;
+    }
+    if (newPos) existing.placeOfSupply = newPos;
+    if (newRoundOff !== undefined) existing.roundOff = newRoundOff;
+    if (newDocType) existing.documentType = newDocType;
 
-  // Recalc all lots that were ever on this invoice (added, removed, or kept)
-  const nextLotIds = new Set(collectLotIds(existing.lines));
-  const allAffected = new Set([...prevLotIds, ...nextLotIds]);
-  await Promise.all([...allAffected].map((lid) => recalcLotInvoiced(lid)));
-  await updateClientBalance(existing.clientId);
+    // Client snapshot is FROZEN at issue — never refreshed on edit.
+
+    existing.updatedBy = req.user.userId;
+    existing.updatedAt = new Date();
+    recomputeInvoiceTotals(existing);
+    if (existing.total < 0) throw new HttpError(400, 'Invoice total cannot be negative — check the round off');
+    await existing.save(sessionOpts(session));
+
+    // Recalc every lot that was ever on this invoice (added, removed, or kept).
+    const allAffected = new Set([...prevLotIds, ...collectLotIds(existing.lines)]);
+    for (const lotId of allAffected) {
+      await recalcLotInvoiced(lotId, session);
+    }
+    await updateClientBalance(existing.clientId, session);
+    await recordInvoiceHistory(existing._id, 'update', before, existing.toObject(), req.user.userId, session);
+    return existing;
+  });
+
   await bumpVersion(CLEDGER); // invalidate cached client ledgers (invoice changes totalInvoiced)
   await invalidateDashboard(); // invoicedPcs recalc moves Dispatched / Pending Dispatch KPIs
-
-  await recordInvoiceHistory(existing._id, 'update', before, existing.toObject(), req.user.userId);
-  await logAction(req.user.userId, 'update_invoice', 'Invoice', existing._id, `Updated invoice ${existing.invoiceNumber}`);
-
-  res.json(existing);
-};
-
-/**
- * POST /api/sales-invoices/:id/cancel — soft-cancel; lots return to remaining pool.
- */
-const cancelInvoice = async (req, res) => {
-  const { id } = req.params;
-  const invoice = await Invoice.findById(id);
-  if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
-  if (invoice.status === 'cancelled') {
-    return res.status(400).json({ error: 'Already cancelled' });
-  }
-
-  const before = invoice.toObject();
-  invoice.status = 'cancelled';
-  invoice.updatedBy = req.user.userId;
-  invoice.updatedAt = new Date();
-  await invoice.save();
-
-  const affectedLotIds = collectLotIds(invoice.lines);
-  await Promise.all(affectedLotIds.map((lid) => recalcLotInvoiced(lid)));
-  await updateClientBalance(invoice.clientId);
-  await bumpVersion(CLEDGER); // invalidate cached client ledgers (invoice changes totalInvoiced)
-  await invalidateDashboard(); // invoicedPcs recalc moves Dispatched / Pending Dispatch KPIs
-
-  await recordInvoiceHistory(invoice._id, 'cancel', before, invoice.toObject(), req.user.userId);
-  await logAction(req.user.userId, 'cancel_invoice', 'Invoice', invoice._id, `Cancelled invoice ${invoice.invoiceNumber}`);
+  await logAction(req.user.userId, 'update_invoice', 'Invoice', invoice._id,
+    `Updated invoice ${invoice.invoiceNumber}`);
 
   res.json(invoice);
 };
 
 /**
- * DELETE /api/sales-invoices/:id — hard delete (admin-only typically; same effect on balances).
+ * POST /api/sales-invoices/:id/cancel — body { reason }. ADMIN ONLY (route layer).
+ * Soft-cancel: lots return to the remaining pool; the invoice keeps its number so the
+ * series has no gap.
+ */
+const cancelInvoice = async (req, res) => {
+  const { id } = req.params;
+  const reason = String(req.body?.reason ?? '').trim();
+  if (reason.length < MIN_CANCEL_REASON_LENGTH) {
+    return res.status(400).json({ error: 'A cancellation reason is required' });
+  }
+
+  const invoice = await runInTransaction(async (session) => {
+    const doc = await withSession(Invoice.findById(id), session);
+    if (!doc) throw new HttpError(404, 'Invoice not found');
+    if (doc.status === 'cancelled') throw new HttpError(400, 'Already cancelled');
+
+    const before = doc.toObject();
+    const lotIds = collectLotIds(doc.lines);
+    await lockLotsForDispatch(lotIds, session);
+
+    doc.status = 'cancelled';
+    doc.cancelReason = reason;
+    doc.cancelledAt = new Date();
+    doc.cancelledBy = req.user.userId;
+    doc.updatedBy = req.user.userId;
+    doc.updatedAt = new Date();
+    await doc.save(sessionOpts(session));
+
+    for (const lotId of lotIds) {
+      await recalcLotInvoiced(lotId, session);
+    }
+    await updateClientBalance(doc.clientId, session);
+    await recordInvoiceHistory(doc._id, 'cancel', before, doc.toObject(), req.user.userId, session);
+    return doc;
+  });
+
+  await bumpVersion(CLEDGER); // invalidate cached client ledgers (invoice changes totalInvoiced)
+  await invalidateDashboard(); // invoicedPcs recalc moves Dispatched / Pending Dispatch KPIs
+  await logAction(req.user.userId, 'cancel_invoice', 'Invoice', invoice._id,
+    `Cancelled invoice ${invoice.invoiceNumber}: ${reason}`);
+
+  res.json(invoice);
+};
+
+/**
+ * DELETE /api/sales-invoices/:id — hard delete. ADMIN ONLY (route layer).
+ *
+ * Allowed ONLY for the most recently allocated number of its FY (counter.sequence equals the
+ * invoice's sequence); the counter is rolled back in the same transaction so that number is
+ * reissued — the series never gets a gap. Any other invoice must be cancelled instead.
+ * Same rule scripts/rollbackInvoices.js applies by hand.
  */
 const deleteInvoice = async (req, res) => {
   const { id } = req.params;
-  const invoice = await Invoice.findById(id);
-  if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
-  const before = invoice.toObject();
-  const clientId = invoice.clientId;
-  const affectedLotIds = collectLotIds(invoice.lines);
+  const deleted = await runInTransaction(async (session) => {
+    const doc = await withSession(Invoice.findById(id), session);
+    if (!doc) throw new HttpError(404, 'Invoice not found');
 
-  await Invoice.findByIdAndDelete(id);
-  await Promise.all(affectedLotIds.map((lid) => recalcLotInvoiced(lid)));
-  await updateClientBalance(clientId);
+    const numbered = parseInvoiceNumber(doc.invoiceNumber);
+    if (!numbered) {
+      throw new HttpError(409,
+        `${doc.invoiceNumber} doesn't follow the {prefix}{FY}/{n} format, so its place in the ` +
+        `series can't be verified. Cancel it instead.`);
+    }
+    const counterId = `invoice-${numbered.fy}`;
+    const counter = await withSession(Counter.findById(counterId), session).lean();
+    if (!counter || counter.sequence !== numbered.seq) {
+      throw new HttpError(409,
+        `Only the most recently issued number can be deleted — FY ${numbered.fy} is at ` +
+        `/${counter?.sequence ?? 0}, so deleting ${doc.invoiceNumber} would leave a gap. ` +
+        `Cancel it instead; a cancelled invoice keeps its number.`);
+    }
+
+    const paymentCount = await withSession(ClientPaymentEntry.countDocuments({ invoiceId: doc._id }), session);
+    if (paymentCount > 0) {
+      throw new HttpError(409,
+        `${doc.invoiceNumber} has ${paymentCount} payment/adjustment ` +
+        `entr${paymentCount === 1 ? 'y' : 'ies'} recorded against it. Remove those first, or cancel the invoice instead.`);
+    }
+
+    const before = doc.toObject();
+    const lotIds = collectLotIds(doc.lines);
+    await lockLotsForDispatch(lotIds, session);
+
+    await Invoice.deleteOne({ _id: doc._id }, sessionOpts(session));
+    // Roll the series back so the freed number is reissued. Conditional on the value just
+    // checked; a concurrent allocation would conflict on this doc and be retried anyway.
+    await Counter.updateOne(
+      { _id: counterId, sequence: numbered.seq },
+      { $set: { sequence: numbered.seq - 1 } },
+      sessionOpts(session)
+    );
+
+    for (const lotId of lotIds) {
+      await recalcLotInvoiced(lotId, session);
+    }
+    await updateClientBalance(doc.clientId, session);
+    await recordInvoiceHistory(doc._id, 'delete', before, null, req.user.userId, session);
+    return { id: doc._id, invoiceNumber: doc.invoiceNumber };
+  });
+
   await bumpVersion(CLEDGER); // invalidate cached client ledgers (invoice changes totalInvoiced)
   await invalidateDashboard(); // invoicedPcs recalc moves Dispatched / Pending Dispatch KPIs
-
-  await recordInvoiceHistory(id, 'delete', before, null, req.user.userId);
-  await logAction(req.user.userId, 'delete_invoice', 'Invoice', id, `Deleted invoice ${invoice.invoiceNumber}`);
+  await logAction(req.user.userId, 'delete_invoice', 'Invoice', deleted.id,
+    `Deleted invoice ${deleted.invoiceNumber} (counter rolled back)`);
 
   res.json({ message: 'Invoice deleted' });
 };
@@ -752,67 +939,72 @@ const getCrossClientSales = async (req, res) => {
 
 /**
  * GET /api/sales-invoices/counter?fyShort=2627
- * Returns the FY's counter state. `sequence` is the last issued number;
- * the next invoice generated for this FY will be `sequence + 1`.
- * If `fyShort` is omitted, derives it from today's date.
+ * `sequence` is the last issued number; the next invoice for this FY will be sequence + 1.
+ * If `fyShort` is omitted, derives it from today's date (IST).
  */
 const getInvoiceCounter = async (req, res) => {
-  const { Counter } = require('../mongodb_schema');
-  const { fyShortFor } = require('../services/invoiceService');
-  const fy = req.query.fyShort || fyShortFor(new Date());
-  const counter = await Counter.findById(`invoice-${fy}`);
+  const fy = req.query.fyShort ? String(req.query.fyShort).trim() : fyShortFor(new Date());
+  if (!isValidFyShort(fy)) {
+    return res.status(400).json({ error: 'fyShort must look like 2627 (FY 2026-27)' });
+  }
+  const counter = await Counter.findById(`invoice-${fy}`).lean();
+  const prefix = await getInvoicePrefix();
+  const sequence = counter?.sequence || 0;
   res.json({
     fyShort: fy,
-    sequence: counter?.sequence || 0,
-    nextInvoiceNumber: `INV${fy}/${(counter?.sequence || 0) + 1}`
+    prefix,
+    sequence,
+    nextInvoiceNumber: `${prefix}${fy}/${sequence + 1}`
   });
 };
 
 /**
- * PUT /api/sales-invoices/counter
- * Body: { fyShort: '2627', sequence: 28 } → next generated invoice will be INV2627/29.
- * Admin-only (enforced at the route layer).
+ * PUT /api/sales-invoices/counter — body { fyShort: '2627', sequence: 28 } → next is /29.
+ * Admin-only (route layer).
  *
- * SAFETY: refuses to set the counter LOWER than the highest existing sequence number for
- * that FY in the Invoice collection — otherwise the next generated invoice number would
- * collide with an existing one and the unique-index save would fail.
+ * SAFETY: refuses to go LOWER than the highest sequence already used in that FY, under any
+ * prefix (the counter is per FY, not per prefix). Runs in a transaction so it serialises
+ * against invoice creation, which writes the same counter document.
  */
 const setInvoiceCounter = async (req, res) => {
-  const { Counter } = require('../mongodb_schema');
-  const { fyShortFor } = require('../services/invoiceService');
   const { fyShort, sequence } = req.body;
-  const fy = fyShort || fyShortFor(new Date());
+  const fy = fyShort ? String(fyShort).trim() : fyShortFor(new Date());
+  if (!isValidFyShort(fy)) {
+    return res.status(400).json({ error: 'fyShort must look like 2627 (FY 2026-27)' });
+  }
   const newSeq = parseInt(sequence, 10);
   if (!Number.isInteger(newSeq) || newSeq < 0) {
     return res.status(400).json({ error: 'sequence must be a non-negative integer' });
   }
 
-  // Find the highest /N for this FY among existing invoices to prevent collisions
-  const re = new RegExp(`^INV${fy}/(\\d+)$`);
-  const existing = await Invoice.find({ invoiceNumber: re }).select('invoiceNumber').lean();
-  let highest = 0;
-  for (const inv of existing) {
-    const m = inv.invoiceNumber.match(re);
-    if (m) {
-      const n = parseInt(m[1], 10);
-      if (n > highest) highest = n;
+  const counter = await runInTransaction(async (session) => {
+    // fy is validated as 4 digits, so it is safe to embed in the pattern.
+    const existing = await withSession(
+      Invoice.find({ invoiceNumber: new RegExp(`${fy}/\\d+\\s*$`) }).select('invoiceNumber'),
+      session
+    ).lean();
+    let highest = 0;
+    for (const inv of existing) {
+      const p = parseInvoiceNumber(inv.invoiceNumber);
+      if (p && p.fy === fy && p.seq > highest) highest = p.seq;
     }
-  }
-  if (newSeq < highest) {
-    return res.status(400).json({
-      error: `Cannot set counter to ${newSeq} — invoice INV${fy}/${highest} already exists. Minimum allowed is ${highest}.`
-    });
-  }
+    if (newSeq < highest) {
+      throw new HttpError(400,
+        `Cannot set counter to ${newSeq} — /${highest} already exists in FY ${fy}. Minimum allowed is ${highest}.`);
+    }
+    return Counter.findByIdAndUpdate(
+      { _id: `invoice-${fy}` },
+      { sequence: newSeq },
+      { new: true, upsert: true, ...sessionOpts(session) }
+    );
+  });
 
-  const counter = await Counter.findByIdAndUpdate(
-    { _id: `invoice-${fy}` },
-    { sequence: newSeq },
-    { new: true, upsert: true }
-  );
+  const prefix = await getInvoicePrefix();
   res.json({
     fyShort: fy,
+    prefix,
     sequence: counter.sequence,
-    nextInvoiceNumber: `INV${fy}/${counter.sequence + 1}`
+    nextInvoiceNumber: `${prefix}${fy}/${counter.sequence + 1}`
   });
 };
 
@@ -865,9 +1057,6 @@ const createManualDispatch = async (req, res) => {
   if (!lotId) return res.status(400).json({ error: 'lotId is required' });
   if (!dispatchDate) return res.status(400).json({ error: 'Dispatch date is required' });
 
-  const lot = await Lot.findById(lotId);
-  if (!lot) return res.status(404).json({ error: 'Lot not found' });
-
   let goodPcs, damagedPcs;
   try {
     goodPcs = parsePcs(req.body.goodPcs, 'Good pcs');
@@ -879,32 +1068,38 @@ const createManualDispatch = async (req, res) => {
     return res.status(400).json({ error: 'Enter at least one piece to dispatch' });
   }
 
-  const cap = await getManualDispatchCapacity(lotId);
-  if (goodPcs > cap.goodAvailable) {
-    return res.status(400).json({
-      error: `Cannot dispatch ${goodPcs} good pcs — only ${cap.goodAvailable} available ` +
-        `(total ${cap.goodTotal}, invoiced ${cap.invoicedPcs}, already marked ${cap.otherManualGood}).`
-    });
-  }
-  if (damagedPcs > cap.damagedAvailable) {
-    return res.status(400).json({
-      error: `Cannot dispatch ${damagedPcs} damaged pcs — only ${cap.damagedAvailable} available ` +
-        `(damaged pool ${cap.damagedPcs}, sold ${cap.damagedSoldPcs}, already marked ${cap.otherManualDamaged}).`
-    });
-  }
+  const { entry, lotNumber } = await runInTransaction(async (session) => {
+    await lockLotsForDispatch([lotId], session);
+    const lot = await withSession(Lot.findById(lotId).select('lotNumber'), session).lean();
+    if (!lot) throw new HttpError(404, 'Lot not found');
 
-  const entry = await ManualDispatch.create({
-    lotId, goodPcs, damagedPcs,
-    dispatchDate: new Date(dispatchDate),
-    reference: reference || '',
-    notes: notes || '',
-    createdBy: req.user.userId
+    const cap = await getManualDispatchCapacity(lotId, null, session);
+    if (goodPcs > cap.goodAvailable) {
+      throw new HttpError(400,
+        `Cannot dispatch ${goodPcs} good pcs — only ${cap.goodAvailable} available ` +
+        `(total ${cap.goodTotal}, invoiced ${cap.invoicedPcs}, already marked ${cap.otherManualGood}).`);
+    }
+    if (damagedPcs > cap.damagedAvailable) {
+      throw new HttpError(400,
+        `Cannot dispatch ${damagedPcs} damaged pcs — only ${cap.damagedAvailable} available ` +
+        `(damaged pool ${cap.damagedPcs}, sold ${cap.damagedSoldPcs}, already marked ${cap.otherManualDamaged}).`);
+    }
+
+    const [created] = await ManualDispatch.create([{
+      lotId, goodPcs, damagedPcs,
+      dispatchDate: new Date(dispatchDate),
+      reference: reference || '',
+      notes: notes || '',
+      createdBy: req.user.userId
+    }], sessionOpts(session));
+
+    await recalcLotManualDispatch(lotId, session);
+    await recordManualDispatchHistory(created._id, lotId, 'create', null, created.toObject(), req.user.userId, session);
+    return { entry: created, lotNumber: lot.lotNumber };
   });
 
-  await recalcLotManualDispatch(lotId);
-  await recordManualDispatchHistory(entry._id, lotId, 'create', null, entry.toObject(), req.user.userId);
   await logAction(req.user.userId, 'create_manual_dispatch', 'ManualDispatch', entry._id,
-    `Manually dispatched ${goodPcs} good + ${damagedPcs} damaged pcs for lot ${lot.lotNumber}`);
+    `Manually dispatched ${goodPcs} good + ${damagedPcs} damaged pcs for lot ${lotNumber}`);
   await invalidateDashboard(); // manual dispatch changes Lot.manualDispatchedPcs -> Pending Dispatch
 
   const updated = await Lot.findById(lotId).lean();
@@ -916,42 +1111,49 @@ const createManualDispatch = async (req, res) => {
  */
 const updateManualDispatch = async (req, res) => {
   const { id } = req.params;
-  const entry = await ManualDispatch.findById(id);
-  if (!entry) return res.status(404).json({ error: 'Manual dispatch entry not found' });
+  // The lot must be known to lock it before reading capacity. An entry's lotId never changes.
+  const probe = await ManualDispatch.findById(id).select('lotId').lean();
+  if (!probe) return res.status(404).json({ error: 'Manual dispatch entry not found' });
 
-  const before = entry.toObject();
-  let goodPcs = entry.goodPcs;
-  let damagedPcs = entry.damagedPcs;
-  try {
-    if (req.body.goodPcs !== undefined) goodPcs = parsePcs(req.body.goodPcs, 'Good pcs');
-    if (req.body.damagedPcs !== undefined) damagedPcs = parsePcs(req.body.damagedPcs, 'Damaged pcs');
-  } catch (err) {
-    return res.status(400).json({ error: err.message });
-  }
-  if (goodPcs + damagedPcs <= 0) {
-    return res.status(400).json({ error: 'Enter at least one piece to dispatch' });
-  }
+  const { entry, goodPcs, damagedPcs } = await runInTransaction(async (session) => {
+    await lockLotsForDispatch([probe.lotId], session);
+    const doc = await withSession(ManualDispatch.findById(id), session);
+    if (!doc) throw new HttpError(404, 'Manual dispatch entry not found');
 
-  // Exclude this entry so its own current pcs don't count against it.
-  const cap = await getManualDispatchCapacity(entry.lotId, entry._id);
-  if (goodPcs > cap.goodAvailable) {
-    return res.status(400).json({ error: `Cannot set ${goodPcs} good pcs — only ${cap.goodAvailable} available.` });
-  }
-  if (damagedPcs > cap.damagedAvailable) {
-    return res.status(400).json({ error: `Cannot set ${damagedPcs} damaged pcs — only ${cap.damagedAvailable} available.` });
-  }
+    const before = doc.toObject();
+    let good = doc.goodPcs;
+    let damaged = doc.damagedPcs;
+    try {
+      if (req.body.goodPcs !== undefined) good = parsePcs(req.body.goodPcs, 'Good pcs');
+      if (req.body.damagedPcs !== undefined) damaged = parsePcs(req.body.damagedPcs, 'Damaged pcs');
+    } catch (err) {
+      throw new HttpError(400, err.message);
+    }
+    if (good + damaged <= 0) throw new HttpError(400, 'Enter at least one piece to dispatch');
 
-  entry.goodPcs = goodPcs;
-  entry.damagedPcs = damagedPcs;
-  if (req.body.dispatchDate) entry.dispatchDate = new Date(req.body.dispatchDate);
-  if (req.body.reference !== undefined) entry.reference = req.body.reference;
-  if (req.body.notes !== undefined) entry.notes = req.body.notes;
-  entry.updatedBy = req.user.userId;
-  entry.updatedAt = new Date();
-  await entry.save();
+    // Exclude this entry so its own current pcs don't count against it.
+    const cap = await getManualDispatchCapacity(doc.lotId, doc._id, session);
+    if (good > cap.goodAvailable) {
+      throw new HttpError(400, `Cannot set ${good} good pcs — only ${cap.goodAvailable} available.`);
+    }
+    if (damaged > cap.damagedAvailable) {
+      throw new HttpError(400, `Cannot set ${damaged} damaged pcs — only ${cap.damagedAvailable} available.`);
+    }
 
-  await recalcLotManualDispatch(entry.lotId);
-  await recordManualDispatchHistory(entry._id, entry.lotId, 'update', before, entry.toObject(), req.user.userId);
+    doc.goodPcs = good;
+    doc.damagedPcs = damaged;
+    if (req.body.dispatchDate) doc.dispatchDate = new Date(req.body.dispatchDate);
+    if (req.body.reference !== undefined) doc.reference = req.body.reference;
+    if (req.body.notes !== undefined) doc.notes = req.body.notes;
+    doc.updatedBy = req.user.userId;
+    doc.updatedAt = new Date();
+    await doc.save(sessionOpts(session));
+
+    await recalcLotManualDispatch(doc.lotId, session);
+    await recordManualDispatchHistory(doc._id, doc.lotId, 'update', before, doc.toObject(), req.user.userId, session);
+    return { entry: doc, goodPcs: good, damagedPcs: damaged };
+  });
+
   await logAction(req.user.userId, 'update_manual_dispatch', 'ManualDispatch', entry._id,
     `Updated manual dispatch to ${goodPcs} good + ${damagedPcs} damaged pcs`);
   await invalidateDashboard(); // manual dispatch edit re-derives dispatch caches
@@ -962,19 +1164,25 @@ const updateManualDispatch = async (req, res) => {
 /**
  * DELETE /api/sales-invoices/manual-dispatch/:id
  * Reverses the entry — pcs return to the available pool and lot status re-derives,
- * dropping back to Finished/Ready if nothing else is dispatched.
+ * dropping back to its production stage if nothing else is dispatched.
  */
 const deleteManualDispatch = async (req, res) => {
   const { id } = req.params;
-  const entry = await ManualDispatch.findById(id);
-  if (!entry) return res.status(404).json({ error: 'Manual dispatch entry not found' });
+  const probe = await ManualDispatch.findById(id).select('lotId').lean();
+  if (!probe) return res.status(404).json({ error: 'Manual dispatch entry not found' });
 
-  const before = entry.toObject();
-  const lotId = entry.lotId;
-  await entry.deleteOne();
+  const before = await runInTransaction(async (session) => {
+    await lockLotsForDispatch([probe.lotId], session);
+    const doc = await withSession(ManualDispatch.findById(id), session);
+    if (!doc) throw new HttpError(404, 'Manual dispatch entry not found');
 
-  await recalcLotManualDispatch(lotId);
-  await recordManualDispatchHistory(id, lotId, 'delete', before, null, req.user.userId);
+    const snapshot = doc.toObject();
+    await ManualDispatch.deleteOne({ _id: doc._id }, sessionOpts(session));
+    await recalcLotManualDispatch(snapshot.lotId, session);
+    await recordManualDispatchHistory(id, snapshot.lotId, 'delete', snapshot, null, req.user.userId, session);
+    return snapshot;
+  });
+
   await logAction(req.user.userId, 'delete_manual_dispatch', 'ManualDispatch', id,
     `Removed manual dispatch of ${before.goodPcs} good + ${before.damagedPcs} damaged pcs`);
   await invalidateDashboard(); // manual dispatch removal restores Pending Dispatch pcs

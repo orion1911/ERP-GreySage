@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const {
   ClientBalance,
   ClientPaymentEntry,
@@ -5,23 +6,24 @@ const {
   Invoice,
   Client
 } = require('../mongodb_schema');
+const { withSession, sessionOpts } = require('../utils/transaction');
 
 /**
  * Recompute and persist the denormalized ClientBalance for a client.
  * Must be called after every invoice and payment write that affects this client's money.
+ * `session` is optional — pass it inside a transaction. The two aggregations run
+ * sequentially on purpose: operations sharing one transaction session must not run in parallel.
  */
-const updateClientBalance = async (clientId) => {
-  // Sum totals from invoices and payment entries in parallel.
-  const [invoiceAgg, paymentAgg] = await Promise.all([
-    Invoice.aggregate([
-      { $match: { clientId: new (require('mongoose')).Types.ObjectId(clientId), status: { $ne: 'cancelled' } } },
-      { $group: { _id: null, total: { $sum: '$total' } } }
-    ]),
-    ClientPaymentEntry.aggregate([
-      { $match: { clientId: new (require('mongoose')).Types.ObjectId(clientId) } },
-      { $group: { _id: '$paymentType', total: { $sum: '$amount' } } }
-    ])
-  ]);
+const updateClientBalance = async (clientId, session = null) => {
+  const cid = new mongoose.Types.ObjectId(clientId);
+  const invoiceAgg = await withSession(Invoice.aggregate([
+    { $match: { clientId: cid, status: { $ne: 'cancelled' } } },
+    { $group: { _id: null, total: { $sum: '$total' } } }
+  ]), session);
+  const paymentAgg = await withSession(ClientPaymentEntry.aggregate([
+    { $match: { clientId: cid } },
+    { $group: { _id: '$paymentType', total: { $sum: '$amount' } } }
+  ]), session);
 
   const totalInvoiced = invoiceAgg.length > 0 ? invoiceAgg[0].total : 0;
   let totalPaid = 0;
@@ -31,7 +33,7 @@ const updateClientBalance = async (clientId) => {
     else if (row._id === 'adjustment') totalAdjustment = row.total;
   }
 
-  let balance = await ClientBalance.findOne({ clientId });
+  let balance = await withSession(ClientBalance.findOne({ clientId }), session);
   if (!balance) {
     balance = new ClientBalance({ clientId });
   }
@@ -40,7 +42,7 @@ const updateClientBalance = async (clientId) => {
   balance.totalAdjustment = totalAdjustment;
   balance.remainingBalance = (balance.openingBalance || 0) + totalInvoiced - totalPaid - totalAdjustment;
   balance.lastUpdated = new Date();
-  await balance.save();
+  await balance.save(sessionOpts(session));
   return balance;
 };
 

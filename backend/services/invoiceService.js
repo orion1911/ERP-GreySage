@@ -322,6 +322,42 @@ const getRemainingPcsForLot = async (lotId, excludeInvoiceId = null) => {
 };
 
 /**
+ * Pcs one invoice currently holds per lot, split good / damaged. When that invoice is being
+ * EDITED, the lot pickers add these back: the cached invoicedPcs / damagedSoldPcs include the
+ * invoice's own lines, so without this the edit form would see its own pcs as "already gone".
+ * Cancelled or unknown invoices hold nothing.
+ */
+const getInvoiceHeldPcs = async (invoiceId) => {
+  const good = new Map();
+  const damaged = new Map();
+  if (!invoiceId || !mongoose.isValidObjectId(invoiceId)) return { good, damaged };
+  const inv = await Invoice.findById(invoiceId).select('status lines').lean();
+  if (!inv || inv.status === 'cancelled') return { good, damaged };
+  for (const line of inv.lines || []) {
+    const target = line.isDamaged ? damaged : good;
+    const parts = (line.sources || []).length
+      ? line.sources
+      : (line.lotId ? [{ lotId: line.lotId, pcs: line.pcs }] : []); // samples have no lot
+    for (const p of parts) {
+      const key = String(p.lotId);
+      target.set(key, (target.get(key) || 0) + (p.pcs || 0));
+    }
+  }
+  return { good, damaged };
+};
+
+/** Append the held lots the main query missed (outside the overfetch window, or another owner). */
+const appendHeldLots = async (lots, held, clientFields) => {
+  const have = new Set(lots.map((l) => String(l._id)));
+  const missing = [...held.keys()].filter((id) => !have.has(id));
+  if (!missing.length) return lots;
+  const extra = await Lot.find({ _id: { $in: missing } })
+    .populate('clientId', clientFields)
+    .populate('fitStyleId', 'name');
+  return [...lots, ...extra];
+};
+
+/**
  * List lots available for dispatch (autocomplete data source).
  * Filters: clientId (optional), search (lotNumber or upstream invoiceNumber substring).
  * Returns lots with finalPcs > invoicedPcs (i.e. remainingPcs > 0).
@@ -336,7 +372,7 @@ const getRemainingPcsForLot = async (lotId, excludeInvoiceId = null) => {
  * Either way each row carries `isOwnLot` / `isHouseLot` / `clientName` so the UI can rank
  * and visibly flag a foreign lot rather than letting one be picked by accident.
  */
-const getLotsAvailableForDispatch = async ({ clientId, search, crossClient = false, limit = 50 } = {}) => {
+const getLotsAvailableForDispatch = async ({ clientId, search, crossClient = false, includeDispatched = false, excludeInvoiceId = null, limit = 50 } = {}) => {
   const query = {};
 
   // House-label clients: their lots are always offered, whoever is being billed.
@@ -360,11 +396,15 @@ const getLotsAvailableForDispatch = async ({ clientId, search, crossClient = fal
   // 3× cushion would let fully-dispatched recent lots crowd the target client's older
   // open ones off the list entirely — widen it to 10×.
   const overfetch = (crossClient && !query.clientId) ? limit * 10 : limit * 3;
-  const lots = await Lot.find(query)
+  // Editing an invoice: its own pcs count as available again, and every lot it holds is offered
+  // even if it falls outside the overfetch window or belongs to another client.
+  const held = (await getInvoiceHeldPcs(excludeInvoiceId)).good;
+  const fetched = await Lot.find(query)
     .populate('clientId', 'name clientCode isInternal')
     .populate('fitStyleId', 'name')
     .sort({ createdAt: -1 })
     .limit(overfetch);
+  const lots = (search && search.trim()) ? fetched : await appendHeldLots(fetched, held, 'name clientCode isInternal');
 
   // One batched read for all fetched lots (3 aggregations) instead of 1–3 sequential
   // queries per lot. The loop below is now pure in-memory — no awaits.
@@ -383,11 +423,14 @@ const getLotsAvailableForDispatch = async ({ clientId, search, crossClient = fal
     const damagedPcs = lot.damagedPcs || 0;
     const invoicedPcs = lot.invoicedPcs || 0;
     const manualDispatchedPcs = lot.manualDispatchedPcs || 0;
+    const heldPcs = held.get(String(lot._id)) || 0; // this invoice's own pcs (edit mode)
     // Good remaining excludes damaged pcs (sold combined to a third party) AND anything
     // already marked dispatched by hand — otherwise a legacy lot could be invoiced for
     // pcs that physically left the building years ago.
-    const remainingPcs = Math.max(0, finalPcs - damagedPcs - invoicedPcs - manualDispatchedPcs);
-    if (remainingPcs <= 0) continue;
+    const remainingPcs = Math.max(0, finalPcs - damagedPcs - (invoicedPcs - heldPcs) - manualDispatchedPcs);
+    // includeDispatched: Tax Invoice lines reference lots without consuming them (the Bill of
+    // Supply owns dispatch accounting), so the Tax Invoice picker still offers dispatched lots.
+    if (remainingPcs <= 0 && !includeDispatched) continue;
     const ownerId = String(lot.clientId?._id || '');
     const isHouseLot = houseIdSet.has(ownerId);
     results.push({
@@ -414,6 +457,7 @@ const getLotsAvailableForDispatch = async ({ clientId, search, crossClient = fal
       invoicedPcs,
       manualDispatchedPcs,
       remainingPcs,
+      heldPcs,
       notFinished: !finishedLotIds.has(String(lot._id)) // no Finishing record yet → warn, don't block
     });
   }
@@ -428,7 +472,10 @@ const getLotsAvailableForDispatch = async ({ clientId, search, crossClient = fal
     if (rank !== 0) return rank;
     return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
   });
-  return results.slice(0, limit);
+  // Keep every lot the edited invoice holds, even past the limit — dropping one would blank its line.
+  const top = results.slice(0, limit);
+  results.slice(limit).forEach((r) => { if (r.heldPcs > 0) top.push(r); });
+  return top;
 };
 
 /**
@@ -437,7 +484,7 @@ const getLotsAvailableForDispatch = async ({ clientId, search, crossClient = fal
  * belong to their original clients. Returns lots where damagedPcs - damagedSoldPcs > 0.
  * Data source for the "Combined Damaged Sale" lot picker.
  */
-const getLotsWithDamagedAvailable = async ({ search, limit = 50 } = {}) => {
+const getLotsWithDamagedAvailable = async ({ search, excludeInvoiceId = null, limit = 50 } = {}) => {
   const query = { damagedPcs: { $gt: 0 } };
   if (search && search.trim()) {
     const re = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
@@ -447,11 +494,13 @@ const getLotsWithDamagedAvailable = async ({ search, limit = 50 } = {}) => {
     query.$or = orClauses;
   }
 
-  const lots = await Lot.find(query)
+  const held = (await getInvoiceHeldPcs(excludeInvoiceId)).damaged; // edit mode: this invoice's own damaged pcs
+  const fetched = await Lot.find(query)
     .populate('clientId', 'name clientCode')
     .populate('fitStyleId', 'name')
     .sort({ createdAt: -1 })
     .limit(limit * 3); // overfetch; filter damagedAvailable > 0 below
+  const lots = (search && search.trim()) ? fetched : await appendHeldLots(fetched, held, 'name clientCode');
 
   const results = [];
   for (const lot of lots) {
@@ -459,7 +508,7 @@ const getLotsWithDamagedAvailable = async ({ search, limit = 50 } = {}) => {
     // invoicing flow are gone and must not be offered again in the combined-sale picker.
     const damagedAvailable = Math.max(
       0,
-      (lot.damagedPcs || 0) - (lot.damagedSoldPcs || 0) - (lot.manualDamagedSoldPcs || 0)
+      (lot.damagedPcs || 0) - ((lot.damagedSoldPcs || 0) - (held.get(String(lot._id)) || 0)) - (lot.manualDamagedSoldPcs || 0)
     );
     if (damagedAvailable <= 0) continue;
     results.push({
@@ -480,7 +529,7 @@ const getLotsWithDamagedAvailable = async ({ search, limit = 50 } = {}) => {
       manualDamagedSoldPcs: lot.manualDamagedSoldPcs || 0,
       damagedAvailable
     });
-    if (results.length >= limit) break;
+    if (results.length >= limit && !held.size) break; // editing: keep scanning so held lots aren't dropped
   }
   return results;
 };
@@ -667,6 +716,49 @@ const generateInvoiceInternalId = async (session = null) => {
   return `INV-${dateStr}${seq}`;
 };
 
+// ─── Number series ───────────────────────────────────────────────────────────
+// Bills of Supply and Tax Invoices run INDEPENDENT series per FY, each with its own Counter:
+//   Bill of Supply → "invoice-{fy}"     → INV2627/36            (unpadded, as before)
+//   Tax Invoice    → "taxinvoice-{fy}"  → INV2627/43, INV2728/01 (2-digit minimum)
+// The same printed number can therefore exist once per type; uniqueness is per collection.
+const BILL_OF_SUPPLY_COUNTER_PREFIX = 'invoice';
+const TAX_INVOICE_COUNTER_PREFIX = 'taxinvoice';
+
+const seriesCounterId = (documentType, fy) =>
+  `${documentType === 'TAX_INVOICE' ? TAX_INVOICE_COUNTER_PREFIX : BILL_OF_SUPPLY_COUNTER_PREFIX}-${fy}`;
+
+const formatInvoiceNumber = (documentType, prefix, fy, seq) =>
+  `${prefix}${fy}/${documentType === 'TAX_INVOICE' ? String(seq).padStart(2, '0') : seq}`;
+
+/** Tax Invoice series prefix from CompanySettings (locked like the Bill of Supply prefix). */
+const getTaxInvoicePrefix = async (session = null) => {
+  const s = await withSession(CompanySettings.findOne().select('taxInvoicePrefix'), session).lean();
+  return s?.taxInvoicePrefix || DEFAULT_INVOICE_PREFIX;
+};
+
+/** Next Tax Invoice number for the date's FY. Call inside a transaction (rolls back on failure). */
+const generateTaxInvoiceNumber = async (date, prefix = DEFAULT_INVOICE_PREFIX, session = null) => {
+  const fy = fyShortFor(date);
+  const counter = await Counter.findByIdAndUpdate(
+    { _id: seriesCounterId('TAX_INVOICE', fy) },
+    { $inc: { sequence: 1 } },
+    { new: true, upsert: true, ...sessionOpts(session) }
+  );
+  return formatInvoiceNumber('TAX_INVOICE', prefix, fy, counter.sequence);
+};
+
+/** Internal Tax Invoice id, e.g. TI-20261006007. */
+const generateTaxInvoiceInternalId = async (session = null) => {
+  const counter = await Counter.findByIdAndUpdate(
+    { _id: 'taxInvoiceInternalId' },
+    { $inc: { sequence: 1 } },
+    { new: true, upsert: true, ...sessionOpts(session) }
+  );
+  const seq = counter.sequence.toString().padStart(3, '0');
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  return `TI-${dateStr}${seq}`;
+};
+
 // Money is computed in integer paise so float drift (0.1 + 0.2 style) can't reach a stored
 // amount. Rates and round-off are validated to ≤ 2 decimals before they get here, so
 // toPaise() is exact for them.
@@ -738,9 +830,10 @@ const amountInWordsIndian = (amount) => {
 /**
  * Record one entry in InvoiceHistory.
  */
-const recordInvoiceHistory = async (invoiceId, action, beforeData, afterData, userId, session = null) => {
+const recordInvoiceHistory = async (invoiceId, action, beforeData, afterData, userId, session = null, documentType = 'BILL_OF_SUPPLY') => {
   const entry = new InvoiceHistory({
     invoiceId,
+    documentType,
     action,
     beforeData: beforeData || null,
     afterData: afterData || null,
@@ -780,6 +873,13 @@ module.exports = {
   DEFAULT_INVOICE_PREFIX,
   generateInvoiceNumber,
   generateInvoiceInternalId,
+  BILL_OF_SUPPLY_COUNTER_PREFIX,
+  TAX_INVOICE_COUNTER_PREFIX,
+  seriesCounterId,
+  formatInvoiceNumber,
+  getTaxInvoicePrefix,
+  generateTaxInvoiceNumber,
+  generateTaxInvoiceInternalId,
   recomputeInvoiceTotals,
   amountInWordsIndian,
   recordInvoiceHistory,

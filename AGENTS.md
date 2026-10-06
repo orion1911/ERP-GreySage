@@ -3,8 +3,9 @@
 Single-file context for any AI coding assistant working on this repo. Read this first,
 before exploring source.
 
-**Last context refresh:** 2026-09-19, against commit `9658db6` on `main` (`d368de6` was the
-2026-07-15 baseline before it). §7 now carries the uncommitted costing work.
+**Last context refresh:** 2026-10-06 — invoicing hardening P1–P4 (deployed) and Tax Invoices
+P5. Previous refresh 2026-09-19 against `9658db6`. §7 carries the dated work packages, newest
+first.
 
 **This file drifts.** The previous refresh sat six weeks stale and asserted several things
 that were no longer true. Before trusting anything time-sensitive below, run
@@ -63,8 +64,8 @@ Scale: 22 controllers, 22 route files, 8 services, 36 Mongoose models, ~35k line
 - **MUI v7** + **MUI X v8** (data-grid, charts, date-pickers, date-pickers-pro)
 - MUI X is a paid licence — `App.js` calls `LicenseInfo.setLicenseKey(...)`
 - `react-hook-form`, `dayjs`, `@tanstack/react-table`, `motion`
-- `jspdf` + `jspdf-autotable` for invoices. Helvetica has no ₹ glyph, so
-  `invoicePdfService.js` prints `Rs.`
+- `jspdf` + `jspdf-autotable` for invoices. `invoicePdfService.js` loads Roboto (local
+  `/fonts`, then CDN) for the ₹ glyph, falling back to Helvetica + `Rs.`
 - No Redux/Zustand — component-local state, `localStorage` for auth, snackbar lifted into
   the layout and passed via `useOutletContext`
 
@@ -185,12 +186,24 @@ rather than falling through to Stitching.
 snapshots), `VendorBalance` (denormalised aggregate).
 
 **Sales**: `CompanySettings` (issuer singleton), `Invoice`, `InvoiceHistory`,
-`ClientPaymentEntry`, `ClientPaymentEntryHistory`, `ClientBalance`.
+`ClientPaymentEntry`, `ClientPaymentEntryHistory`, `ClientBalance`, `TaxInvoice`, `GstRateRule`.
 
-- `Invoice.invoiceNumber` is `INV{FY}/{seq}`, FY starting 1 April, atomic via Counter
-  `_id: 'invoice-{fyShort}'`. **Never generate one by hand** —
-  `invoiceService.generateInvoiceNumber(date, prefix)`.
-- `status` ∈ `draft | issued | cancelled` (default `issued`). Cancelling returns pcs.
+- `Invoice` **is the Bill of Supply** — the only sales document with business effect (lot
+  pcs, lot status, `ClientBalance`, payments, dashboards). `invoiceNumber` is
+  `INV{FY}/{seq}`, FY from 1 April **in IST**, allocated inside the create transaction via
+  Counter `invoice-{fyShort}`. **Never generate one by hand** — `generateInvoiceNumber`.
+- `status` ∈ `draft | issued | cancelled`. Cancel (admin, reason required) returns pcs and
+  keeps the number. Delete (admin) only for the latest number of its FY, rolling the counter
+  back — never with payments recorded or a Tax Invoice in existence.
+- **`TaxInvoice`** — own collection, own series `taxinvoice-{fyShort}` (2-digit minimum:
+  `INV2627/43`, `INV2728/01`) — is a GST document generated FROM a Bill of Supply
+  (`sourceInvoiceId`). **No business effect: never count it in stock or money.** Tax per
+  (HSN, rate) group in paise: CGST+SGST when place-of-supply state = issuer `gstStateCode`
+  (27), else IGST. Rates come from `GstRateRule` (effective-dated, longest HSN prefix wins)
+  and are frozen on each line; `issuerSnapshot` freezes the seller block. Ordering rules: a
+  Bill of Supply can't be cancelled while its Tax Invoice is active; delete goes Tax Invoice
+  first (latest + issued) then Bill of Supply (latest); a cancelled Tax Invoice stays forever
+  and leaves its Bill of Supply cancel-only.
 - **Frozen snapshots**: `clientSnapshot`, `billTo`, `shipTo`, `lines[].lotNumberSnapshot`,
   `lines[].lotInvoiceNumberSnapshot` — copied at issue time, never refreshed.
 - `lines[].isDamaged` marks a damaged-stock sale line.
@@ -257,13 +270,15 @@ and `status` ∈ ok|error.
 
 ## 5. API routing
 
-Most routes mount flat at `/api`. Six sub-prefixed exceptions:
+Most routes mount flat at `/api`. Sub-prefixed exceptions:
 
 ```js
 app.use('/api/vendor-balances', vendorBalanceRoutes);
 app.use('/api/sales-invoices', salesInvoiceRoutes);
 app.use('/api/client-balances', clientBalanceRoutes);
 app.use('/api/company-settings', companySettingsRoutes);
+app.use('/api/tax-invoices', taxInvoiceRoutes);
+app.use('/api/gst-rates', gstRateRoutes);
 app.use('/api/accessories', accessoryRoutes);
 app.use('/api/cron', cronRoutes);            // machine-triggered, CRON_SECRET not JWT
 // app.use('/api', orderRoutes);             // COMMENTED OUT — Order stage removed
@@ -276,14 +291,18 @@ finishing, dashboard, reports, auditLogs, contact, makings) sits directly under 
 (anonymous marketing form), `GET /api/accessories/public/finishing-vendor-extras`
 (deliberately public board for a vendor), and `/api/cron/*` (secret-guarded).
 
-**`restrictTo('admin')`** is applied sparingly — user management, audit logs, company
-settings, accessory types, low-stock test, invoice counter. Day-to-day financial recording
-is open to any authenticated user by design; see §10.
+**`restrictTo('admin')` / `requireAdmin`** is applied sparingly — user management, audit
+logs, company settings, accessory types, low-stock test, invoice counters, GST rate edits,
+and editing / cancelling / deleting an issued Bill of Supply or Tax Invoice. Day-to-day
+recording (creating invoices, payments) is open to any authenticated user; see §10.
 
 **CORS:** allowlist from `CORS_ORIGINS`, defaulting to `https://greysage.vercel.app`.
 
 **Errors:** controllers may throw or return `res.status(...)`. `express-async-errors` routes
-throws to `middleware/error.js`, which translates Mongo duplicate-key errors.
+throws to `middleware/error.js`, which returns `HttpError` (`utils/httpError.js`) messages
+verbatim, maps an exhausted `TransientTransactionError` to 409, and translates Mongo
+duplicate-key errors. Throw `HttpError(400, msg)` for business-rule failures — a plain
+`Error` becomes a generic 500 and the user never sees why.
 
 **Route order matters** in `salesInvoices.js` — specific paths must stay above `/:id`, or
 Express swallows them.
@@ -345,6 +364,57 @@ entry · recon notification UI · MAKINGS recon bell (`a1fd53b`) · public finis
 board (`b363523`) · per-client accessory split + rivet split · Redis integration (`d2cc02a`)
 · low-stock mail via Brevo (`85f07ec`) · invoice combine-lots (`759150d`) · multiple billers
 per client (`3a19342`) · dispatch module (`a527e52`) · Stock Management.
+
+### Invoicing hardening P1–P4 (deployed 2026-10-06) + Tax Invoices P5
+
+**P1–P4 (deployed):**
+1. Manually dispatched pcs count in every server-side stock check (`consumeFromLot`,
+   `updateLotDamaged`, `getRemainingPcsForLot`), not just in the lot picker.
+2. Invoice create/update/cancel/delete, manual-dispatch CRUD and damaged-pcs edits run in ONE
+   transaction (`utils/transaction.js` `runInTransaction`, auto-retried on write conflicts).
+   Each locks its lots first (`Lot.dispatchLockSeq` via `invoiceService.lockLotsForDispatch`)
+   so concurrent sales of the same pcs serialise; the number is allocated inside the
+   transaction, so a failed save no longer burns one.
+3. Edit / cancel / delete are admin-only; cancel needs a reason (`cancelReason`,
+   `cancelledAt`, `cancelledBy`); delete only for the latest number (counter rolled back).
+4. Money in integer paise; rates and round-off ≤ 2 decimals; |roundOff| < 1; FY evaluated in
+   IST; re-dating across FYs blocked; invoice prefix locked; validation errors reach the user
+   (`HttpError`).
+5. After a fully reversed dispatch, lot status derives from production records
+   (`deriveProductionStatus`); creating Washing/Finishing never downgrades a dispatched lot.
+
+**P5 (Tax Invoices)** — see §4 Sales. New: `controllers/taxInvoiceController.js`,
+`controllers/gstRateController.js`, `services/gstService.js`, `utils/invoiceParsers.js`,
+`routes/taxInvoices.js` + `routes/gstRates.js`, `features/Admin/GstRates.js`. Grid: type
+filter All / BoS / GST, "Generate Tax Invoice" action, delete in order, warning when a Bill
+of Supply with an active Tax Invoice is cancelled. Form: Tax Invoice mode with live server
+preview (`POST /api/tax-invoices/preview`). PDF: Tax%/Per columns, CGST+SGST or IGST rows,
+HSN summary, Place of Supply | State Code, Mode of Transport | Vehicle No (always printed),
+E-way Bill when entered. Counter page has a series selector. Pre-deploy:
+`node migrations/p5-tax-invoice-init.js --dry`, then without `--dry` (indexes, GST seed,
+`taxinvoice-2627` = 42 so the first ERP Tax Invoice is INV2627/43).
+
+**P5 follow-ups (same day, fix2–fix5 + HSN centring):**
+- **Editable combined lines.** Bill of Supply edit and Tax Invoice mode both allow changing a
+  combined line's lots / total and the Combine ↔ single toggle. BoS edit: an untouched combined
+  line keeps its saved split (`splitDirty` flag in `InvoiceFormModal`); a changed one is
+  re-split FIFO against live availability (`liveLots`). Tax Invoice: record-only split
+  (`computeTaxSources` — each lot up to its BoS pcs, remainder on the last lot).
+- **Lot pickers in edit mode** pass `excludeInvoiceId` (`lots-available`,
+  `lots-damaged-available`): `invoiceService.getInvoiceHeldPcs` adds the invoice's own pcs back
+  and `appendHeldLots` guarantees its lots are listed.
+- **Toggle row:** "Combined damaged sale" + "Other clients' lots" as one row of small switches.
+  Damaged is locked on edit; turning "other clients" OFF is refused while a foreign line exists
+  (lines are never cleared). Info alert on BoS edit when an active Tax Invoice exists.
+- **GST % field** (admin) is prefilled with the rule's rate; only a typed value
+  (`taxRateTouched`) is sent as `taxRateOverride`. `previewKey` is built from the payload.
+- **PDF (both documents):** ₹ on every summary amount (Sub Total / Taxable, CGST/SGST/IGST,
+  Round off with the sign before ₹, Total, whole HSN summary) via `money()`; Qty 22 /
+  Rate 22–24 / Amount 34 mm (description narrower); blank space under items shrinks per item
+  (`max(3, 30 − 4.5 × items)` mm); address line `State (code), Country`; HSN summary HSN centred.
+
+**Not verified against a live database.** Run one Bill of Supply → Tax Invoice → cancel /
+delete round-trip on the dev database before trusting it in production.
 
 ### Costing hardening + Wash Creation costing (uncommitted at the time of writing)
 
@@ -512,6 +582,11 @@ of truth. Every write that affects them must call its recalculation:
 
 There is **no drift-detection job**. Correctness depends entirely on convention.
 
+**Invoice writes are transactional.** Inside `runInTransaction` every read and write passes
+the session (`withSession` / `sessionOpts`), nothing on that session runs in `Promise.all`,
+and cache bumps / `logAction` happen after commit. Lock lots (`lockLotsForDispatch`) before
+reading any availability figure.
+
 **The stage chain is validated, not free-form.** `updateWashing` (and
 `createWashing`) accepts **two entry conventions** via `reconcileWashQuantities`:
 `Σ washDetails.quantity` equals `stitching.quantity − stitching.quantityShort`
@@ -532,6 +607,15 @@ editing stage quantities moves vendor money.** Correct production from the top d
 `Invoice.invoiceNumber` = sales-side `INV2627/29`. The lot's is shown on the invoice line as
 `lotInvoiceNumberSnapshot` for reference only.
 
+**A Bill of Supply and a Tax Invoice can print the SAME number** (`INV2627/43`) — separate
+collections, separate counters. Always carry the type (`_docType` in the list API) when looking
+one up, and never search the `invoices` collection for a Tax Invoice.
+
+**Editing an invoice? Pass `excludeInvoiceId` to the lot pickers.** The cached
+`Lot.invoicedPcs` / `damagedSoldPcs` include the invoice's own lines, so without it the edit
+form sees its own pcs as already gone (wrong "Max N", fully-used lots missing from the list).
+The server's `buildAndValidateLines` already excludes the invoice being edited.
+
 **Invoice snapshots are frozen** by design — editing a Client or Lot does not update past
 invoices. Standard accounting practice.
 
@@ -540,7 +624,8 @@ second; the first is dead code pointing at `/api/vendor-payment*` URLs that no l
 (the real ones are under `/api/vendor-balances/*`). Package A deletes the first. Until then,
 **edit the second**.
 
-**PDF uses `Rs.`, not `₹`** — jsPDF's Helvetica has no rupee glyph.
+**PDF ₹ needs Roboto** — jsPDF's Helvetica has no rupee glyph; `invoicePdfService` loads
+Roboto and only falls back to `Rs.` when every font source fails.
 
 **`xlsx@0.18.5`** is the abandoned npm build (CVE-2023-30533 prototype pollution,
 CVE-2024-22363 ReDoS) and it parses an externally-fetched workbook in
@@ -584,6 +669,9 @@ which one a script targets before running it, and mask passwords in any connecti
 | All API calls | `frontend/src/services/apiService.js` |
 | Axios base + JWT interceptor | `frontend/src/services/axiosInstance.js` |
 | Sales invoice form / list / PDF | `frontend/src/features/Sales/` |
+| Tax Invoice create/edit/cancel/delete + preview | `backend/controllers/taxInvoiceController.js` |
+| GST computation + rate rules | `backend/services/gstService.js`, `backend/controllers/gstRateController.js` |
+| Transactions / lot locking | `backend/utils/transaction.js`, `invoiceService.lockLotsForDispatch` |
 | Dispatch board | `features/Sales/DispatchManagement.js` |
 | Notification bell | `components/Navbar/NotificationBell.js` |
 | Lot creation UI | `features/Stitching/AddStitchingModal.js` |
@@ -632,6 +720,14 @@ which one a script targets before running it, and mask passwords in any connecti
   rejected — Stitching/Washing/Finishing all hang off `lotId`, so it needs production
   surgery to record a sale.
 - **UI:** MUI `Switch` over `ToggleButton` for boolean filters.
+- **The Bill of Supply drives all business logic; a Tax Invoice never does.** Tax Invoices
+  live in their own collection precisely so no aggregation can count them. Don't merge them
+  into `invoices`, and don't call stock or balance recalcs from tax-invoice writes.
+- **Separate number series per document type**, both `INV`-prefixed by the owner's choice
+  (the WhiteBill Tax Invoice series continued at `INV2627/43`). Prefixes are locked via the
+  API; Tax Invoice numbers are padded to 2 digits.
+- **HSN is a free field pre-filled with `620342`**, not a master — one product family
+  (men's woven cotton jeans).
 
 **Open items, roughly prioritised**
 

@@ -14,7 +14,7 @@ import {
   AccountBalance as ClientPayIcon, Business as CompanyIcon,
   Warehouse as WarehouseIcon, Category as CategoryIcon,
   Straighten as StraightenIcon, Engineering as EngineeringIcon,
-  Calculate as CalculateIcon,
+  Calculate as CalculateIcon, Percent as PercentIcon,
   ExpandLess as ExpandLessIcon, ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import { motion } from 'motion/react';
@@ -72,6 +72,7 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
     { label: 'Reports', path: '/reports', icon: <AssessmentIcon /> },
     ...(user?.role === 'admin' ? [
       { label: 'Company Settings', path: '/admin/company-settings', icon: <CompanyIcon /> },
+      { label: 'GST Rates', path: '/admin/gst-rates', icon: <PercentIcon /> },
       // { label: 'Users', path: '/users', icon: <GroupIcon /> },
       // { label: 'Audit Logs', path: '/audit-logs', icon: <AuditIcon /> },
     ] : []),

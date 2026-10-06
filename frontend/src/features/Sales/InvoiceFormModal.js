@@ -5,7 +5,7 @@ import {
   Box, Modal, Typography, TextField, Button, IconButton, Grid,
   Autocomplete, MenuItem, Table, TableHead, TableRow, TableCell, TableBody,
   Stack, Divider, CircularProgress, Card, CardContent, useTheme,
-  FormControlLabel, Switch, Chip
+  FormControlLabel, Switch, Chip, Alert
 } from '@mui/material';
 import {
   Close as CloseIcon, Save as SaveIcon, Publish as PublishIcon,
@@ -41,6 +41,26 @@ const computeFifoSources = (mergeLots, total) => {
   return out;
 };
 
+// Tax Invoice split for a combined line. Nothing is consumed (stock follows the Bill of Supply),
+// so the split is for the record only: fill lots in order up to the pcs each carried on the Bill
+// of Supply (`bosPcs`; a newly picked lot is capped at its finalPcs), and anything above that
+// lands on the LAST lot. Always sums to the typed total as long as at least one lot is picked.
+const computeTaxSources = (mergeLots, total) => {
+  const lots = mergeLots || [];
+  let left = Math.max(0, parseInt(total, 10) || 0);
+  const out = [];
+  lots.forEach((lot, i) => {
+    if (left <= 0) return;
+    const cap = i === lots.length - 1 ? left : Math.max(0, Number(lot.bosPcs ?? lot.finalPcs) || 0);
+    const take = Math.min(cap, left);
+    if (take > 0) {
+      out.push({ lotId: lot._id, lotNumber: lot.lotNumber, pcs: take });
+      left -= take;
+    }
+  });
+  return out;
+};
+
 // Owner of a SAVED line's lot when it differs from the invoice's client, read from the frozen
 // snapshots so an edit is judged against what was true at issue time (the server does the same).
 // Merged lines keep the snapshot per source; any foreign source makes the line cross-client.
@@ -54,6 +74,9 @@ const crossClientOwnerOf = (line, invoice) => {
   return owners.some((o) => o && String(o) !== billed) ? 'another client' : '';
 };
 
+// Pre-filled on every new line (Bill of Supply and Tax Invoice); editable. Not a master list.
+const DEFAULT_HSN = '620342';
+
 const emptyLine = {
   lotId: null,
   lotNumber: '',
@@ -64,7 +87,9 @@ const emptyLine = {
   description: '',
   remark: '',
   internalNote: '',   // NOT printed — justification for a cross-client line
-  hsnSac: '',
+  hsnSac: DEFAULT_HSN, // men's woven cotton trousers / jeans
+  taxRateOverride: '', // Tax Invoice only — GST % shown in the field (prefilled from the rules)
+  taxRateTouched: false, // true once an admin types a rate → sent as an override; else the rule applies
   pcs: '',
   unit: '',
   rate: '',
@@ -74,14 +99,49 @@ const emptyLine = {
   // Owner of the picked lot when it isn't the client being billed. Drives the amber
   // cross-client warning and makes the internal note mandatory before submit.
   crossClientOwner: '',
+  // Edit mode: this combined line's lots or total were changed, so it is re-split (FIFO) on save.
+  splitDirty: false,
   isSample: false
 };
 
-const emptySample = { ...emptyLine, isSample: true, description: 'SAMPLE ', rate: 0 };
+const emptySample = { ...emptyLine, hsnSac: '', isSample: true, description: 'SAMPLE ', rate: 0 };
 
-function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
+// Form rows from a saved document's lines — Bill of Supply → Tax Invoice prefill, or a Tax
+// Invoice being edited. Merged lines keep their frozen per-lot split (locked, like edit mode).
+const taxLinesFromDoc = (doc, isTaxDoc) => (doc?.lines || []).map((l) => {
+  const merged = Array.isArray(l.sources) && l.sources.length > 0;
+  return {
+    ...emptyLine,
+    lotId: l.lotId || null,
+    lotNumber: l.lotNumberSnapshot || '',
+    lotInvoiceNumber: l.lotInvoiceNumberSnapshot || '',
+    merged,
+    mergeLots: merged ? l.sources.map((s) => ({ _id: s.lotId, lotNumber: s.lotNumberSnapshot, invoiceNumber: s.lotInvoiceNumberSnapshot, bosPcs: s.pcs })) : [],
+    sources: merged ? l.sources.map((s) => ({ lotId: s.lotId, lotNumber: s.lotNumberSnapshot, pcs: s.pcs })) : [],
+    description: l.description || '',
+    remark: l.remark || '',
+    hsnSac: l.isSample ? (l.hsnSac || '') : (l.hsnSac || DEFAULT_HSN),
+    pcs: l.pcs,
+    unit: l.unit || '',
+    rate: l.rate,
+    taxRateOverride: isTaxDoc && l.taxRate !== undefined && l.taxRate !== null ? String(l.taxRate) : '',
+    taxRateTouched: isTaxDoc && l.taxRateSource === 'override',
+    isSample: !!l.isSample
+  };
+});
+
+function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSource, editTaxInvoice }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
   const theme = useTheme();
+  // Tax Invoice mode: generating from a Bill of Supply (taxSource) or editing one (editTaxInvoice).
+  // The Bill of Supply drives stock/money; a Tax Invoice is a GST document only — so no
+  // availability caps, no combine/damaged/cross-client toggles, client + firm locked.
+  const isTax = !!(taxSource || editTaxInvoice);
+  const taxDoc = editTaxInvoice || taxSource || null;
+  const isAdmin = (() => {
+    try { return JSON.parse(localStorage.getItem('user'))?.role === 'admin'; } catch (e) { return false; }
+  })();
+  const [taxPreview, setTaxPreview] = useState(null); // { ok, preview?, error?, comparedToSource? }
   const [submitting, setSubmitting] = useState(false);
   const [clients, setClients] = useState([]);
   const [lotsForClient, setLotsForClient] = useState([]);
@@ -97,6 +157,9 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
       damagedMode: false,
       crossClient: false,
       roundOff: 0,
+      transportMode: '',
+      vehicleNo: '',
+      ewayBillNo: '',
       lines: [{ ...emptyLine }]
     }
   });
@@ -139,9 +202,9 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
   // Auto-select a billing firm when the client has exactly one; otherwise default (''). Edit
   // keeps the frozen choice (hydrated in reset) — only run this for new invoices.
   useEffect(() => {
-    if (!open || editInvoice || !selectedClientFull) return;
+    if (!open || editInvoice || isTax || !selectedClientFull) return;
     setValue('billingFirmId', billingFirms.length === 1 ? String(billingFirms[0]._id) : '');
-  }, [open, editInvoice, selectedClientFull?._id, billingFirms, setValue]);
+  }, [open, editInvoice, isTax, selectedClientFull?._id, billingFirms, setValue]);
 
   // Place of Supply derives from the chosen firm's address, falling back to the client's.
   const derivedPlaceOfSupply = useMemo(() => {
@@ -155,10 +218,32 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
     };
   }, [selectedFirm, selectedClientFull]);
 
+  // A Tax Invoice shows the place of supply frozen on its source document.
+  const shownPos = isTax ? (taxDoc?.placeOfSupply || {}) : derivedPlaceOfSupply;
+
   // Hydrate when editing
   useEffect(() => {
     if (!open) return;
-    if (editInvoice) {
+    if (isTax) {
+      // Tax Invoice: prefilled from the Bill of Supply (new) or the saved Tax Invoice (edit).
+      reset({
+        date: editTaxInvoice ? dayjs(editTaxInvoice.date) : dayjs(),
+        client: taxDoc?.clientId ? {
+          _id: taxDoc.clientId._id || taxDoc.clientId,
+          name: taxDoc.clientSnapshot?.name,
+          clientCode: taxDoc.clientSnapshot?.clientCode
+        } : null,
+        billingFirmId: taxDoc?.billingFirmId ? String(taxDoc.billingFirmId) : '',
+        documentType: 'TAX_INVOICE',
+        damagedMode: false,
+        crossClient: true,
+        roundOff: editTaxInvoice ? (editTaxInvoice.roundOff || 0) : 0,
+        transportMode: editTaxInvoice?.transportMode || '',
+        vehicleNo: editTaxInvoice?.vehicleNo || '',
+        ewayBillNo: editTaxInvoice?.ewayBillNo || '',
+        lines: taxLinesFromDoc(taxDoc, !!editTaxInvoice)
+      });
+    } else if (editInvoice) {
       reset({
         date: dayjs(editInvoice.date),
         client: editInvoice.clientId ? {
@@ -248,7 +333,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editInvoice, reset]);
+  }, [open, editInvoice, taxSource, editTaxInvoice, reset]);
 
   // Reload client-filtered good lots when client changes
   useEffect(() => {
@@ -259,11 +344,20 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
     setLotsLoading(true);
     // crossClient widens the pool to every client's lots. House-label lots (GREYSAGE) come
     // back either way — they're common stock, not an exception needing a toggle.
-    apiService.salesInvoices.getLotsAvailable({ clientId: client._id, crossClient: crossClient ? 'true' : undefined })
+    // A Tax Invoice only references lots (nothing is consumed), so its picker offers every lot,
+    // fully-dispatched ones included.
+    // Editing a Bill of Supply: excludeInvoiceId adds this invoice's own pcs back to each lot's
+    // remaining, so combined lines can be re-split and its fully-used lots still appear.
+    apiService.salesInvoices.getLotsAvailable({
+      clientId: client._id,
+      crossClient: (crossClient || isTax) ? 'true' : undefined,
+      includeDispatched: isTax ? 'true' : undefined,
+      excludeInvoiceId: editInvoice ? editInvoice._id : undefined
+    })
       .then((data) => setLotsForClient(data))
       .catch((e) => showSnackbar(e))
       .finally(() => setLotsLoading(false));
-  }, [open, client?._id, crossClient]);
+  }, [open, client?._id, crossClient, isTax, editInvoice?._id]);
 
   // Resolve the placeholder set by crossClientOwnerOf into real names, once the client list
   // is available. Also clears the flag where the owner turns out to be a house label — that
@@ -293,11 +387,11 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
       return;
     }
     setLotsLoading(true);
-    apiService.salesInvoices.getLotsDamagedAvailable()
+    apiService.salesInvoices.getLotsDamagedAvailable(editInvoice ? { excludeInvoiceId: editInvoice._id } : {})
       .then((data) => setDamagedLots(data))
       .catch((e) => showSnackbar(e))
       .finally(() => setLotsLoading(false));
-  }, [open, damagedMode]);
+  }, [open, damagedMode, editInvoice?._id]);
 
   // Live totals
   const totals = useMemo(() => {
@@ -309,6 +403,85 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
       total: subTotal + roundOff
     };
   }, [lines, roundOff]);
+
+  // Tax Invoice line payload, shared by the live preview and submit → { lines } | { error }.
+  // HSN is mandatory on every chargeable line of a Tax Invoice.
+  const buildTaxLines = useCallback((rows) => {
+    const out = [];
+    for (let i = 0; i < (rows || []).length; i++) {
+      const l = rows[i] || {};
+      const hsn = String(l.hsnSac || '').trim();
+      const common = { description: l.description, remark: l.remark, hsnSac: hsn, unit: l.unit };
+      if (l.isSample) {
+        out.push({ ...common, pcs: parseInt(l.pcs, 10), rate: 0, isSample: true });
+        continue;
+      }
+      if (!hsn) return { error: `Line ${i + 1}: HSN is required on a Tax Invoice` };
+      // Only a rate the admin actually changed is sent as an override; the rest follow the GST rules.
+      const override = (!l.taxRateTouched || l.taxRateOverride === '' || l.taxRateOverride === null || l.taxRateOverride === undefined)
+        ? undefined : Number(l.taxRateOverride);
+      if (l.merged) {
+        const split = computeTaxSources(l.mergeLots, l.pcs);
+        if (!split.length) return { error: `Line ${i + 1}: pick the lots and total pcs for the combined line` };
+        out.push({ ...common, rate: Number(l.rate), taxRateOverride: override, sources: split.map((s) => ({ lotId: s.lotId, pcs: s.pcs })) });
+      } else {
+        out.push({ ...common, lotId: l.lotId || null, pcs: parseInt(l.pcs, 10), rate: Number(l.rate), taxRateOverride: override });
+      }
+    }
+    return { lines: out };
+  }, []);
+
+  // Live GST preview — computed by the server with the same code path as save, debounced.
+  const formDate = useWatch({ control, name: 'date' });
+  // Keyed on the PAYLOAD, not the raw form, so filling the GST % fields from the preview below
+  // doesn't trigger another preview request.
+  const previewKey = isTax ? JSON.stringify({ b: buildTaxLines(lines), roundOff, d: formDate ? dayjs(formDate).valueOf() : null }) : '';
+  useEffect(() => {
+    if (!open || !isTax || !taxDoc) { setTaxPreview(null); return undefined; }
+    const built = buildTaxLines(lines);
+    if (built.error) { setTaxPreview({ ok: false, error: built.error }); return undefined; }
+    const t = setTimeout(() => {
+      apiService.taxInvoices.preview({
+        sourceInvoiceId: editTaxInvoice ? editTaxInvoice.sourceInvoiceId : taxSource._id,
+        date: formDate ? dayjs(formDate).toISOString() : undefined,
+        placeOfSupply: taxDoc.placeOfSupply,
+        roundOff,
+        lines: built.lines
+      }).then(setTaxPreview).catch(() => {});
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isTax, previewKey]);
+
+  // Fill each GST % field with the rate the server resolved from the GST rules, for every line
+  // the admin hasn't overridden — the value sits IN the field instead of as a placeholder.
+  useEffect(() => {
+    if (!isTax || !taxPreview?.ok) return;
+    (taxPreview.preview.lines || []).forEach((pl, idx) => {
+      const cur = getValues(`lines.${idx}`);
+      if (!cur || cur.isSample || cur.taxRateTouched) return;
+      const v = pl.taxRate === undefined || pl.taxRate === null ? '' : String(pl.taxRate);
+      if (cur.taxRateOverride !== v) setValue(`lines.${idx}.taxRateOverride`, v);
+    });
+  }, [isTax, taxPreview, lines, getValues, setValue]);
+
+  // GST % for a Tax Invoice line. Admin: the field holds the rule's rate; typing a different rate
+  // overrides it, clearing the field returns the line to the rule. Others: read-only.
+  const lineTaxRate = (idx) => (taxPreview?.ok ? taxPreview.preview?.lines?.[idx]?.taxRate : undefined);
+  const renderTaxRate = (idx) => (isAdmin ? (
+    <Controller
+      name={`lines.${idx}.taxRateOverride`}
+      control={control}
+      render={({ field }) => (
+        <TextField {...field} type="number" variant="standard" size="small"
+          onChange={(e) => { field.onChange(e); setValue(`lines.${idx}.taxRateTouched`, e.target.value !== ''); }}
+          inputProps={{ min: 0, max: 100, step: 0.5, style: { textAlign: 'right' } }}
+          sx={{ maxWidth: 72 }} />
+      )}
+    />
+  ) : (
+    <Typography variant="body2">{lineTaxRate(idx) !== undefined ? `${lineTaxRate(idx)}%` : '—'}</Typography>
+  ));
 
   // When a lot is picked: prefill description, pcs (= remaining), rate stays user-entered
   const handleLotChange = useCallback((idx, lotOption) => {
@@ -323,7 +496,8 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
       return;
     }
     // In damaged mode the available qty is the lot's damaged pool, not the good remaining.
-    const avail = damagedMode ? lotOption.damagedAvailable : lotOption.remainingPcs;
+    // Tax Invoice: nothing is consumed, so no cap (avail null) and pcs are typed by hand.
+    const avail = isTax ? null : (damagedMode ? lotOption.damagedAvailable : lotOption.remainingPcs);
     const finalRef = damagedMode ? lotOption.damagedPcs : lotOption.finalPcs;
     setValue(`lines.${idx}.lotId`, lotOption._id);
     setValue(`lines.${idx}.lotNumber`, lotOption.lotNumber);
@@ -335,19 +509,20 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
     // Cross-client = produced for someone else, excluding house-label stock (sellable to
     // anyone by design) and damaged lines (already third-party sales by definition).
     const isCross = !damagedMode && !!lotOption.isCrossClient && !lotOption.isHouseLot;
-    setValue(`lines.${idx}.crossClientOwner`, isCross ? (lotOption.clientName || 'another client') : '');
+    setValue(`lines.${idx}.crossClientOwner`, (isCross && !isTax) ? (lotOption.clientName || 'another client') : '');
     // Deliberately omit the lot number on a cross-client line: the description is printed,
     // and our lot numbering is per-client — showing GLOBUS a lot raised for ADAM HILL leaks
     // the origin. Operators can still type it back in if a given buyer expects it.
     const lotRef = isCross ? '' : ` - LOT ${lotOption.lotNumber}`;
     const desc = `${lotOption.fitStyleName || ''}${lotOption.fabric ? ` (${lotOption.fabric})` : ''}${lotRef}${damagedMode ? ' (DAMAGED)' : ''}`.trim();
     if (!getValues(`lines.${idx}.description`)) setValue(`lines.${idx}.description`, desc);
-    if (!getValues(`lines.${idx}.pcs`)) setValue(`lines.${idx}.pcs`, avail);
-  }, [setValue, getValues, damagedMode]);
+    if (!isTax && !getValues(`lines.${idx}.pcs`)) setValue(`lines.${idx}.pcs`, avail);
+  }, [setValue, getValues, damagedMode, isTax]);
 
   // Toggle a line between single-lot and merged (multi-lot) mode; clear the other mode's state.
   const toggleMerge = useCallback((idx, on) => {
     setValue(`lines.${idx}.merged`, on);
+    setValue(`lines.${idx}.splitDirty`, true);
     setValue(`lines.${idx}.lotId`, null);
     setValue(`lines.${idx}.lotNumber`, '');
     setValue(`lines.${idx}.lotInvoiceNumber`, '');
@@ -363,24 +538,36 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
   // description auto-fills (once) to a combined "LOT A + B" label the user can still edit.
   const changeMergeLots = useCallback((idx, lots) => {
     setValue(`lines.${idx}.mergeLots`, lots || []);
-    setValue(`lines.${idx}.remainingPcs`, sumRemaining(lots));
+    // Tax Invoice: no stock cap on a combined line. Edit mode: the line is re-split from now on.
+    setValue(`lines.${idx}.remainingPcs`, isTax ? null : sumRemaining(lots));
+    setValue(`lines.${idx}.splitDirty`, true);
     setValue(`lines.${idx}.notFinished`, (lots || []).some((l) => l.notFinished));
     // A merged line can mix owners; ANY foreign lot makes the whole line cross-client.
     const foreign = (lots || []).filter((l) => l.isCrossClient && !l.isHouseLot);
     setValue(`lines.${idx}.crossClientOwner`,
-      foreign.length ? [...new Set(foreign.map((l) => l.clientName || 'another client'))].join(', ') : '');
+      (foreign.length && !isTax) ? [...new Set(foreign.map((l) => l.clientName || 'another client'))].join(', ') : '');
     if (!getValues(`lines.${idx}.description`) && (lots || []).length) {
       const first = lots[0];
       const label = lots.map((l) => l.lotNumber).join(' + ');
       const desc = `${first.fitStyleName || ''}${first.fabric ? ` (${first.fabric})` : ''} - LOT ${label}`.trim();
       setValue(`lines.${idx}.description`, desc);
     }
-  }, [setValue, getValues]);
+  }, [setValue, getValues, isTax]);
 
-  // The current per-lot split for a line: frozen sources when editing a merged line, else the
-  // live FIFO allocation of the typed total across the selected lots.
-  const lineSources = (cur) =>
-    (editInvoice && cur.merged) ? (cur.sources || []) : computeFifoSources(cur.mergeLots, cur.pcs);
+  // Picker options carry each lot's live remaining (in edit mode including this invoice's own
+  // pcs), so caps come from them rather than from a saved line's snapshot objects.
+  const liveLots = (lots) => (lots || []).map((l) => lotsForClient.find((o) => String(o._id) === String(l._id)) || l);
+
+  // The current per-lot split for a line.
+  //   Tax Invoice      → record-only split (computeTaxSources).
+  //   Bill of Supply edit → the SAVED split until this line's lots/total are changed (splitDirty),
+  //                         so editing another line never silently moves pcs between lots.
+  //   Otherwise        → FIFO across the selected lots, capped at their live remaining.
+  const lineSources = (cur) => {
+    if (isTax && cur.merged) return computeTaxSources(cur.mergeLots, cur.pcs);
+    if (editInvoice && cur.merged && !cur.splitDirty) return cur.sources || [];
+    return computeFifoSources(liveLots(cur.mergeLots), cur.pcs);
+  };
 
   // Band a lot option falls into. Also the Autocomplete groupBy label, so the operator sees
   // their own stock first and has to scroll past a header to reach someone else's.
@@ -399,7 +586,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
   // (mobile passes the good/damaged pool, desktop the good pool). The merged multi-select always
   // uses the client's good lots (lotsForClient).
   const renderLotField = (idx, cur, options) => {
-    const canCombine = !damagedMode && !!client && !editInvoice;
+    const canCombine = !damagedMode && !!client;
     const split = lineSources(cur);
     return (
       <>
@@ -418,7 +605,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                 loading={lotsLoading}
                 value={cur.mergeLots || []}
                 onChange={(_, v) => changeMergeLots(idx, v)}
-                disabled={!client || !!editInvoice}
+                disabled={!client}
                 renderOption={(props, option) => (
                   <Box component="li" {...props}>
                     <Box>
@@ -454,7 +641,10 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                 getOptionLabel={(o) => o ? `${o.lotNumber} (Inv ${o.invoiceNumber})` : ''}
                 isOptionEqualToValue={(o, v) => o?._id === v?._id}
                 loading={lotsLoading}
-                value={options.find((l) => String(l._id) === String(cur.lotId)) || null}
+                // Fall back to the line's own lot when it isn't in the option list, so a saved or
+                // prefilled lot still shows instead of a blank field.
+                value={options.find((l) => String(l._id) === String(cur.lotId))
+                  || (cur.lotId ? { _id: cur.lotId, lotNumber: cur.lotNumber, invoiceNumber: cur.lotInvoiceNumber } : null)}
                 onChange={(_, v) => handleLotChange(idx, v)}
                 disabled={!damagedMode && !client}
                 renderOption={(props, option) => (
@@ -490,7 +680,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
               {split.length > 0
                 ? `Split: ${split.map((s) => `${s.lotNumber || s.lotId}: ${s.pcs}`).join(' · ')}`
                 : 'Enter total pcs to split across the selected lots'}
-              {!editInvoice && cur.mergeLots?.length > 0 ? ` · ${sumRemaining(cur.mergeLots)} available` : ''}
+              {!isTax && cur.mergeLots?.length > 0 ? ` · ${sumRemaining(liveLots(cur.mergeLots))} available` : ''}
             </Typography>
           )
         ) : (
@@ -502,7 +692,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
           )
         )}
 
-        {!damagedMode && cur.notFinished && (
+        {!damagedMode && !isTax && cur.notFinished && (
           <Typography variant="caption" color="warning.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
             <WarningAmberIcon sx={{ fontSize: 14 }} />
             {cur.merged ? 'One or more lots are not yet in finishing' : 'Lot not yet in finishing'} — dispatch allowed, verify pcs
@@ -549,9 +739,41 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
     ) : renderLotField(idx, cur, options)
   );
 
+  const submitTax = (data) => {
+    const built = buildTaxLines(data.lines);
+    if (built.error) return showSnackbar(built.error);
+    const payload = {
+      date: data.date?.toISOString ? data.date.toISOString() : new Date(data.date).toISOString(),
+      roundOff: Number(data.roundOff) || 0,
+      transportMode: data.transportMode || '',
+      vehicleNo: data.vehicleNo || '',
+      ewayBillNo: data.ewayBillNo || '',
+      lines: built.lines
+    };
+    setSubmitting(true);
+    const req = editTaxInvoice
+      ? apiService.taxInvoices.update(editTaxInvoice._id, payload)
+      : apiService.taxInvoices.create({ ...payload, sourceInvoiceId: taxSource._id });
+    return req
+      .then((saved) => {
+        setSubmitting(false);
+        const d = saved.comparedToSource;
+        const differs = d && (d.pcsDiff !== 0 || d.amountDiff !== 0);
+        showSnackbar(
+          (editTaxInvoice ? 'Tax Invoice updated' : `Tax Invoice ${saved.invoiceNumber} created`) +
+          (differs ? ` — differs from ${d.sourceInvoiceNumber} (${d.pcsDiff >= 0 ? '+' : ''}${d.pcsDiff} pcs). Stock follows the Bill of Supply.` : ''),
+          differs ? 'warning' : 'success'
+        );
+        onSaved(saved);
+        onClose();
+      })
+      .catch((e) => { setSubmitting(false); showSnackbar(e); });
+  };
+
   const onSubmit = (data) => {
     if (!data.client?._id) return showSnackbar('Please select a client');
     if (!data.lines || data.lines.length === 0) return showSnackbar('Add at least one line item');
+    if (isTax) return submitTax(data);
 
     // Build the line payload. Merged lines send a `sources[]` split (no top-level lotId); the
     // server re-validates each source against the lot's remaining pool.
@@ -575,8 +797,9 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
         continue;
       }
       if (l.merged) {
-        const isEditMerged = !!editInvoice && Array.isArray(l.sources) && l.sources.length > 0;
-        const split = isEditMerged ? l.sources : computeFifoSources(l.mergeLots, l.pcs);
+        // An untouched combined line on edit keeps its saved split; a changed one is re-split.
+        const isEditMerged = !!editInvoice && !l.splitDirty && Array.isArray(l.sources) && l.sources.length > 0;
+        const split = isEditMerged ? l.sources : computeFifoSources(liveLots(l.mergeLots), l.pcs);
         if (!split.length) return showSnackbar(`Line ${i + 1}: pick lots and a total to combine`);
         if (!isEditMerged) {
           const total = parseInt(l.pcs, 10);
@@ -621,7 +844,6 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
       date: data.date?.toISOString ? data.date.toISOString() : new Date(data.date).toISOString(),
       clientId: data.client._id,
       billingFirmId: data.billingFirmId || null,
-      documentType: data.documentType,
       // placeOfSupply omitted on purpose — server derives from client's shipping address.
       // For edits, the snapshot is already frozen and not refreshed.
       roundOff: Number(data.roundOff) || 0,
@@ -661,12 +883,22 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
       }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6">
-            {editInvoice
-              ? `Edit Invoice ${editInvoice.invoiceNumber}`
-              : (damagedMode ? 'New Combined Damaged Sale' : 'New Invoice / Dispatch')}
+            {isTax
+              ? (editTaxInvoice
+                ? `Edit Tax Invoice ${editTaxInvoice.invoiceNumber}`
+                : `Generate Tax Invoice from ${taxSource?.invoiceNumber || ''}`)
+              : editInvoice
+                ? `Edit Invoice ${editInvoice.invoiceNumber}`
+                : (damagedMode ? 'New Combined Damaged Sale' : 'New Invoice / Dispatch')}
           </Typography>
           <IconButton onClick={onClose}><CloseIcon /></IconButton>
         </Box>
+        {editInvoice && (editInvoice.taxInvoices || []).some((t) => t.status === 'issued') && (
+          <Alert severity="info" sx={{ mb: 1.5, py: 0 }}>
+            Tax Invoice {(editInvoice.taxInvoices || []).find((t) => t.status === 'issued').invoiceNumber} was
+            generated from this Bill of Supply — it does not change with this edit. Edit it separately if needed.
+          </Alert>
+        )}
 
         <form
           onSubmit={handleSubmit(onSubmit)}
@@ -708,9 +940,9 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                       isOptionEqualToValue={(o, v) => o?._id === v?._id}
                       value={field.value}
                       onChange={(_, v) => field.onChange(v)}
-                      disabled={!!editInvoice}
+                      disabled={!!editInvoice || isTax}
                       renderInput={(params) => (
-                        <TextField {...params} label="Client" variant="standard" error={!!error} helperText={error?.message || (editInvoice ? 'Client locked after issue' : '')} />
+                        <TextField {...params} label="Client" variant="standard" error={!!error} helperText={error?.message || ((editInvoice || isTax) ? 'Client locked after issue' : '')} />
                       )}
                     />
                   )}
@@ -728,8 +960,8 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                         label="Billing Firm"
                         fullWidth
                         variant="standard"
-                        disabled={!!editInvoice}
-                        helperText={editInvoice ? 'Locked after issue' : 'Firm billed to on this invoice'}
+                        disabled={!!editInvoice || isTax}
+                        helperText={(editInvoice || isTax) ? 'Locked after issue' : 'Firm billed to on this invoice'}
                         SelectProps={{ displayEmpty: true }}
                         InputLabelProps={{ shrink: true }}
                       >
@@ -759,96 +991,110 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                 </Grid>
               ) : null}
               <Grid size={{ xs: 6, md: 3 }}>
-                <Controller
-                  name="documentType"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField {...field} select label="Document Type" fullWidth variant="standard">
-                      <MenuItem value="BILL_OF_SUPPLY">Bill of Supply</MenuItem>
-                      <MenuItem value="TAX_INVOICE">Tax Invoice</MenuItem>
-                    </TextField>
-                  )}
-                />
-              </Grid>
-              <Grid size={{ xs: 6, md: 3 }}>
                 <TextField
                   label="Place of Supply"
-                  value={derivedPlaceOfSupply.stateName || derivedPlaceOfSupply.stateCode
-                    ? `${derivedPlaceOfSupply.stateName}${derivedPlaceOfSupply.stateCode ? ` (${derivedPlaceOfSupply.stateCode})` : ''}`
+                  value={shownPos.stateName || shownPos.stateCode
+                    ? `${shownPos.stateName || ''}${shownPos.stateCode ? ` (${shownPos.stateCode})` : ''}`
                     : ''}
                   fullWidth variant="standard"
                   InputProps={{ readOnly: true }}
-                  helperText={!client ? 'Pick a client' : (!derivedPlaceOfSupply.stateName ? 'No state on client — edit to fix' : '')}
+                  helperText={isTax
+                    ? (!shownPos.stateCode
+                      ? 'No state code — a Tax Invoice needs it'
+                      : (taxPreview?.preview?.supplyType === 'INTRA' ? 'Same state → CGST + SGST'
+                        : (taxPreview?.preview?.supplyType === 'INTER' ? 'Other state → IGST' : '')))
+                    : (!client ? 'Pick a client' : (!derivedPlaceOfSupply.stateName ? 'No state on client — edit to fix' : ''))}
                 />
               </Grid>
-              {!editInvoice && (
-                <Grid size={{ xs: 12, md: 12 }}>
-                  <Controller
-                    name="damagedMode"
-                    control={control}
-                    render={({ field }) => (
-                      <FormControlLabel
-                        control={(
-                          <Switch
-                            checked={!!field.value}
-                            onChange={(e) => {
-                              field.onChange(e.target.checked);
-                              // Reset line lot selections — the two pools are different lists.
-                              // toggleMerge also clears single-lot fields, so it covers both modes.
-                              (getValues('lines') || []).forEach((_, i) => toggleMerge(i, false));
-                            }}
-                            color="warning"
-                          />
-                        )}
-                        label={(
-                          <Typography variant="body2">
-                            Combined Damaged Sale
-                            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                              (sell damaged pcs across lots to a third-party buyer)
-                            </Typography>
-                          </Typography>
-                        )}
-                      />
-                    )}
-                  />
-                </Grid>
+              {isTax && (
+                <>
+                  <Grid size={{ xs: 6, md: 3 }}>
+                    <Controller name="transportMode" control={control}
+                      render={({ field }) => <TextField {...field} label="Mode of Transport" fullWidth variant="standard" placeholder="e.g. Road / By Hand" />} />
+                  </Grid>
+                  <Grid size={{ xs: 6, md: 3 }}>
+                    <Controller name="vehicleNo" control={control}
+                      render={({ field }) => <TextField {...field} onChange={(e) => field.onChange(e.target.value.toUpperCase())} label="Vehicle No" fullWidth variant="standard" />} />
+                  </Grid>
+                  <Grid size={{ xs: 6, md: 3 }}>
+                    <Controller name="ewayBillNo" control={control}
+                      render={({ field }) => <TextField {...field} label="E-way Bill No" fullWidth variant="standard" helperText="Optional — entered manually" />} />
+                  </Grid>
+                </>
               )}
-              {!editInvoice && !damagedMode && (
-                <Grid size={{ xs: 12, md: 12 }}>
-                  <Controller
-                    name="crossClient"
-                    control={control}
-                    render={({ field }) => (
-                      <FormControlLabel
-                        control={(
-                          <Switch
-                            checked={!!field.value}
-                            onChange={(e) => {
-                              field.onChange(e.target.checked);
-                              // The option list is about to change underneath the pickers;
-                              // clear every lot selection so nothing points at a stale option.
-                              (getValues('lines') || []).forEach((_, i) => toggleMerge(i, false));
-                            }}
-                            color="warning"
-                          />
-                        )}
-                        label={(
-                          <Typography variant="body2">
-                            Include other clients&apos; lots
-                            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                              (bill stock produced for a different client — each such line needs an internal note)
+              {!isTax && (
+                // Rarely used, so kept compact: one row of small switches. On edit the sale type is
+                // shown but locked — it decides which stock pool every line draws from.
+                <Grid size={{ xs: 12 }} sx={{ mt: -1 }}>
+                  <Stack direction="row" flexWrap="wrap" columnGap={3} rowGap={0}>
+                    <Controller
+                      name="damagedMode"
+                      control={control}
+                      render={({ field }) => (
+                        <FormControlLabel
+                          sx={{ m: 0 }}
+                          control={(
+                            <Switch
+                              size="small"
+                              checked={!!field.value}
+                              disabled={!!editInvoice}
+                              onChange={(e) => {
+                                field.onChange(e.target.checked);
+                                // The two pools are different lists — reset every line's lot selection.
+                                (getValues('lines') || []).forEach((_, i) => toggleMerge(i, false));
+                              }}
+                              color="warning"
+                            />
+                          )}
+                          label={(
+                            <Typography variant="caption">
+                              Combined damaged sale{' '}
+                              <Typography component="span" variant="caption" color="text.secondary">(third-party buyer)</Typography>
                             </Typography>
-                          </Typography>
+                          )}
+                        />
+                      )}
+                    />
+                    {!damagedMode && (
+                      <Controller
+                        name="crossClient"
+                        control={control}
+                        render={({ field }) => (
+                          <FormControlLabel
+                            sx={{ m: 0 }}
+                            control={(
+                              <Switch
+                                size="small"
+                                checked={!!field.value}
+                                onChange={(e) => {
+                                  // ON only widens the list, so selections stay. OFF while a line still
+                                  // uses another client's lot would orphan it — refuse instead of clearing.
+                                  if (!e.target.checked && (getValues('lines') || []).some((l) => l.crossClientOwner)) {
+                                    showSnackbar("Remove the lines that use other clients' lots first", 'warning');
+                                    return;
+                                  }
+                                  field.onChange(e.target.checked);
+                                }}
+                                color="warning"
+                              />
+                            )}
+                            label={(
+                              <Typography variant="caption">
+                                Other clients&apos; lots{' '}
+                                <Typography component="span" variant="caption" color="text.secondary">(needs internal note)</Typography>
+                              </Typography>
+                            )}
+                          />
                         )}
                       />
                     )}
-                  />
+                  </Stack>
                 </Grid>
               )}
             </Grid>
           </LocalizationProvider>
 
-          <Divider sx={{ my: 2 }}><Typography variant="caption">INVOICE ITEMS</Typography></Divider>
+          <Divider sx={{ mt: 1, mb: 1.5 }}><Typography variant="caption">INVOICE ITEMS</Typography></Divider>
 
           {isMobile ? (
             // ── Mobile: stacked Cards per line ───────────────────────────
@@ -857,7 +1103,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                 const cur = lines?.[idx] || {};
                 const amount = (Number(cur.pcs) || 0) * (Number(cur.rate) || 0);
                 const remaining = cur.remainingPcs;
-                const overshoot = remaining !== null && remaining !== undefined && Number(cur.pcs) > remaining;
+                const overshoot = !isTax && remaining !== null && remaining !== undefined && Number(cur.pcs) > remaining;
                 return (
                   <Card key={row.id} variant="outlined">
                     <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
@@ -916,7 +1162,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                                 variant="standard"
                                 size="small"
                                 fullWidth
-                                disabled={!!editInvoice && cur.merged}
+                                onChange={(e) => { field.onChange(e); if (cur.merged) setValue(`lines.${idx}.splitDirty`, true); }}
                                 inputProps={{ min: 1, style: { textAlign: 'right' } }}
                                 error={overshoot}
                                 helperText={overshoot ? `Max ${remaining}` : ''}
@@ -945,6 +1191,12 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                           />
                         </Grid>
                       </Grid>
+                      {isTax && !cur.isSample && (
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                          <Typography variant="body2">GST %</Typography>
+                          {renderTaxRate(idx)}
+                        </Box>
+                      )}
 
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1.5, pt: 1, borderTop: `1px dashed ${theme.palette.divider}` }}>
                         <Typography variant="body2">Amount</Typography>
@@ -967,6 +1219,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                     <TableCell width={70}>HSN/SAC</TableCell>
                     <TableCell width={90} align="right">Pcs</TableCell>
                     <TableCell width={100} align="right">Rate</TableCell>
+                    {isTax && <TableCell width={80} align="right">GST %</TableCell>}
                     <TableCell width={130} align="right">Amount</TableCell>
                     <TableCell width={50} />
                   </TableRow>
@@ -976,7 +1229,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                     const cur = lines?.[idx] || {};
                     const amount = (Number(cur.pcs) || 0) * (Number(cur.rate) || 0);
                     const remaining = cur.remainingPcs;
-                    const overshoot = remaining !== null && remaining !== undefined && Number(cur.pcs) > remaining;
+                    const overshoot = !isTax && remaining !== null && remaining !== undefined && Number(cur.pcs) > remaining;
                     return (
                       <TableRow key={row.id}>
                         <TableCell>{idx + 1}</TableCell>
@@ -1027,7 +1280,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                                 type="number"
                                 variant="standard"
                                 size="small"
-                                disabled={!!editInvoice && cur.merged}
+                                onChange={(e) => { field.onChange(e); if (cur.merged) setValue(`lines.${idx}.splitDirty`, true); }}
                                 inputProps={{ min: 1, style: { textAlign: 'right' } }}
                                 error={overshoot}
                                 helperText={overshoot ? `Max ${remaining}` : ''}
@@ -1052,6 +1305,9 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                             )}
                           />
                         </TableCell>
+                        {isTax && (
+                          <TableCell align="right">{cur.isSample ? '—' : renderTaxRate(idx)}</TableCell>
+                        )}
                         <TableCell align="right">{fmtINR(amount)}</TableCell>
                         <TableCell>
                           <IconButton size="small" onClick={() => remove(idx)} disabled={fields.length === 1}>
@@ -1080,9 +1336,26 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
             <Grid size={{ xs: 12, md: 4 }}>
               <Stack spacing={1} sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2">Sub Total</Typography>
+                  <Typography variant="body2">{isTax ? 'Taxable Amount' : 'Sub Total'}</Typography>
                   <Typography variant="body2">₹ {fmtINR(totals.subTotal)}</Typography>
                 </Box>
+                {isTax && taxPreview?.ok && (taxPreview.preview.supplyType === 'INTRA' ? (
+                  <>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2">CGST</Typography>
+                      <Typography variant="body2">₹ {fmtINR(taxPreview.preview.cgstTotal)}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2">SGST</Typography>
+                      <Typography variant="body2">₹ {fmtINR(taxPreview.preview.sgstTotal)}</Typography>
+                    </Box>
+                  </>
+                ) : (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2">IGST</Typography>
+                    <Typography variant="body2">₹ {fmtINR(taxPreview.preview.igstTotal)}</Typography>
+                  </Box>
+                ))}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="body2">Round Off</Typography>
                   <Controller
@@ -1096,8 +1369,18 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
                 <Divider />
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="subtitle1"><b>Total</b></Typography>
-                  <Typography variant="subtitle1"><b>{totals.totalQty} pcs · ₹ {fmtINR(totals.total)}</b></Typography>
+                  <Typography variant="subtitle1"><b>{totals.totalQty} pcs · ₹ {fmtINR(isTax && taxPreview?.ok ? taxPreview.preview.total : totals.total)}</b></Typography>
                 </Box>
+                {isTax && taxPreview && !taxPreview.ok && (
+                  <Typography variant="caption" color="error">{taxPreview.error}</Typography>
+                )}
+                {isTax && taxPreview?.ok && taxPreview.comparedToSource
+                  && (taxPreview.comparedToSource.pcsDiff !== 0 || taxPreview.comparedToSource.amountDiff !== 0) && (
+                  <Typography variant="caption" color="warning.main">
+                    Differs from {taxPreview.comparedToSource.sourceInvoiceNumber} ({taxPreview.comparedToSource.pcsDiff >= 0 ? '+' : ''}{taxPreview.comparedToSource.pcsDiff} pcs,
+                    ₹ {fmtINR(taxPreview.comparedToSource.amountDiff)}). Stock and balances follow the Bill of Supply.
+                  </Typography>
+                )}
               </Stack>
             </Grid>
           </Grid>
@@ -1110,7 +1393,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset }) {
               startIcon={submitting ? <CircularProgress size={16} /> : (editInvoice ? <PublishIcon /> : <SaveIcon />)}
               disabled={submitting}
             >
-              {editInvoice ? 'Update Invoice' : 'Save Invoice'}
+              {isTax ? (editTaxInvoice ? 'Update Tax Invoice' : 'Generate Tax Invoice') : (editInvoice ? 'Update Invoice' : 'Save Invoice')}
             </Button>
           </Box>
         </form>

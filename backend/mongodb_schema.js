@@ -537,6 +537,8 @@ const CompanySettingsSchema = new mongoose.Schema({
     title: { type: String, trim: true } // e.g. 'Proprietor'
   },
   defaultInvoicePrefix: { type: String, trim: true, default: 'INV' },
+  // Tax Invoice series prefix (own counter "taxinvoice-{fy}"). LOCKED via the API like the above.
+  taxInvoicePrefix: { type: String, trim: true, default: 'INV' },
   defaultDocumentType: { type: String, enum: ['BILL_OF_SUPPLY', 'TAX_INVOICE'], default: 'BILL_OF_SUPPLY' },
   // Notification preferences. lowStock drives the daily low-stock email digest (Vercel Cron).
   notifications: {
@@ -638,6 +640,10 @@ const InvoiceSchema = new mongoose.Schema({
   cancelReason: { type: String, trim: true },
   cancelledAt: { type: Date },
   cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  // Count of Tax Invoices ever generated from this Bill of Supply. taxInvoiceController writes it
+  // FIRST inside its transaction, so concurrent "Generate Tax Invoice" clicks — or a generate
+  // racing a cancel/delete of this Bill of Supply — collide and serialise.
+  taxInvoiceSeq: { type: Number, default: 0 },
   pdfMeta: { filename: String, generatedAt: Date },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -695,6 +701,8 @@ ManualDispatchHistorySchema.index({ entryId: 1 });
 
 const InvoiceHistorySchema = new mongoose.Schema({
   invoiceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', required: true },
+  // Which collection invoiceId points at — Tax Invoices (taxinvoices) share this history log.
+  documentType: { type: String, enum: ['BILL_OF_SUPPLY', 'TAX_INVOICE'], default: 'BILL_OF_SUPPLY' },
   action: { type: String, enum: ['create', 'update', 'cancel', 'delete'], required: true },
   beforeData: { type: mongoose.Schema.Types.Mixed },
   afterData: { type: mongoose.Schema.Types.Mixed },
@@ -702,6 +710,114 @@ const InvoiceHistorySchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 InvoiceHistorySchema.index({ invoiceId: 1, createdAt: -1 });
+
+// ─── TAX INVOICE (GST) ───────────────────────────────────────────────────────
+// Generated FROM a Bill of Supply (sourceInvoiceId) and printed for GST. Own collection and own
+// number series per FY (Counter "taxinvoice-{fy}", e.g. INV2627/43, INV2728/01), so the same
+// printed number can exist once as a Bill of Supply and once as a Tax Invoice.
+// NO business effect: lot pcs/status, client balance, payments and dashboards are driven by the
+// Bill of Supply only. Keeping it out of `invoices` means no existing aggregation can count it.
+// ⚠ autoIndex is off — indexes are created by backend/migrations/p5-tax-invoice-init.js.
+const TaxInvoiceLineSchema = new mongoose.Schema({
+  lineNo: { type: Number, required: true, min: 1 },
+  lotId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lot' },   // reference only — nothing consumed
+  lotNumberSnapshot: { type: String, trim: true },
+  lotInvoiceNumberSnapshot: { type: Number },
+  sources: { type: [InvoiceLineSourceSchema], default: [] },      // merged line, as on the Bill of Supply
+  description: { type: String, required: true, trim: true },
+  remark: { type: String, trim: true },
+  hsnSac: { type: String, trim: true },                            // required on non-sample lines (controller)
+  pcs: { type: Number, required: true, min: 1, validate: { validator: Number.isInteger, message: 'pcs must be integer' } },
+  unit: { type: String, trim: true, default: '' },
+  rate: { type: Number, required: true, min: 0 },                  // per piece, excl. GST
+  amount: { type: Number, required: true, min: 0 },                // taxable value = pcs × rate
+  taxRate: { type: Number, required: true, min: 0, max: 100 },     // FROZEN at save
+  taxRateSource: { type: String, enum: ['rule', 'override'], default: 'rule' },
+  isSample: { type: Boolean, default: false }
+}, { _id: true });
+
+// One row per (HSN, rate) — printed as the HSN summary table and the basis of the tax totals.
+const TaxSummaryRowSchema = new mongoose.Schema({
+  hsnSac: String,
+  taxRate: Number,
+  taxableValue: Number,
+  cgstRate: Number,
+  cgstAmount: Number,
+  sgstRate: Number,
+  sgstAmount: Number,
+  igstRate: Number,
+  igstAmount: Number,
+  totalTax: Number
+}, { _id: false });
+
+const TaxInvoiceSchema = new mongoose.Schema({
+  taxInvoiceId: { type: String, unique: true },                    // internal: TI-YYYYMMDD###
+  invoiceNumber: { type: String, required: true, unique: true },   // INV2627/43 — Tax Invoice series
+  sourceInvoiceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', required: true },
+  sourceInvoiceNumber: { type: String, trim: true },               // frozen Bill of Supply number
+  date: { type: Date, required: true },
+  clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
+  billingFirmId: { type: mongoose.Schema.Types.ObjectId },
+  clientSnapshot: {
+    name: String, billingName: String, clientCode: String, gstin: String, pan: String, phone: String, email: String
+  },
+  billTo: { type: AddressSchema, default: () => ({}) },
+  shipTo: { type: AddressSchema, default: () => ({}) },
+  placeOfSupply: {
+    stateCode: { type: String, trim: true },
+    stateName: { type: String, trim: true }
+  },
+  supplyType: { type: String, enum: ['INTRA', 'INTER'], required: true }, // INTRA → CGST+SGST, INTER → IGST
+  // Seller block FROZEN at issue (Company Settings edits never change an issued Tax Invoice).
+  issuerSnapshot: {
+    name: String, addressLines: [String], gstin: String, pan: String, msmeType: String, msmeNumber: String,
+    email: String, phone: String, gstStateCode: String, gstStateName: String,
+    bank: { bankName: String, accountNumber: String, ifsc: String, accountName: String },
+    authorisedSignatory: { name: String, title: String }
+  },
+  transportMode: { type: String, trim: true, default: '' },              // always printed (blank if empty)
+  vehicleNo: { type: String, trim: true, uppercase: true, default: '' }, // always printed (blank if empty)
+  ewayBillNo: { type: String, trim: true, default: '' },                 // manual; printed when present
+  lines: { type: [TaxInvoiceLineSchema], default: [] },
+  taxSummary: { type: [TaxSummaryRowSchema], default: [] },
+  totalQty: { type: Number, default: 0, min: 0 },
+  taxableTotal: { type: Number, default: 0, min: 0 },
+  cgstTotal: { type: Number, default: 0, min: 0 },
+  sgstTotal: { type: Number, default: 0, min: 0 },
+  igstTotal: { type: Number, default: 0, min: 0 },
+  taxTotal: { type: Number, default: 0, min: 0 },
+  roundOff: { type: Number, default: 0 },
+  total: { type: Number, default: 0, min: 0 },
+  amountInWords: { type: String, trim: true },
+  status: { type: String, enum: ['issued', 'cancelled'], default: 'issued' },
+  cancelReason: { type: String, trim: true },
+  cancelledAt: { type: Date },
+  cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date }
+});
+TaxInvoiceSchema.index({ sourceInvoiceId: 1 });
+TaxInvoiceSchema.index({ date: -1 });
+TaxInvoiceSchema.index({ clientId: 1, date: -1 });
+
+// GstRateRule: effective-dated GST rate by HSN prefix, optionally slabbed by per-piece value.
+// Resolution: longest matching hsnPrefix, then latest effectiveFrom ≤ the invoice date.
+const GstRateRuleSchema = new mongoose.Schema({
+  hsnPrefix: { type: String, required: true, trim: true, match: /^\d{2,8}$/ },
+  thresholdPerPiece: { type: Number, min: 0, default: null },  // null = flat rateUpTo
+  rateUpTo: { type: Number, required: true, min: 0, max: 100 },
+  rateAbove: { type: Number, min: 0, max: 100, default: null },
+  effectiveFrom: { type: Date, required: true },
+  notes: { type: String, trim: true },
+  isActive: { type: Boolean, default: true },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date }
+});
+GstRateRuleSchema.index({ hsnPrefix: 1, effectiveFrom: -1 });
 
 // ClientPaymentEntry: ledger of payments + adjustments (mirror of VendorPaymentEntry).
 // paymentScope='invoice' applies to one invoice; 'client' is a lump sum against the client balance.
@@ -968,7 +1084,7 @@ const AuditLogSchema = new mongoose.Schema({
   // ⚠ Keep this in sync with every logAction(...) call site — a value missing here makes the
   // audit write throw, and before logger.js failed open that error FAILED the business
   // operation it was auditing ('ManualDispatch' and 'Lot' were both missing and live).
-  entity: { type: String, enum: ['User', 'Client', 'FitStyle', 'Order', 'Lot', 'Stitching', 'Washing', 'Finishing', 'VendorBalance', 'Invoice', 'ManualDispatch', 'Balance', 'Report', 'ClientBalance', 'ClientPayment', 'CompanySettings', 'AccessoryType', 'AccessoryItem', 'AccessoryPurchase', 'AccessoryPayment', 'AccessoryReturn', 'WashCreation', 'LotCosting'], required: true },
+  entity: { type: String, enum: ['User', 'Client', 'FitStyle', 'Order', 'Lot', 'Stitching', 'Washing', 'Finishing', 'VendorBalance', 'Invoice', 'TaxInvoice', 'GstRateRule', 'ManualDispatch', 'Balance', 'Report', 'ClientBalance', 'ClientPayment', 'CompanySettings', 'AccessoryType', 'AccessoryItem', 'AccessoryPurchase', 'AccessoryPayment', 'AccessoryReturn', 'WashCreation', 'LotCosting'], required: true },
   entityId: { type: mongoose.Schema.Types.ObjectId, required: true },
   details: { type: String },
   createdAt: { type: Date, default: Date.now }
@@ -1070,6 +1186,8 @@ module.exports = {
   CompanySettings: mongoose.model('CompanySettings', CompanySettingsSchema),
   Invoice: mongoose.model('Invoice', InvoiceSchema),
   InvoiceHistory: mongoose.model('InvoiceHistory', InvoiceHistorySchema),
+  TaxInvoice: mongoose.model('TaxInvoice', TaxInvoiceSchema),
+  GstRateRule: mongoose.model('GstRateRule', GstRateRuleSchema),
   ManualDispatch: mongoose.model('ManualDispatch', ManualDispatchSchema),
   ManualDispatchHistory: mongoose.model('ManualDispatchHistory', ManualDispatchHistorySchema),
   ClientPaymentEntry: mongoose.model('ClientPaymentEntry', ClientPaymentEntrySchema),

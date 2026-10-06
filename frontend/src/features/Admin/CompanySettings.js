@@ -24,6 +24,7 @@ function CompanySettings() {
   const [submitting, setSubmitting] = useState(false);
 
   // Invoice counter state
+  const [counterType, setCounterType] = useState('BILL_OF_SUPPLY'); // each document type has its own series
   const [counterFy, setCounterFy] = useState(fyShortFor(new Date()));
   const [counterInfo, setCounterInfo] = useState(null);
   const [counterDraft, setCounterDraft] = useState(''); // user-entered "last issued" sequence
@@ -43,6 +44,7 @@ function CompanySettings() {
       bank: { bankName: '', accountNumber: '', ifsc: '', accountName: '' },
       authorisedSignatory: { name: '', title: '' },
       defaultInvoicePrefix: 'INV',
+      taxInvoicePrefix: 'INV',
       defaultDocumentType: 'BILL_OF_SUPPLY'
     }
   });
@@ -62,6 +64,7 @@ function CompanySettings() {
           bank: s.bank || { bankName: '', accountNumber: '', ifsc: '', accountName: '' },
           authorisedSignatory: s.authorisedSignatory || { name: '', title: '' },
           defaultInvoicePrefix: s.defaultInvoicePrefix || 'INV',
+          taxInvoicePrefix: s.taxInvoicePrefix || 'INV',
           defaultDocumentType: s.defaultDocumentType || 'BILL_OF_SUPPLY'
         });
         const ls = (s.notifications && s.notifications.lowStock) || {};
@@ -76,7 +79,7 @@ function CompanySettings() {
   }, [reset]);
 
   const loadCounter = (fy) => {
-    apiService.salesInvoices.getInvoiceCounter(fy)
+    apiService.salesInvoices.getInvoiceCounter(fy, counterType)
       .then((info) => {
         setCounterInfo(info);
         setCounterDraft(String(info.sequence || 0));
@@ -89,13 +92,13 @@ function CompanySettings() {
   useEffect(() => {
     if (/^\d{4}$/.test(counterFy)) loadCounter(counterFy);
     /* eslint-disable-next-line */
-  }, [counterFy]);
+  }, [counterFy, counterType]);
 
   const handleSetCounter = () => {
     const seq = parseInt(counterDraft, 10);
     if (!Number.isInteger(seq) || seq < 0) return showSnackbar('Sequence must be a non-negative integer');
     setCounterSaving(true);
-    apiService.salesInvoices.setInvoiceCounter(counterFy, seq)
+    apiService.salesInvoices.setInvoiceCounter(counterFy, seq, counterType)
       .then((info) => {
         setCounterInfo(info);
         showSnackbar(`Next invoice will be ${info.nextInvoiceNumber}`, 'success');
@@ -143,6 +146,7 @@ function CompanySettings() {
       addressLines: (data.addressLines || []).map((l) => l.value).filter((s) => s && s.trim())
     };
     delete payload.defaultInvoicePrefix; // locked server-side; never sent
+    delete payload.taxInvoicePrefix;     // locked server-side; never sent
     apiService.companySettings.updateSettings(payload)
       .then(() => showSnackbar('Settings saved', 'success'))
       .catch((e) => showSnackbar(e))
@@ -259,12 +263,11 @@ function CompanySettings() {
                 )} />
             </Grid>
             <Grid size={{ xs: 6, md: 2 }}>
-              <Controller name="defaultDocumentType" control={control}
+              <Controller name="taxInvoicePrefix" control={control}
                 render={({ field }) => (
-                  <TextField {...field} select label="Default Doc Type" fullWidth variant="standard">
-                    <MenuItem value="BILL_OF_SUPPLY">Bill of Supply</MenuItem>
-                    <MenuItem value="TAX_INVOICE">Tax Invoice</MenuItem>
-                  </TextField>
+                  <TextField {...field} label="Tax Invoice # Prefix" fullWidth variant="standard"
+                    InputProps={{ readOnly: true }}
+                    helperText="Locked — own series per FY" />
                 )} />
             </Grid>
           </Grid>
@@ -287,9 +290,20 @@ function CompanySettings() {
           <Typography variant="h6">Invoice Number Counter</Typography>
         </Stack>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Sets the starting point for invoice numbers in a fiscal year (Apr–Mar). Useful when migrating from another system that's already at a certain sequence. Counter holds the <b>last issued</b> number; the next invoice will be one higher. Cannot be set lower than the highest existing invoice for that FY.
+          Sets the starting point for invoice numbers in a fiscal year (Apr–Mar). Useful when migrating from another system that's already at a certain sequence. Counter holds the <b>last issued</b> number; the next invoice will be one higher. Cannot be set lower than the highest existing invoice for that FY. <b>Bills of Supply and Tax Invoices run separate series</b> — pick which one to set.
         </Typography>
         <Grid container spacing={2} alignItems="flex-end">
+          <Grid size={{ xs: 12, md: 2 }}>
+            <TextField
+              select label="Series" value={counterType}
+              onChange={(e) => setCounterType(e.target.value)}
+              fullWidth variant="standard"
+              helperText="Document type"
+            >
+              <MenuItem value="BILL_OF_SUPPLY">Bill of Supply</MenuItem>
+              <MenuItem value="TAX_INVOICE">Tax Invoice</MenuItem>
+            </TextField>
+          </Grid>
           <Grid size={{ xs: 6, md: 2 }}>
             <TextField
               label="Fiscal Year (short)"
@@ -299,7 +313,7 @@ function CompanySettings() {
               helperText="e.g. 2627 = FY 2026-27"
             />
           </Grid>
-          <Grid size={{ xs: 6, md: 3 }}>
+          <Grid size={{ xs: 6, md: 2 }}>
             <TextField
               label="Last issued sequence"
               type="number"
@@ -310,7 +324,7 @@ function CompanySettings() {
               helperText="Next invoice will be one higher"
             />
           </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
+          <Grid size={{ xs: 12, md: 3 }}>
             {/* Desktop: pb spacer aligns Stack bottom with TextField input bottom (helperText height).
                 Mobile: no need to align since the chip wraps to its own row — drop the extra padding. */}
             <Box sx={{ pb: { xs: 0, md: '20px' }, minHeight: { xs: 'auto', md: 32 }, display: 'flex', alignItems: 'center' }}>
@@ -318,7 +332,7 @@ function CompanySettings() {
                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                   <Typography variant="body2" color="text.secondary">Next invoice will be:</Typography>
                   <Chip
-                    label={`${counterInfo.prefix || 'INV'}${counterFy}/${(parseInt(counterDraft, 10) || 0) + 1}`}
+                    label={`${counterInfo.prefix || 'INV'}${counterFy}/${String((parseInt(counterDraft, 10) || 0) + 1).padStart(counterType === 'TAX_INVOICE' ? 2 : 1, '0')}`}
                     color="primary"
                     variant="outlined"
                   />

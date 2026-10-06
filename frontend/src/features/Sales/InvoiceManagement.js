@@ -4,13 +4,14 @@ import {
   Box, Typography, Button, IconButton, Stack, TextField, MenuItem,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer, TablePagination, TableSortLabel,
   Dialog, DialogTitle, DialogContent, DialogActions, Tooltip, Chip,
-  Card, CardContent, Grid, Menu, useTheme, Divider, Paper
+  Card, CardContent, Grid, Menu, useTheme, Divider, Paper, Alert
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, PictureAsPdf as PdfIcon,
   Cancel as CancelIcon, Visibility as ViewIcon,
   MoreVert as MoreVertIcon, Search as SearchIcon,
-  ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon
+  ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon,
+  DeleteOutline as DeleteIcon, ReceiptLong as TaxInvoiceIcon
 } from '@mui/icons-material';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
@@ -22,6 +23,28 @@ const fmtINR = (n) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2,
 const fmtDate = (d) => d ? dayjs(d).format('DD/MM/YYYY') : '';
 
 const statusColor = (s) => s === 'issued' ? 'success' : s === 'cancelled' ? 'error' : 'default';
+
+// Bills of Supply and Tax Invoices share this grid (separate collections + number series).
+// `_docType` comes from the list API; `taxInvoices` on a Bill of Supply row lists any Tax
+// Invoice generated from it.
+const isTaxRow = (inv) => inv?._docType === 'TAX_INVOICE';
+const activeTaxInvoiceOf = (inv) => (inv?.taxInvoices || []).find((t) => t.status === 'issued') || null;
+const DOC_TYPE_FILTERS = [
+  { value: 'ALL', label: 'All' },
+  { value: 'BILL_OF_SUPPLY', label: 'Bill of Supply' },
+  { value: 'TAX_INVOICE', label: 'Tax Invoice (GST)' }
+];
+const DocTypeChip = ({ inv }) => (
+  <Chip size="small" variant="outlined" color={isTaxRow(inv) ? 'secondary' : 'default'}
+    label={isTaxRow(inv) ? 'GST' : 'BoS'}
+    sx={{ height: 18, ml: 0.75, verticalAlign: 'middle', '& .MuiChip-label': { px: 0.6, fontSize: '0.65rem', fontWeight: 700 } }} />
+);
+// One caption linking the two documents: "→ TI INV2627/43" on a BoS, "from INV2627/36" on a TI.
+const linkCaption = (inv) => {
+  if (isTaxRow(inv)) return inv.sourceInvoiceNumber ? `from ${inv.sourceInvoiceNumber}` : '';
+  const ti = activeTaxInvoiceOf(inv);
+  return ti ? `→ TI ${ti.invoiceNumber}` : '';
+};
 
 // Columns the list can be sorted by (shared: desktop header labels + mobile sort dropdown).
 const SORT_COLUMNS = [
@@ -91,6 +114,11 @@ function InvoiceManagement() {
   const [sortBy, setSortBy] = useState('date');           // default: date (calendar day, time ignored) desc, then invoice # desc
   const [sortDir, setSortDir] = useState('desc');
   const [cancelReason, setCancelReason] = useState('');
+  const [docType, setDocType] = useState('ALL');           // ALL | BILL_OF_SUPPLY | TAX_INVOICE
+  const [taxSource, setTaxSource] = useState(null);         // Bill of Supply a Tax Invoice is generated from
+  const [editTaxInvoice, setEditTaxInvoice] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [blockedNotice, setBlockedNotice] = useState(''); // why a cancel/delete isn't allowed yet
 
   // Edit / cancel are admin-only on the server (routes/salesInvoices.js). Mirror it here so
   // non-admins see disabled actions instead of a 403 after clicking. Same localStorage
@@ -103,6 +131,7 @@ function InvoiceManagement() {
     setLoading(true);
     apiService.salesInvoices
       .listInvoices({
+        documentType: docType !== 'ALL' ? docType : undefined,
         clientId: filters.clientId || undefined,
         status: filters.status || undefined,
         search: appliedSearch || undefined,
@@ -123,7 +152,7 @@ function InvoiceManagement() {
 
   // Server-side: reload whenever a filter, the committed search, sort, or the page/size changes.
   useEffect(() => { load(); /* eslint-disable-next-line */ },
-    [filters.clientId, filters.status, appliedSearch, page, rowsPerPage, sortBy, sortDir]);
+    [filters.clientId, filters.status, docType, appliedSearch, page, rowsPerPage, sortBy, sortDir]);
 
   // Commit the typed search term (also resets to the first page).
   const applySearch = () => { setPage(0); setAppliedSearch(filters.search.trim()); };
@@ -147,16 +176,77 @@ function InvoiceManagement() {
     }
   };
 
-  const handleNew = () => { setEditInvoice(null); setModalOpen(true); };
-  const handleEdit = (inv) => { setEditInvoice(inv); setModalOpen(true); };
+  const resetModal = () => { setEditInvoice(null); setTaxSource(null); setEditTaxInvoice(null); };
+  const handleNew = () => { resetModal(); setModalOpen(true); };
+  const handleEdit = async (inv) => {
+    resetModal();
+    if (!isTaxRow(inv)) { setEditInvoice(inv); setModalOpen(true); return; }
+    try {
+      setEditTaxInvoice(await apiService.taxInvoices.getById(inv._id));
+      setModalOpen(true);
+    } catch (e) { showSnackbar(e); }
+  };
+  // "Generate Tax Invoice": the form opens prefilled from the full Bill of Supply.
+  const handleGenerateTax = async (inv) => {
+    resetModal();
+    try {
+      setTaxSource(await apiService.salesInvoices.getInvoiceById(inv._id));
+      setModalOpen(true);
+    } catch (e) { showSnackbar(e); }
+  };
   const handleSaved = () => { load(); };
 
   const closeCancel = () => { setCancelTarget(null); setCancelReason(''); };
 
+  // A Bill of Supply drives the business; its Tax Invoice must be cancelled/deleted first.
+  const requestCancel = (inv) => {
+    const ti = !isTaxRow(inv) && activeTaxInvoiceOf(inv);
+    if (ti) {
+      setBlockedNotice(`Tax Invoice ${ti.invoiceNumber} was generated from ${inv.invoiceNumber}. Cancel or delete that Tax Invoice first, then cancel this Bill of Supply.`);
+      return;
+    }
+    setCancelTarget(inv);
+  };
+
+  // Delete only the latest number of a series, Tax Invoice before its Bill of Supply. A Bill of
+  // Supply whose Tax Invoice was cancelled (kept on record) can only be cancelled.
+  const requestDelete = (inv) => {
+    if (!isTaxRow(inv)) {
+      const anyTi = (inv.taxInvoices || [])[0];
+      if (anyTi) {
+        setBlockedNotice(anyTi.status === 'cancelled'
+          ? `Tax Invoice ${anyTi.invoiceNumber} (cancelled) was generated from ${inv.invoiceNumber}, so this Bill of Supply can only be cancelled.`
+          : `Delete Tax Invoice ${anyTi.invoiceNumber} first — it was generated from ${inv.invoiceNumber}.`);
+        return;
+      }
+    }
+    if (!inv.canDelete) {
+      setBlockedNotice(isTaxRow(inv) && inv.status === 'cancelled'
+        ? `${inv.invoiceNumber} is cancelled — cancelled Tax Invoices are kept on record.`
+        : `Only the most recently issued number can be deleted. Cancel ${inv.invoiceNumber} instead — it keeps its number.`);
+      return;
+    }
+    setDeleteTarget(inv);
+  };
+
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    setLoading(true);
+    const req = isTaxRow(deleteTarget)
+      ? apiService.taxInvoices.delete(deleteTarget._id)
+      : apiService.salesInvoices.deleteInvoice(deleteTarget._id);
+    req
+      .then(() => { showSnackbar(`${deleteTarget.invoiceNumber} deleted`, 'success'); setDeleteTarget(null); load(); })
+      .catch((e) => { showSnackbar(e); setLoading(false); });
+  };
+
   const handleCancel = () => {
     if (!cancelTarget || cancelReason.trim().length < 3) return;
     setLoading(true);
-    apiService.salesInvoices.cancelInvoice(cancelTarget._id, cancelReason.trim())
+    const req = isTaxRow(cancelTarget)
+      ? apiService.taxInvoices.cancel(cancelTarget._id, cancelReason.trim())
+      : apiService.salesInvoices.cancelInvoice(cancelTarget._id, cancelReason.trim());
+    req
       .then(() => {
         showSnackbar('Invoice cancelled', 'success');
         closeCancel();
@@ -165,16 +255,21 @@ function InvoiceManagement() {
       .catch((e) => { showSnackbar(e); setLoading(false); });
   };
 
+  // Full document for the PDF. Tax Invoices are flagged so the PDF service uses the GST layout.
+  const fetchFull = async (inv) => (isTaxRow(inv)
+    ? { ...(await apiService.taxInvoices.getById(inv._id)), _docType: 'TAX_INVOICE' }
+    : apiService.salesInvoices.getInvoiceById(inv._id));
+
   const handlePdf = async (inv) => {
     try {
-      const full = await apiService.salesInvoices.getInvoiceById(inv._id);
+      const full = await fetchFull(inv);
       await downloadInvoicePdf(full, settings);
     } catch (e) { showSnackbar(e); }
   };
 
   const handlePreview = async (inv) => {
     try {
-      const full = await apiService.salesInvoices.getInvoiceById(inv._id);
+      const full = await fetchFull(inv);
       const result = await previewInvoicePdf(full, settings);
       setPreviewUrl(result?.url || null);
     } catch (e) { showSnackbar(e); }
@@ -206,7 +301,7 @@ function InvoiceManagement() {
           ))}
         </TextField>
       </Grid>
-      <Grid size={{ xs: 6 }}>
+      <Grid size={{ xs: 3 }}>
         <TextField
           select label="Status" value={filters.status}
           onChange={(e) => { setPage(0); setFilters({ ...filters, status: e.target.value }); }}
@@ -216,6 +311,15 @@ function InvoiceManagement() {
           <MenuItem value="issued">Issued</MenuItem>
           <MenuItem value="cancelled">Cancelled</MenuItem>
           <MenuItem value="draft">Draft</MenuItem>
+        </TextField>
+      </Grid>
+      <Grid size={{ xs: 3 }}>
+        <TextField
+          select label="Type" value={docType}
+          onChange={(e) => { setPage(0); setDocType(e.target.value); }}
+          fullWidth variant="standard"
+        >
+          {DOC_TYPE_FILTERS.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
         </TextField>
       </Grid>
       <Grid size={{ xs: 8 }}>
@@ -286,6 +390,13 @@ function InvoiceManagement() {
         <MenuItem value="draft">Draft</MenuItem>
       </TextField>
       <TextField
+        select label="Type" value={docType}
+        onChange={(e) => { setPage(0); setDocType(e.target.value); }}
+        sx={{ minWidth: 170 }} variant="standard"
+      >
+        {DOC_TYPE_FILTERS.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
+      </TextField>
+      <TextField
         label="Search (invoice #, client, lot #)"
         value={filters.search}
         onChange={(e) => handleSearchChange(e.target.value)}
@@ -319,9 +430,10 @@ function InvoiceManagement() {
               <Grid size={{ xs: 7 }} sx={{ textAlign: 'left' }}>
                 <Typography variant="subtitle1" fontWeight="bold">
                   {inv.invoiceNumber}
+                  <DocTypeChip inv={inv} />
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {fmtDate(inv.date)}
+                  {fmtDate(inv.date)}{linkCaption(inv) ? ` · ${linkCaption(inv)}` : ''}
                 </Typography>
               </Grid>
               <Grid size={{ xs: 3 }} sx={{ textAlign: 'right' }}>
@@ -353,12 +465,28 @@ function InvoiceManagement() {
                   >
                     <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
                   </MenuItem>
+                  {!isTaxRow(inv) && (
+                    <MenuItem
+                      dense divider
+                      disabled={inv.status !== 'issued' || !!activeTaxInvoiceOf(inv)}
+                      onClick={() => { handleGenerateTax(inv); handleMenuClose(); }}
+                    >
+                      <TaxInvoiceIcon fontSize="small" sx={{ mr: 1 }} /> Generate Tax Invoice
+                    </MenuItem>
+                  )}
                   <MenuItem
-                    dense
+                    dense divider
                     disabled={!isAdmin || inv.status === 'cancelled'}
-                    onClick={() => { setCancelTarget(inv); handleMenuClose(); }}
+                    onClick={() => { requestCancel(inv); handleMenuClose(); }}
                   >
                     <CancelIcon fontSize="small" sx={{ mr: 1 }} /> Cancel
+                  </MenuItem>
+                  <MenuItem
+                    dense
+                    disabled={!isAdmin || !inv.isLatestInSeries}
+                    onClick={() => { requestDelete(inv); handleMenuClose(); }}
+                  >
+                    <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Delete
                   </MenuItem>
                 </Menu>
               </Grid>
@@ -440,7 +568,12 @@ function InvoiceManagement() {
           ) : pagedInvoices.map((inv) => (
             <TableRow key={inv._id} hover>
               <TableCell sx={{ whiteSpace: 'nowrap' }}>{fmtDate(inv.date)}</TableCell>
-              <TableCell><b>{inv.invoiceNumber}</b></TableCell>
+              <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                <b>{inv.invoiceNumber}</b><DocTypeChip inv={inv} />
+                {linkCaption(inv) && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{linkCaption(inv)}</Typography>
+                )}
+              </TableCell>
               <TableCell sx={{ maxWidth: 200 }}>
                 <EllipsisText text={inv.clientSnapshot?.name || inv.clientId?.name} />
               </TableCell>
@@ -464,8 +597,16 @@ function InvoiceManagement() {
                   <Tooltip title={isAdmin ? 'Edit' : 'Edit (admins only)'}><span>
                     <IconButton size="small" disabled={!isAdmin || inv.status === 'cancelled'} onClick={() => handleEdit(inv)}><EditIcon fontSize="small" /></IconButton>
                   </span></Tooltip>
+                  {!isTaxRow(inv) && (
+                    <Tooltip title={activeTaxInvoiceOf(inv) ? `Tax Invoice ${activeTaxInvoiceOf(inv).invoiceNumber} exists` : 'Generate Tax Invoice'}><span>
+                      <IconButton size="small" disabled={inv.status !== 'issued' || !!activeTaxInvoiceOf(inv)} onClick={() => handleGenerateTax(inv)}><TaxInvoiceIcon fontSize="small" /></IconButton>
+                    </span></Tooltip>
+                  )}
                   <Tooltip title={isAdmin ? 'Cancel' : 'Cancel (admins only)'}><span>
-                    <IconButton size="small" disabled={!isAdmin || inv.status === 'cancelled'} onClick={() => setCancelTarget(inv)}><CancelIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" disabled={!isAdmin || inv.status === 'cancelled'} onClick={() => requestCancel(inv)}><CancelIcon fontSize="small" /></IconButton>
+                  </span></Tooltip>
+                  <Tooltip title={!isAdmin ? 'Delete (admins only)' : (inv.isLatestInSeries ? 'Delete' : 'Only the latest number can be deleted')}><span>
+                    <IconButton size="small" disabled={!isAdmin || !inv.isLatestInSeries} onClick={() => requestDelete(inv)}><DeleteIcon fontSize="small" /></IconButton>
                   </span></Tooltip>
                 </Box>
               </TableCell>
@@ -503,18 +644,20 @@ function InvoiceManagement() {
 
       <InvoiceFormModal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={() => { setModalOpen(false); resetModal(); }}
         onSaved={handleSaved}
         editInvoice={editInvoice}
+        taxSource={taxSource}
+        editTaxInvoice={editTaxInvoice}
       />
 
       <Dialog open={!!cancelTarget} onClose={closeCancel} fullWidth maxWidth="xs">
-        <DialogTitle>Cancel invoice {cancelTarget?.invoiceNumber}?</DialogTitle>
+        <DialogTitle>Cancel {isTaxRow(cancelTarget) ? 'Tax Invoice' : 'invoice'} {cancelTarget?.invoiceNumber}?</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2 }}>
-            The invoice will be marked cancelled and its lots' pcs returned to the available pool.
-            The number stays used, so the series has no gap. This cannot be undone (you'd need to
-            create a new invoice).
+            {isTaxRow(cancelTarget)
+              ? 'The Tax Invoice will be marked cancelled. Stock and balances are unaffected — they follow the Bill of Supply, which can then generate a new Tax Invoice. The number stays used.'
+              : "The invoice will be marked cancelled and its lots' pcs returned to the available pool. The number stays used, so the series has no gap. This cannot be undone (you'd need to create a new invoice)."}
           </Typography>
           <TextField
             label="Reason for cancellation"
@@ -530,6 +673,27 @@ function InvoiceManagement() {
             disabled={loading || cancelReason.trim().length < 3}>
             Cancel Invoice
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!blockedNotice} onClose={() => setBlockedNotice('')} fullWidth maxWidth="xs">
+        <DialogTitle>Not allowed yet</DialogTitle>
+        <DialogContent><Alert severity="warning">{blockedNotice}</Alert></DialogContent>
+        <DialogActions><Button onClick={() => setBlockedNotice('')}>OK</Button></DialogActions>
+      </Dialog>
+
+      <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} fullWidth maxWidth="xs">
+        <DialogTitle>Delete {isTaxRow(deleteTarget) ? 'Tax Invoice' : 'Bill of Supply'} {deleteTarget?.invoiceNumber}?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {isTaxRow(deleteTarget)
+              ? 'The Tax Invoice is removed and its number is reissued to the next Tax Invoice. Its Bill of Supply is not touched.'
+              : "The Bill of Supply is removed, its lots' pcs return to the available pool and its number is reissued to the next Bill of Supply."}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTarget(null)}>Keep</Button>
+          <Button color="error" variant="contained" onClick={handleDelete} disabled={loading}>Delete</Button>
         </DialogActions>
       </Dialog>
 

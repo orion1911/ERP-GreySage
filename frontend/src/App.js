@@ -14,6 +14,7 @@ import Login from './features/Login/Login';
 import Register from './features/Login/Register';
 import UserManagement from './features/Admin/UserManagement';
 import CompanySettings from './features/Admin/CompanySettings';
+import GstRates from './features/Admin/GstRates';
 import Reports from './features/Admin/Reports';
 import AuditLogs from './features/Admin/AuditLogs';
 import Dashboard from './features/Admin/Dashboard';
@@ -237,6 +238,7 @@ function App() {
                 <Route path="/users" element={<UserManagement />} />
                 <Route path="/audit-logs" element={<AuditLogs />} />
                 <Route path="/admin/company-settings" element={<CompanySettings />} />
+                <Route path="/admin/gst-rates" element={<GstRates />} />
                 {/* Account creation is an admin action. This was previously a PUBLIC
                     route, which — combined with the form's Role dropdown and an
                     unauthenticated POST /api/register — let anyone self-register as

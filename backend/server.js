@@ -32,6 +32,8 @@ const waistSizeRoutes = require('./routes/waistSizes');
 const cuttingSheetRoutes = require('./routes/cuttingSheets');
 const washCreationRoutes = require('./routes/washCreations');
 const costingRoutes = require('./routes/costing');
+const taxInvoiceRoutes = require('./routes/taxInvoices');
+const gstRateRoutes = require('./routes/gstRates');
 
 // Middleware
 const errorHandler = require('./middleware/error');
@@ -143,6 +145,8 @@ app.use('/api/vendor-balances', vendorBalanceRoutes);
 app.use('/api/sales-invoices', salesInvoiceRoutes);
 app.use('/api/client-balances', clientBalanceRoutes);
 app.use('/api/company-settings', companySettingsRoutes);
+app.use('/api/tax-invoices', taxInvoiceRoutes); // GST Tax Invoices generated from a Bill of Supply
+app.use('/api/gst-rates', gstRateRoutes);        // effective-dated GST rate rules (admin)
 app.use('/api/accessories', accessoryRoutes);
 app.use('/api', balancesRoutes);
 app.use('/api', reportRoutes);

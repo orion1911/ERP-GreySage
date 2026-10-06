@@ -6,7 +6,8 @@ const {
   CompanySettings,
   ManualDispatch,
   ClientPaymentEntry,
-  Counter
+  Counter,
+  TaxInvoice
 } = require('../mongodb_schema');
 const {
   getLotsAvailableForDispatch,
@@ -30,7 +31,10 @@ const {
   parseInvoiceNumber,
   getInvoicePrefix,
   lockLotsForDispatch,
-  DEFAULT_INVOICE_PREFIX
+  DEFAULT_INVOICE_PREFIX,
+  getTaxInvoicePrefix,
+  seriesCounterId,
+  formatInvoiceNumber
 } = require('../services/invoiceService');
 const { updateClientBalance } = require('../services/clientBalanceService');
 const { bumpVersion } = require('../services/cache');
@@ -356,21 +360,25 @@ const buildAndValidateLines = async (rawLines, excludeInvoiceId = null, invoiceC
  * GET /api/sales-invoices/lots-available?clientId=&search=&crossClient=
  * crossClient=true widens the pool to every client's lots (a lot produced for one client
  * being billed to another). clientId still ranks the results — own lots first.
+ * excludeInvoiceId=<id> (edit mode) adds that invoice's own pcs back to each lot's remaining.
  */
 const getLotsAvailable = async (req, res) => {
   const { clientId, search } = req.query;
   const crossClient = req.query.crossClient === 'true' || req.query.crossClient === '1';
-  const lots = await getLotsAvailableForDispatch({ clientId, search, crossClient });
+  const includeDispatched = req.query.includeDispatched === 'true' || req.query.includeDispatched === '1';
+  const excludeInvoiceId = mongoose.isValidObjectId(req.query.excludeInvoiceId) ? req.query.excludeInvoiceId : null;
+  const lots = await getLotsAvailableForDispatch({ clientId, search, crossClient, includeDispatched, excludeInvoiceId });
   res.json(lots);
 };
 
 /**
- * GET /api/sales-invoices/lots-damaged-available?search=
+ * GET /api/sales-invoices/lots-damaged-available?search=&excludeInvoiceId=
  * Cross-client list of lots with damaged pcs still available (for the combined-damaged sale).
  */
 const getLotsDamagedAvailable = async (req, res) => {
   const { search } = req.query;
-  const lots = await getLotsWithDamagedAvailable({ search });
+  const excludeInvoiceId = mongoose.isValidObjectId(req.query.excludeInvoiceId) ? req.query.excludeInvoiceId : null;
+  const lots = await getLotsWithDamagedAvailable({ search, excludeInvoiceId });
   res.json(lots);
 };
 
@@ -468,7 +476,6 @@ const createInvoice = async (req, res) => {
   if (!clientId) return res.status(400).json({ error: 'Client is required' });
   const invoiceDate = parseInvoiceDate(date);
   const roundOffValue = parseRoundOff(roundOff);
-  const requestedDocType = parseDocumentType(documentType);
   const requestedPos = parsePlaceOfSupply(placeOfSupply);
 
   const client = await Client.findById(clientId);
@@ -505,7 +512,9 @@ const createInvoice = async (req, res) => {
 
     const settings = await withSession(CompanySettings.findOne(), session);
     const prefix = settings?.defaultInvoicePrefix || DEFAULT_INVOICE_PREFIX;
-    const docType = requestedDocType || settings?.defaultDocumentType || 'BILL_OF_SUPPLY';
+    // This endpoint issues Bills of Supply only. Tax Invoices are generated FROM a Bill of
+    // Supply by taxInvoiceController, in their own collection and number series.
+    const docType = 'BILL_OF_SUPPLY';
 
     const doc = new Invoice({
       documentType: docType,
@@ -555,7 +564,6 @@ const updateInvoice = async (req, res) => {
   // Parse up front so a malformed field fails before any transaction work.
   const newDate = (date !== undefined && date !== null && date !== '') ? parseInvoiceDate(date) : null;
   const newRoundOff = roundOff !== undefined ? parseRoundOff(roundOff) : undefined;
-  const newDocType = parseDocumentType(documentType);
   const newPos = parsePlaceOfSupply(placeOfSupply);
 
   const invoice = await runInTransaction(async (session) => {
@@ -590,7 +598,7 @@ const updateInvoice = async (req, res) => {
     }
     if (newPos) existing.placeOfSupply = newPos;
     if (newRoundOff !== undefined) existing.roundOff = newRoundOff;
-    if (newDocType) existing.documentType = newDocType;
+    // documentType is never changed here: a Bill of Supply stays a Bill of Supply.
 
     // Client snapshot is FROZEN at issue — never refreshed on edit.
 
@@ -634,6 +642,15 @@ const cancelInvoice = async (req, res) => {
     const doc = await withSession(Invoice.findById(id), session);
     if (!doc) throw new HttpError(404, 'Invoice not found');
     if (doc.status === 'cancelled') throw new HttpError(400, 'Already cancelled');
+    // The Bill of Supply drives the business; its Tax Invoice must go first.
+    const activeTi = await withSession(
+      TaxInvoice.findOne({ sourceInvoiceId: doc._id, status: 'issued' }).select('invoiceNumber'), session
+    ).lean();
+    if (activeTi) {
+      throw new HttpError(409,
+        `Tax Invoice ${activeTi.invoiceNumber} was generated from ${doc.invoiceNumber}. ` +
+        `Cancel or delete that Tax Invoice first.`);
+    }
 
     const before = doc.toObject();
     const lotIds = collectLotIds(doc.lines);
@@ -691,6 +708,17 @@ const deleteInvoice = async (req, res) => {
         `Only the most recently issued number can be deleted — FY ${numbered.fy} is at ` +
         `/${counter?.sequence ?? 0}, so deleting ${doc.invoiceNumber} would leave a gap. ` +
         `Cancel it instead; a cancelled invoice keeps its number.`);
+    }
+
+    // Order: a Tax Invoice must be DELETED (not just cancelled) before its Bill of Supply can be.
+    // If one was issued and still exists — even cancelled — this Bill of Supply is cancel-only.
+    const anyTi = await withSession(
+      TaxInvoice.findOne({ sourceInvoiceId: doc._id }).select('invoiceNumber status'), session
+    ).lean();
+    if (anyTi) {
+      throw new HttpError(409, anyTi.status === 'cancelled'
+        ? `Tax Invoice ${anyTi.invoiceNumber} (cancelled) was generated from ${doc.invoiceNumber}, so this Bill of Supply can only be cancelled.`
+        : `Delete Tax Invoice ${anyTi.invoiceNumber} first — it was generated from ${doc.invoiceNumber}.`);
     }
 
     const paymentCount = await withSession(ClientPaymentEntry.countDocuments({ invoiceId: doc._id }), session);
@@ -752,19 +780,26 @@ const buildInvoiceSort = (sortBy, sortDir) => {
 };
 
 /**
- * GET /api/sales-invoices?clientId=&from=&to=&status=&search=&page=&limit=&sortBy=&sortDir=
- * Server-side filtered, sorted, and paged. Returns { rows, total }.
- * Uses an aggregation (not find) so the default can sort by calendar day ignoring the time.
+ * GET /api/sales-invoices?documentType=ALL|BILL_OF_SUPPLY|TAX_INVOICE
+ *                        &clientId=&from=&to=&status=&search=&page=&limit=&sortBy=&sortDir=
+ * Bills of Supply (`invoices`) and Tax Invoices (`taxinvoices`) are separate collections with
+ * separate number series; ALL merges them with $unionWith BEFORE sorting/paging. Every row
+ * carries `_docType`, `isLatestInSeries` and `canDelete`; Bill of Supply rows also carry
+ * `taxInvoices` ([{ invoiceNumber, status, date }], newest first). Returns { rows, total, counts }.
  */
 const listInvoices = async (req, res) => {
   const { clientId, from, to, status, search, sortBy = 'date', sortDir = 'desc' } = req.query;
+  const docType = ['BILL_OF_SUPPLY', 'TAX_INVOICE'].includes(req.query.documentType) ? req.query.documentType : 'ALL';
   const page = Math.max(0, parseInt(req.query.page, 10) || 0);
   const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 25));
 
   const match = {};
   // Aggregation $match does NOT cast like find(): convert the clientId string to an ObjectId.
-  if (clientId) match.clientId = new mongoose.Types.ObjectId(clientId);
-  if (status) match.status = status;
+  if (clientId) {
+    if (!mongoose.isValidObjectId(clientId)) return res.status(400).json({ error: 'Invalid clientId' });
+    match.clientId = new mongoose.Types.ObjectId(clientId);
+  }
+  if (typeof status === 'string' && status) match.status = status; // strings only — no operator injection
   if (from || to) {
     match.date = {};
     if (from) match.date.$gte = new Date(from);
@@ -774,6 +809,7 @@ const listInvoices = async (req, res) => {
     const re = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); // 'i' = case-insensitive
     match.$or = [
       { invoiceNumber: re },
+      { sourceInvoiceNumber: re },              // Tax Invoices: find by their Bill of Supply number
       { 'clientSnapshot.name': re },
       { 'clientSnapshot.billingName': re },     // firm name printed on the invoice
       { 'lines.lotNumberSnapshot': re },        // single-lot lines
@@ -781,8 +817,8 @@ const listInvoices = async (req, res) => {
     ];
   }
 
-  const pipeline = [
-    { $match: match },
+  const typed = (type) => [{ $match: match }, { $addFields: { _docType: type } }];
+  const tail = [
     { $addFields: { _day: { $dateToString: { format: '%Y-%m-%d', date: '$date', timezone: LIST_TZ } } } },
     { $sort: buildInvoiceSort(sortBy, sortDir) },
     { $skip: page * limit },
@@ -793,14 +829,54 @@ const listInvoices = async (req, res) => {
         pipeline: [{ $project: { name: 1, clientCode: 1 } }], as: '_clientArr'
     } },
     { $addFields: { clientId: { $ifNull: [{ $arrayElemAt: ['$_clientArr', 0] }, '$clientId'] } } },
+    // Tax Invoices generated from each Bill of Supply row (always empty for Tax Invoice rows).
+    { $lookup: {
+        from: TaxInvoice.collection.name, localField: '_id', foreignField: 'sourceInvoiceId',
+        pipeline: [{ $sort: { createdAt: -1 } }, { $project: { invoiceNumber: 1, status: 1, date: 1 } }],
+        as: 'taxInvoices'
+    } },
     { $project: { _clientArr: 0, _day: 0 } }
   ];
 
-  const [rows, total] = await Promise.all([
-    Invoice.aggregate(pipeline),
-    Invoice.countDocuments(match)
+  let model = Invoice;
+  let pipeline;
+  if (docType === 'TAX_INVOICE') {
+    model = TaxInvoice;
+    pipeline = [...typed('TAX_INVOICE'), ...tail];
+  } else if (docType === 'BILL_OF_SUPPLY') {
+    pipeline = [...typed('BILL_OF_SUPPLY'), ...tail];
+  } else {
+    pipeline = [
+      ...typed('BILL_OF_SUPPLY'),
+      { $unionWith: { coll: TaxInvoice.collection.name, pipeline: typed('TAX_INVOICE') } },
+      ...tail
+    ];
+  }
+
+  const [rows, bosCount, tiCount] = await Promise.all([
+    model.aggregate(pipeline),
+    docType === 'TAX_INVOICE' ? 0 : Invoice.countDocuments(match),
+    docType === 'BILL_OF_SUPPLY' ? 0 : TaxInvoice.countDocuments(match)
   ]);
-  res.json({ rows, total });
+
+  // Delete is allowed only for the most recently issued number of a series (Bill of Supply:
+  // and only when no Tax Invoice exists for it; Tax Invoice: and only while issued).
+  const counterIds = new Set();
+  for (const r of rows) {
+    const p = parseInvoiceNumber(r.invoiceNumber);
+    if (p) counterIds.add(seriesCounterId(r._docType, p.fy));
+  }
+  const counters = counterIds.size ? await Counter.find({ _id: { $in: [...counterIds] } }).lean() : [];
+  const seqById = new Map(counters.map((c) => [c._id, c.sequence]));
+  for (const r of rows) {
+    const p = parseInvoiceNumber(r.invoiceNumber);
+    r.isLatestInSeries = !!p && seqById.get(seriesCounterId(r._docType, p.fy)) === p.seq;
+    r.canDelete = r.isLatestInSeries && (r._docType === 'TAX_INVOICE'
+      ? r.status === 'issued'
+      : !(r.taxInvoices || []).length);
+  }
+
+  res.json({ rows, total: bosCount + tiCount, counts: { BILL_OF_SUPPLY: bosCount, TAX_INVOICE: tiCount } });
 };
 
 /**
@@ -812,7 +888,10 @@ const getInvoiceById = async (req, res) => {
     .populate('createdBy', 'username')
     .populate('updatedBy', 'username');
   if (!inv) return res.status(404).json({ error: 'Invoice not found' });
-  res.json(inv);
+  // Tax Invoices generated from this Bill of Supply (number + status), newest first.
+  const taxInvoices = await TaxInvoice.find({ sourceInvoiceId: inv._id })
+    .select('invoiceNumber status date').sort({ createdAt: -1 }).lean();
+  res.json({ ...inv.toObject(), taxInvoices });
 };
 
 /**
@@ -938,36 +1017,44 @@ const getCrossClientSales = async (req, res) => {
 };
 
 /**
- * GET /api/sales-invoices/counter?fyShort=2627
+ * GET /api/sales-invoices/counter?fyShort=2627&documentType=BILL_OF_SUPPLY|TAX_INVOICE
  * `sequence` is the last issued number; the next invoice for this FY will be sequence + 1.
- * If `fyShort` is omitted, derives it from today's date (IST).
+ * If `fyShort` is omitted, derives it from today's date (IST). documentType defaults to
+ * BILL_OF_SUPPLY — each type has its own series ("invoice-{fy}" / "taxinvoice-{fy}").
  */
+const seriesFor = (documentType) => (documentType === 'TAX_INVOICE'
+  ? { documentType: 'TAX_INVOICE', model: TaxInvoice, getPrefix: getTaxInvoicePrefix }
+  : { documentType: 'BILL_OF_SUPPLY', model: Invoice, getPrefix: getInvoicePrefix });
+
 const getInvoiceCounter = async (req, res) => {
+  const series = seriesFor(req.query.documentType);
   const fy = req.query.fyShort ? String(req.query.fyShort).trim() : fyShortFor(new Date());
   if (!isValidFyShort(fy)) {
     return res.status(400).json({ error: 'fyShort must look like 2627 (FY 2026-27)' });
   }
-  const counter = await Counter.findById(`invoice-${fy}`).lean();
-  const prefix = await getInvoicePrefix();
+  const counter = await Counter.findById(seriesCounterId(series.documentType, fy)).lean();
+  const prefix = await series.getPrefix();
   const sequence = counter?.sequence || 0;
   res.json({
+    documentType: series.documentType,
     fyShort: fy,
     prefix,
     sequence,
-    nextInvoiceNumber: `${prefix}${fy}/${sequence + 1}`
+    nextInvoiceNumber: formatInvoiceNumber(series.documentType, prefix, fy, sequence + 1)
   });
 };
 
 /**
- * PUT /api/sales-invoices/counter — body { fyShort: '2627', sequence: 28 } → next is /29.
+ * PUT /api/sales-invoices/counter — body { documentType, fyShort: '2627', sequence: 42 } → next is /43.
  * Admin-only (route layer).
  *
- * SAFETY: refuses to go LOWER than the highest sequence already used in that FY, under any
- * prefix (the counter is per FY, not per prefix). Runs in a transaction so it serialises
- * against invoice creation, which writes the same counter document.
+ * SAFETY: refuses to go LOWER than the highest sequence already used in that FY for that
+ * document type, under any prefix. Runs in a transaction so it serialises against creation,
+ * which writes the same counter document.
  */
 const setInvoiceCounter = async (req, res) => {
   const { fyShort, sequence } = req.body;
+  const series = seriesFor(req.body.documentType);
   const fy = fyShort ? String(fyShort).trim() : fyShortFor(new Date());
   if (!isValidFyShort(fy)) {
     return res.status(400).json({ error: 'fyShort must look like 2627 (FY 2026-27)' });
@@ -980,7 +1067,7 @@ const setInvoiceCounter = async (req, res) => {
   const counter = await runInTransaction(async (session) => {
     // fy is validated as 4 digits, so it is safe to embed in the pattern.
     const existing = await withSession(
-      Invoice.find({ invoiceNumber: new RegExp(`${fy}/\\d+\\s*$`) }).select('invoiceNumber'),
+      series.model.find({ invoiceNumber: new RegExp(`${fy}/\\d+\\s*$`) }).select('invoiceNumber'),
       session
     ).lean();
     let highest = 0;
@@ -993,18 +1080,19 @@ const setInvoiceCounter = async (req, res) => {
         `Cannot set counter to ${newSeq} — /${highest} already exists in FY ${fy}. Minimum allowed is ${highest}.`);
     }
     return Counter.findByIdAndUpdate(
-      { _id: `invoice-${fy}` },
+      { _id: seriesCounterId(series.documentType, fy) },
       { sequence: newSeq },
       { new: true, upsert: true, ...sessionOpts(session) }
     );
   });
 
-  const prefix = await getInvoicePrefix();
+  const prefix = await series.getPrefix();
   res.json({
+    documentType: series.documentType,
     fyShort: fy,
     prefix,
     sequence: counter.sequence,
-    nextInvoiceNumber: `${prefix}${fy}/${counter.sequence + 1}`
+    nextInvoiceNumber: formatInvoiceNumber(series.documentType, prefix, fy, counter.sequence + 1)
   });
 };
 

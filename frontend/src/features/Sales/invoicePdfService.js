@@ -141,10 +141,17 @@ const registerFonts = (doc, fonts) => {
  * Render an invoice to a jsPDF doc. `mode` ∈ 'download' | 'preview' | 'blob'.
  * Async because we load the ₹-capable font on first call (then cache).
  */
-export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' } = {}) => {
+export const generateInvoicePdf = async (invoice, settingsIn, { mode = 'preview' } = {}) => {
+  // Tax Invoices (flagged _docType by the caller) print the seller block FROZEN on the document
+  // at issue; Bills of Supply use live Company Settings, as before.
+  const isTax = invoice?._docType === 'TAX_INVOICE';
+  const settings = (isTax && invoice.issuerSnapshot?.name) ? { ...settingsIn, ...invoice.issuerSnapshot } : settingsIn;
   const fonts = await loadFonts();
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   const { F, RS } = registerFonts(doc, fonts);
+  // Money with the rupee sign (or "Rs. " when the ₹ font couldn't load); sign before the symbol
+  // so a negative round-off reads "-₹0.50", not "₹-0.50".
+  const money = (n) => { const v = Number(n) || 0; return `${v < 0 ? '-' : ''}${RS}${fmtINR(Math.abs(v))}`; };
 
   const PAGE_W = 210;
   const M = 6;                   // tight outer margin (matches sample's frame-close-to-edge look)
@@ -213,7 +220,7 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   // ── Top title strip ────────────────────────────────────────────────────────
   doc.setFont(F, 'bold');
   doc.setFontSize(11);
-  doc.text(documentTitle(invoice.documentType), PAGE_W / 2, 11, { align: 'center' });
+  doc.text(isTax ? 'TAX INVOICE' : documentTitle(invoice.documentType), PAGE_W / 2, 11, { align: 'center' });
   doc.setFont(F, 'normal');
   doc.setFontSize(8);
   doc.text('Original for Customer', PAGE_W - M, 11, { align: 'right' });
@@ -261,7 +268,8 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   });
   const issuerContentH = issuerBlocks.reduce((sum, b) => sum + b.lineH * b.count, 0);
   const META_ROW_H = 13;
-  const META_ROWS = 3;
+  // Tax Invoice adds an E-way Bill row when one was entered.
+  const META_ROWS = (isTax && invoice.ewayBillNo) ? 4 : 3;
   const metaContentH = META_ROW_H * META_ROWS;
   const headerTop = 14;
   const headerH = Math.max(issuerContentH + ISSUER_PAD_T + ISSUER_PAD_B, metaContentH);
@@ -291,13 +299,17 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   const metaRow1Y = headerTop;
   const metaRow2Y = headerTop + META_ROW_H;
   const metaRow3Y = headerTop + META_ROW_H * 2;
+  const metaRow4Y = headerTop + META_ROW_H * 3;
 
   doc.setDrawColor(BORDER[0], BORDER[1], BORDER[2]);
   doc.line(metaX, metaRow2Y, PAGE_W - M, metaRow2Y);
   doc.line(metaX, metaRow3Y, PAGE_W - M, metaRow3Y);
+  if (META_ROWS === 4) doc.line(metaX, metaRow4Y, PAGE_W - M, metaRow4Y);
 
   const metaInnerSplit = metaX + metaW / 2;
   doc.line(metaInnerSplit, metaRow1Y, metaInnerSplit, metaRow2Y);
+  // Tax Invoice: rows 2 and 3 are split too (Place of Supply | State Code, Transport | Vehicle).
+  if (isTax) doc.line(metaInnerSplit, metaRow2Y, metaInnerSplit, META_ROWS === 4 ? metaRow4Y : headerTop + headerH);
 
   // These rows are a fixed 13mm tall, so their values shrink rather than wrap.
   const META_HALF_W = metaW / 2 - 4;
@@ -314,16 +326,40 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   doc.text('Date:', metaInnerSplit + 2, metaRow1Y + 4.5);
   drawFitted(fmtDate(invoice.date), metaInnerSplit + 2, metaRow1Y + 10, META_HALF_W, 10, 'bold');
 
-  // Row 2 — Place of Supply (spans)
+  // Row 2 — Place of Supply (spans). Tax Invoice: Place of Supply | State Code.
   doc.setFont(F, 'normal');
   doc.setFontSize(9);
   doc.text('Place of Supply:', metaX + 2, metaRow2Y + 4.5);
-  const posText = invoice.placeOfSupply
-    ? `${invoice.placeOfSupply.stateName || ''}${invoice.placeOfSupply.stateCode ? ` (${invoice.placeOfSupply.stateCode})` : ''}`
-    : '';
-  drawFitted(posText, metaX + 2, metaRow2Y + 10, META_FULL_W, 10, 'bold');
+  if (isTax) {
+    drawFitted(invoice.placeOfSupply?.stateName || '', metaX + 2, metaRow2Y + 10, META_HALF_W, 10, 'bold');
+    doc.setFont(F, 'normal');
+    doc.setFontSize(9);
+    doc.text('State Code:', metaInnerSplit + 2, metaRow2Y + 4.5);
+    drawFitted(invoice.placeOfSupply?.stateCode || '', metaInnerSplit + 2, metaRow2Y + 10, META_HALF_W, 10, 'bold');
 
-  // Row 3 intentionally empty
+    // Row 3 — Mode of Transport | Vehicle No. Always printed; blank when not entered.
+    doc.setFont(F, 'normal');
+    doc.setFontSize(9);
+    doc.text('Mode of Transport:', metaX + 2, metaRow3Y + 4.5);
+    drawFitted(invoice.transportMode || '', metaX + 2, metaRow3Y + 10, META_HALF_W, 10, 'bold');
+    doc.setFont(F, 'normal');
+    doc.setFontSize(9);
+    doc.text('Vehicle No.:', metaInnerSplit + 2, metaRow3Y + 4.5);
+    drawFitted(invoice.vehicleNo || '', metaInnerSplit + 2, metaRow3Y + 10, META_HALF_W, 10, 'bold');
+
+    if (META_ROWS === 4) {
+      doc.setFont(F, 'normal');
+      doc.setFontSize(9);
+      doc.text('E-way Bill No.:', metaX + 2, metaRow4Y + 4.5);
+      drawFitted(invoice.ewayBillNo, metaX + 2, metaRow4Y + 10, META_FULL_W, 10, 'bold');
+    }
+  } else {
+    const posText = invoice.placeOfSupply
+      ? `${invoice.placeOfSupply.stateName || ''}${invoice.placeOfSupply.stateCode ? ` (${invoice.placeOfSupply.stateCode})` : ''}`
+      : '';
+    drawFitted(posText, metaX + 2, metaRow2Y + 10, META_FULL_W, 10, 'bold');
+    // Row 3 intentionally empty
+  }
 
   // ── Bill To / Ship To ──────────────────────────────────────────────────────
   const billTop = headerTop + headerH;
@@ -339,7 +375,9 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
       addr?.line1,
       addr?.line2,
       [addr?.city, addr?.pincode].filter(Boolean).join(' '),
-      [addr?.state, addr?.stateCode ? `(${addr.stateCode})` : '', addr?.country].filter(Boolean).join(', ')
+      // "Kerala (32), India" — state and code joined by a space (no stray comma), then country.
+      [[addr?.state, addr?.stateCode ? `(${addr.stateCode})` : ''].filter(Boolean).join(' '), addr?.country]
+        .filter(Boolean).join(', ')
     ]
       .filter((s) => s && String(s).trim())
       .flatMap((s) => wrap(s, COL_INNER_W, 9, 'normal'));
@@ -427,7 +465,17 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
 
   // ── Line items table ───────────────────────────────────────────────────────
   const tableTop = billTop + billH;
-  const head = [[
+  // Tax Invoice columns mirror the WhiteBill layout: # | Item | HSN | Tax% | Qty | Per | Rate | Amount.
+  const head = isTax ? [[
+    { content: '#', styles: { halign: 'center' } },
+    { content: 'Item & Description', styles: { halign: 'left' } },
+    { content: 'HSN/SAC', styles: { halign: 'center' } },
+    { content: 'Tax%', styles: { halign: 'right' } },
+    { content: 'Qty.', styles: { halign: 'right' } },
+    { content: 'Per', styles: { halign: 'center' } },
+    { content: 'Rate/Item', styles: { halign: 'right' } },
+    { content: 'Amount', styles: { halign: 'right' } }
+  ]] : [[
     { content: '#', styles: { halign: 'center' } },
     { content: 'Item & Description', styles: { halign: 'left' } },
     { content: 'HSN/SAC', styles: { halign: 'right' } },
@@ -436,33 +484,94 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
     { content: 'Amount', styles: { halign: 'right' } }
   ]];
 
-  const lineRows = (invoice.lines || []).map((line, i) => [
-    String(line.lineNo || i + 1),
-    line.remark ? `${line.description || ''}\n${line.remark}` : (line.description || ''),
-    line.hsnSac || '-',
-    Number(line.pcs || 0).toFixed(2),
-    fmtINR(line.rate),
-    fmtINR(line.amount)
-  ]);
+  const lineRows = (invoice.lines || []).map((line, i) => {
+    const desc = line.remark ? `${line.description || ''}\n${line.remark}` : (line.description || '');
+    return isTax ? [
+      String(line.lineNo || i + 1),
+      desc,
+      line.hsnSac || '-',
+      line.isSample ? '-' : `${Number(line.taxRate || 0).toFixed(1)}%`,
+      Number(line.pcs || 0).toFixed(2),
+      line.unit || 'PCS',
+      fmtINR(line.rate),
+      fmtINR(line.amount)
+    ] : [
+      String(line.lineNo || i + 1),
+      desc,
+      line.hsnSac || '-',
+      Number(line.pcs || 0).toFixed(2),
+      fmtINR(line.rate),
+      fmtINR(line.amount)
+    ];
+  });
+  const COLS = head[0].length;
   const SPACER_ROW_IDX = lineRows.length;
-  const body = [...lineRows, ['', '', '', '', '', '']];
+  const body = [...lineRows, Array(COLS).fill('')];
+
+  // Tax Invoice footer: one CGST + SGST (same state) or IGST (other state) row per rate.
+  const taxRows = [];
+  if (isTax) {
+    const byRate = (rateKey, amountKey) => {
+      const m = new Map();
+      (invoice.taxSummary || []).forEach((r) => { if (r[amountKey]) m.set(r[rateKey], (m.get(r[rateKey]) || 0) + r[amountKey]); });
+      return [...m.entries()];
+    };
+    const taxRow = (label, amount) => [
+      { content: label, colSpan: COLS - 1, styles: { halign: 'right', fontStyle: 'normal', fontSize: 9 } },
+      { content: money(amount), styles: { halign: 'right', fontStyle: 'normal', fontSize: 9 } }
+    ];
+    if (invoice.supplyType === 'INTRA') {
+      byRate('cgstRate', 'cgstAmount').forEach(([r, a]) => taxRows.push(taxRow(`CGST ${r}%`, a)));
+      byRate('sgstRate', 'sgstAmount').forEach(([r, a]) => taxRows.push(taxRow(`SGST ${r}%`, a)));
+    } else {
+      byRate('igstRate', 'igstAmount').forEach(([r, a]) => taxRows.push(taxRow(`IGST ${r}%`, a)));
+    }
+  }
 
   const foot = [
     [
-      { content: 'Sub Total', colSpan: 5, styles: { halign: 'right', fontStyle: 'bolditalic', fontSize: 9 } },
-      { content: RS + fmtINR(invoice.subTotal), styles: { halign: 'right', fontStyle: 'bold', fontSize: 9 } }
+      { content: isTax ? 'Taxable Amount' : 'Sub Total', colSpan: COLS - 1, styles: { halign: 'right', fontStyle: 'bolditalic', fontSize: 9 } },
+      { content: money(isTax ? invoice.taxableTotal : invoice.subTotal), styles: { halign: 'right', fontStyle: 'bold', fontSize: 9 } }
     ],
+    ...taxRows,
     [
-      { content: 'Round off', colSpan: 5, styles: { halign: 'right', fontStyle: 'italic', fontSize: 9 } },
-      { content: fmtINR(invoice.roundOff), styles: { halign: 'right', fontStyle: 'normal', fontSize: 9 } }
+      { content: 'Round off', colSpan: COLS - 1, styles: { halign: 'right', fontStyle: 'italic', fontSize: 9 } },
+      { content: money(invoice.roundOff), styles: { halign: 'right', fontStyle: 'normal', fontSize: 9 } }
     ],
-    [
+    isTax ? [
+      { content: 'Total', colSpan: 4, styles: { halign: 'right', fontStyle: 'bold', fontSize: 10 } },
+      { content: Number(invoice.totalQty || 0).toFixed(2), styles: { halign: 'right', fontStyle: 'bold', fontSize: 10 } },
+      { content: '', colSpan: 2, styles: {} },
+      { content: money(invoice.total), styles: { halign: 'right', fontStyle: 'bold', fontSize: 10 } }
+    ] : [
       { content: 'Total', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold', fontSize: 10 } },
       { content: Number(invoice.totalQty || 0).toFixed(2), styles: { halign: 'right', fontStyle: 'bold', fontSize: 10 } },
       { content: '', styles: {} },
-      { content: RS + fmtINR(invoice.total), styles: { halign: 'right', fontStyle: 'bold', fontSize: 10 } }
+      { content: money(invoice.total), styles: { halign: 'right', fontStyle: 'bold', fontSize: 10 } }
     ]
   ];
+
+  // Column widths (mm, usable width 198). Description doesn't need much, so Qty and Amount get
+  // the room: Qty 22 fits a bold "10000.00" total; Amount 34 fits a bold "₹1,23,45,678.00"
+  // (crores). HSN 19 keeps "HSN/SAC" on one line. Description takes the rest:
+  // Tax Invoice ≈ 73 mm, Bill of Supply ≈ 93 mm — longer descriptions wrap to a second line.
+  const columnStyles = isTax ? {
+    0: { halign: 'center', cellWidth: 6 },
+    1: { halign: 'left' },
+    2: { halign: 'center', cellWidth: 19 },
+    3: { halign: 'right', cellWidth: 12 },
+    4: { halign: 'right', cellWidth: 22 },
+    5: { halign: 'center', cellWidth: 10 },
+    6: { halign: 'right', cellWidth: 22 },
+    7: { halign: 'right', cellWidth: 34 }
+  } : {
+    0: { halign: 'center', cellWidth: 6 }, // serial # — usually single digit
+    1: { halign: 'left' },
+    2: { halign: 'center', cellWidth: 19 },
+    3: { halign: 'right', cellWidth: 22 },
+    4: { halign: 'right', cellWidth: 24 },
+    5: { halign: 'right', cellWidth: 34 }
+  };
 
   autoTable(doc, {
     startY: tableTop,
@@ -494,18 +603,14 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
       lineColor: BORDER,
       lineWidth: { top: 0, right: 0.2, bottom: 0, left: 0.2 }
     },
-    columnStyles: {
-      0: { halign: 'center', cellWidth: 6 }, // serial # — usually single digit
-      1: { halign: 'left' },
-      2: { halign: 'center', cellWidth: 19 },
-      3: { halign: 'right', cellWidth: 17 },
-      4: { halign: 'right', cellWidth: 22 },
-      5: { halign: 'right', cellWidth: 28 }
-    },
+    columnStyles,
     theme: 'plain',
     didParseCell: (data) => {
       if (data.section === 'body' && data.row.index === SPACER_ROW_IDX) {
-        data.cell.styles.minCellHeight = 30;
+        // Blank space under the items — both documents. Shrinks as items are added (1 item
+        // ≈ 25 mm, 5 ≈ 8 mm, 7+ = 3 mm) so up to ~10 items (plus the Tax Invoice's HSN
+        // summary) still fit on one page.
+        data.cell.styles.minCellHeight = Math.max(3, 30 - 4.5 * lineRows.length);
       }
       // Extra top padding on the FIRST item row only — adds a little breathing room
       // below the header without loosening the gap between subsequent rows.
@@ -559,6 +664,37 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
     );
     wordsLines.forEach((l, i) => doc.text(l, M, ty + i * WORDS_LINE_H));
     ty += (wordsLines.length - 1) * WORDS_LINE_H;
+  }
+
+  // ── HSN summary (Tax Invoice) ──────────────────────────────────────────────
+  if (isTax && (invoice.taxSummary || []).length) {
+    const intra = invoice.supplyType === 'INTRA';
+    const sHead = intra
+      ? [[{ content: 'HSN/SAC', rowSpan: 2 }, { content: 'Taxable Value', rowSpan: 2 },
+        { content: 'CGST', colSpan: 2 }, { content: 'SGST', colSpan: 2 }, { content: 'Total Tax Amount', rowSpan: 2 }],
+      ['Rate', 'Amount', 'Rate', 'Amount']]
+      : [[{ content: 'HSN/SAC', rowSpan: 2 }, { content: 'Taxable Value', rowSpan: 2 },
+        { content: 'IGST', colSpan: 2 }, { content: 'Total Tax Amount', rowSpan: 2 }],
+      ['Rate', 'Amount']];
+    const sBody = invoice.taxSummary.map((r) => (intra
+      ? [r.hsnSac || '-', money(r.taxableValue), `${r.cgstRate}%`, money(r.cgstAmount), `${r.sgstRate}%`, money(r.sgstAmount), money(r.totalTax)]
+      : [r.hsnSac || '-', money(r.taxableValue), `${r.igstRate}%`, money(r.igstAmount), money(r.totalTax)]));
+    const sFoot = [intra
+      ? ['TOTAL', money(invoice.taxableTotal), '', money(invoice.cgstTotal), '', money(invoice.sgstTotal), money(invoice.taxTotal)]
+      : ['TOTAL', money(invoice.taxableTotal), '', money(invoice.igstTotal), money(invoice.taxTotal)]];
+    autoTable(doc, {
+      startY: ty + 4,
+      head: sHead,
+      body: sBody,
+      foot: sFoot,
+      margin: { left: M, right: M },
+      theme: 'grid',
+      styles: { font: F, fontSize: 8, cellPadding: 1.2, lineColor: BORDER, lineWidth: 0.2, halign: 'right', textColor: 0 },
+      headStyles: { font: F, fillColor: STRIP_FILL, textColor: 0, fontStyle: 'bold', halign: 'center' },
+      footStyles: { font: F, fillColor: [255, 255, 255], textColor: 0, fontStyle: 'bold' },
+      columnStyles: { 0: { halign: 'center' } }
+    });
+    ty = doc.lastAutoTable.finalY;
   }
 
   // ── Bank details + signatory ───────────────────────────────────────────────
@@ -637,7 +773,7 @@ export const generateInvoicePdf = async (invoice, settings, { mode = 'preview' }
   }
 
   // ── Dispatch ───────────────────────────────────────────────────────────────
-  const invNumPart = String(invoice.invoiceNumber || 'invoice').replace(/[/\\]/g, ' ');
+  const invNumPart = `${isTax ? 'TAX ' : ''}${String(invoice.invoiceNumber || 'invoice').replace(/[/\\]/g, ' ')}`;
   const namePart = invoice.clientSnapshot?.billingName || invoice.clientSnapshot?.name || '';
   const safeName = namePart.replace(/[<>:"/\\|?*]/g, '').trim();
   const filename = `${invNumPart}${safeName ? ' ' + safeName : ''}.pdf`;

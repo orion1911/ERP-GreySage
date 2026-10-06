@@ -23,6 +23,7 @@ const getSettings = async (req, res) => {
 const updateSettings = async (req, res) => {
   const payload = { ...(req.body || {}) };
   delete payload.defaultInvoicePrefix;
+  delete payload.taxInvoicePrefix;
   delete payload._id;
   payload.updatedAt = new Date();
   const settings = await CompanySettings.findOneAndUpdate(

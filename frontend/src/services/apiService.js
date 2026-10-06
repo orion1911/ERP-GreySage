@@ -867,15 +867,82 @@ const apiService = {
         return response.data;
       } catch (error) { throw error; }
     },
-    getInvoiceCounter: async (fyShort) => {
+    // documentType: 'BILL_OF_SUPPLY' (default) | 'TAX_INVOICE' — each has its own series.
+    getInvoiceCounter: async (fyShort, documentType) => {
       try {
-        const response = await axiosInstance.get('api/sales-invoices/counter', { params: fyShort ? { fyShort } : {} });
+        const response = await axiosInstance.get('api/sales-invoices/counter', {
+          params: { ...(fyShort ? { fyShort } : {}), ...(documentType ? { documentType } : {}) }
+        });
         return response.data;
       } catch (error) { throw error; }
     },
-    setInvoiceCounter: async (fyShort, sequence) => {
+    setInvoiceCounter: async (fyShort, sequence, documentType) => {
       try {
-        const response = await axiosInstance.put('api/sales-invoices/counter', { fyShort, sequence });
+        const response = await axiosInstance.put('api/sales-invoices/counter', { fyShort, sequence, documentType });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+  },
+
+  // Tax Invoices (GST) — generated FROM a Bill of Supply. Listed via salesInvoices.listInvoices
+  // ({ documentType: 'TAX_INVOICE' | 'ALL' }). No stock or balance effect.
+  taxInvoices: {
+    // Server-computed rates/tax/totals without saving → { ok, preview, comparedToSource } | { ok:false, error }
+    preview: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/tax-invoices/preview', payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    create: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/tax-invoices', payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    getById: async (id) => {
+      try {
+        const response = await axiosInstance.get(`api/tax-invoices/${id}`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    update: async (id, payload) => {
+      try {
+        const response = await axiosInstance.patch(`api/tax-invoices/${id}`, payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    cancel: async (id, reason) => {
+      try {
+        const response = await axiosInstance.post(`api/tax-invoices/${id}/cancel`, { reason });
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    delete: async (id) => {
+      try {
+        const response = await axiosInstance.delete(`api/tax-invoices/${id}`);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+  },
+
+  // GST rate rules — everyone reads, admins edit.
+  gstRates: {
+    list: async () => {
+      try {
+        const response = await axiosInstance.get('api/gst-rates');
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    create: async (payload) => {
+      try {
+        const response = await axiosInstance.post('api/gst-rates', payload);
+        return response.data;
+      } catch (error) { throw error; }
+    },
+    update: async (id, payload) => {
+      try {
+        const response = await axiosInstance.patch(`api/gst-rates/${id}`, payload);
         return response.data;
       } catch (error) { throw error; }
     },

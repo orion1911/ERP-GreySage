@@ -43,11 +43,13 @@ A ledger per vendor, per vendor type. Payments can be recorded against a vendor 
 
 ### Sales, dispatch and billing
 
-One invoice equals one dispatch event and one printable document — a Bill of Supply or Tax Invoice, generated client-side as a PDF. Each invoice carries any number of line items, each drawing pieces from a lot; a lot can be dispatched in parts across several invoices, and the remaining pieces are derived from the production total minus what has already been invoiced. Cancelling an invoice returns its pieces to the available pool.
+One **Bill of Supply** equals one dispatch event and one printable document, generated client-side as a PDF. Each carries any number of line items, each drawing pieces from a lot; a lot can be dispatched in parts across several invoices, and the remaining pieces are derived from the production total minus what has already been invoiced or recorded as manually dispatched. Every write runs in a single MongoDB transaction that locks the lots it touches, so two people can never sell the same pieces. Cancelling (admin, with a reason) returns the pieces to the available pool; only the most recently issued number can be deleted, so the series never has a gap.
 
-Invoice numbers are scoped to the Indian financial year (starting 1 April) and allocated atomically, in the form `INV2627/29`. Client details, billing address and shipping address are snapshotted onto the invoice at issue time and never refreshed, so a printed document and its stored record always match.
+Invoice numbers are scoped to the Indian financial year (starting 1 April, evaluated in IST) and allocated atomically, in the form `INV2627/29`. Amounts are computed in paise, so no rounding drift reaches a stored total. Client details, billing address and shipping address are snapshotted onto the invoice at issue time and never refreshed, so a printed document and its stored record always match.
 
 The issuer block printed on every invoice — company name, address, GSTIN, PAN, MSME, bank details, authorised signatory — is configured once under Admin → Company Settings.
+
+**Tax Invoices (GST).** Any issued Bill of Supply can generate a Tax Invoice: the same form opens prefilled from it and stays fully editable. A Tax Invoice runs its own number series per financial year (`INV2627/43`, then `INV2728/01`) and carries the tax: CGST + SGST when the place of supply is the issuer's state, IGST otherwise, computed per HSN and rate. Rates come from effective-dated rules under Admin → GST Rates and are frozen on each line when issued. A Tax Invoice is a document only — stock, client balances and payments always follow the Bill of Supply. HSN pre-fills `620342` on every new line and is mandatory on Tax Invoices. A Bill of Supply cannot be cancelled while its Tax Invoice is active, and deletes go Tax Invoice first, then Bill of Supply.
 
 ### Client payments
 
@@ -253,6 +255,7 @@ ERP-GreySage/
 │   │   ├── vendorBalanceService.js
 │   │   ├── clientBalanceService.js
 │   │   ├── invoiceService.js
+│   │   ├── gstService.js
 │   │   ├── accessoryService.js
 │   │   ├── makingsReconService.js
 │   │   ├── notificationService.js
@@ -261,7 +264,7 @@ ERP-GreySage/
 │   ├── middleware/             # auth, error handling
 │   ├── migrations/             # One-time data migrations and seeds
 │   ├── scripts/                # Operational utilities
-│   └── utils/logger.js         # Audit log writer
+│   └── utils/                  # logger (audit log), transaction, httpError, invoiceParsers
 │
 ├── frontend/
 │   └── src/
@@ -287,12 +290,14 @@ Two conventions worth knowing when adding code:
 
 ## API overview
 
-Most resources are mounted flat under `/api`. Five are sub-prefixed:
+Most resources are mounted flat under `/api`. These are sub-prefixed:
 
 | Prefix | Covers |
 |---|---|
 | `/api/vendor-balances` | Vendor payment entries, balances, lot details, Excel export |
-| `/api/sales-invoices` | Invoice CRUD, available lots, cancel, history |
+| `/api/sales-invoices` | Bill of Supply CRUD, combined Bill of Supply + Tax Invoice listing, available lots, number counters, cancel, history |
+| `/api/tax-invoices` | Tax Invoices generated from a Bill of Supply — preview, create, edit, cancel, delete |
+| `/api/gst-rates` | Effective-dated GST rate rules |
 | `/api/client-balances` | Client payments, ledger, opening balance, history |
 | `/api/company-settings` | Issuer singleton |
 | `/api/accessories` | Types, items, purchases, payments, stock, consumption |
@@ -315,6 +320,7 @@ Run from the repository root. Each takes a connection string as its first argume
 | `migrate-orders-to-lots.js` | One-time historical migration from the retired Order model |
 | `seed-accessory-data.js` | Seeds accessory masters, opening stock, purchases and payments. Idempotent; pass `--wipe` for a full reset |
 | `dedupe-accessory-types.js` | Removes duplicate accessory type rows |
+| `p5-tax-invoice-init.js` | Tax Invoice + invoice-number indexes, GST rate seed, Tax Invoice counter jump-start (`--ti-start=2627:42`), pre-deploy checks. Idempotent; `--dry` reports only |
 
 **Utilities** (`backend/scripts/`)
 

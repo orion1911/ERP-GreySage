@@ -67,6 +67,27 @@ const snapshotClient = (client, firm = null) => ({
   shipTo: toPlainAddress(firm ? firm.shippingAddress : client.shippingAddress)
 });
 
+// GST state code: exactly 2 digits ("27"). Mandatory on every Bill of Supply, because the Tax
+// Invoice generated from it copies the place of supply and decides CGST+SGST vs IGST from it.
+// (HSN and GSTIN stay optional on a Bill of Supply; HSN is required only on the Tax Invoice.)
+const STATE_CODE_RE = /^\d{2}$/;
+
+/**
+ * Place of Supply from the chosen firm's addresses (else the client's), preferring whichever of
+ * shipping / billing actually carries a GST state code — a shipping address with only a state
+ * NAME must not hide a code that the billing address has.
+ */
+const derivePlaceOfSupply = (client, firm = null) => {
+  const ship = firm ? firm.shippingAddress : client.shippingAddress;
+  const bill = firm ? firm.billingAddress : client.billingAddress;
+  const src = ship?.stateCode ? ship : (bill?.stateCode ? bill : (ship?.state ? ship : bill));
+  return { stateName: src?.state || '', stateCode: src?.stateCode || '' };
+};
+
+const missingStateCodeMsg = (client, firm) =>
+  `${firm?.billingName || client?.name || 'This client'} has no GST state code on its address. ` +
+  'Add it in Masters → Clients (billing or shipping address), then save again.';
+
 /**
  * Every lot id touched by a set of lines — both a single-lot line's `lotId` and a merged
  * line's `sources[].lotId` — as a de-duplicated array of strings. Used to fan out
@@ -493,15 +514,12 @@ const createInvoice = async (req, res) => {
   const firm = billingFirmId ? client.billingFirms.id(billingFirmId) : null;
   if (billingFirmId && !firm) return res.status(400).json({ error: 'Billing firm not found on client' });
 
-  // Derive Place of Supply from the chosen firm's shipping address (fall back to billing),
-  // then to the client's. An explicit placeOfSupply in the request still overrides it.
-  const ship = (firm ? firm.shippingAddress : client.shippingAddress);
-  const bill = (firm ? firm.billingAddress : client.billingAddress);
-  const posSrc = (ship?.state || ship?.stateCode) ? ship : bill;
-  const derivedPos = {
-    stateName: posSrc?.state || '',
-    stateCode: posSrc?.stateCode || ''
-  };
+  // Place of Supply derives from the chosen firm's / client's addresses; an explicit
+  // placeOfSupply in the request still overrides it. The GST state code is mandatory.
+  const placeOfSupplyForInvoice = requestedPos || derivePlaceOfSupply(client, firm);
+  if (!STATE_CODE_RE.test(placeOfSupplyForInvoice.stateCode || '')) {
+    return res.status(400).json({ error: missingStateCodeMsg(client, firm) });
+  }
 
   const invoice = await runInTransaction(async (session) => {
     // 1. Lock every referenced lot BEFORE reading availability (see lockLotsForDispatch).
@@ -522,7 +540,7 @@ const createInvoice = async (req, res) => {
       clientId,
       billingFirmId: firm?._id || null,
       ...snapshotClient(client, firm),
-      placeOfSupply: requestedPos || derivedPos,
+      placeOfSupply: placeOfSupplyForInvoice,
       lines: builtLines,
       roundOff: roundOffValue,
       status: 'issued',
@@ -597,6 +615,19 @@ const updateInvoice = async (req, res) => {
       existing.date = newDate;
     }
     if (newPos) existing.placeOfSupply = newPos;
+    // GST: a Bill of Supply saved before this rule — or before its client had a state code —
+    // takes the client's current details on its next save (address snapshot + place of supply,
+    // which belong together). Invoices that already have a state code stay frozen as issued.
+    if (!STATE_CODE_RE.test(existing.placeOfSupply?.stateCode || '')) {
+      const current = await withSession(Client.findById(existing.clientId), session);
+      const firm = current && existing.billingFirmId ? current.billingFirms.id(existing.billingFirmId) : null;
+      const pos = current ? derivePlaceOfSupply(current, firm) : {};
+      if (!STATE_CODE_RE.test(pos.stateCode || '')) {
+        throw new HttpError(400, missingStateCodeMsg(current, firm));
+      }
+      Object.assign(existing, snapshotClient(current, firm));
+      existing.placeOfSupply = pos;
+    }
     if (newRoundOff !== undefined) existing.roundOff = newRoundOff;
     // documentType is never changed here: a Bill of Supply stays a Bill of Supply.
 

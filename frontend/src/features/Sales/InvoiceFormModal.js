@@ -101,10 +101,15 @@ const emptyLine = {
   crossClientOwner: '',
   // Edit mode: this combined line's lots or total were changed, so it is re-split (FIFO) on save.
   splitDirty: false,
+  // OUTSIDE ITEM: goods bought in / not produced or tracked in our system — no lot, no stock
+  // effect, billed like any other line (Bill of Supply and Tax Invoice). Marked explicitly so a
+  // forgotten lot pick on a normal line can never silently skip stock.
+  isManual: false,
   isSample: false
 };
 
 const emptySample = { ...emptyLine, hsnSac: '', isSample: true, description: 'SAMPLE ', rate: 0 };
+const emptyManual = { ...emptyLine, isManual: true };
 
 // Form rows from a saved document's lines — Bill of Supply → Tax Invoice prefill, or a Tax
 // Invoice being edited. Merged lines keep their frozen per-lot split (locked, like edit mode).
@@ -126,6 +131,7 @@ const taxLinesFromDoc = (doc, isTaxDoc) => (doc?.lines || []).map((l) => {
     rate: l.rate,
     taxRateOverride: isTaxDoc && l.taxRate !== undefined && l.taxRate !== null ? String(l.taxRate) : '',
     taxRateTouched: isTaxDoc && l.taxRateSource === 'override',
+    isManual: !l.isSample && !merged && !l.lotId,
     isSample: !!l.isSample
   };
 });
@@ -206,20 +212,26 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
     setValue('billingFirmId', billingFirms.length === 1 ? String(billingFirms[0]._id) : '');
   }, [open, editInvoice, isTax, selectedClientFull?._id, billingFirms, setValue]);
 
-  // Place of Supply derives from the chosen firm's address, falling back to the client's.
+  // Place of Supply derives from the chosen firm's address, falling back to the client's —
+  // preferring the address that carries a GST state code (same rule as the server).
   const derivedPlaceOfSupply = useMemo(() => {
     const src0 = selectedFirm || selectedClientFull;
     const ship = src0?.shippingAddress;
     const bill = src0?.billingAddress;
-    const src = (ship?.state || ship?.stateCode) ? ship : bill;
+    const src = ship?.stateCode ? ship : (bill?.stateCode ? bill : (ship?.state ? ship : bill));
     return {
       stateName: src?.state || '',
       stateCode: src?.stateCode || ''
     };
   }, [selectedFirm, selectedClientFull]);
 
-  // A Tax Invoice shows the place of supply frozen on its source document.
-  const shownPos = isTax ? (taxDoc?.placeOfSupply || {}) : derivedPlaceOfSupply;
+  // A Tax Invoice shows the place of supply frozen on its source document. Editing a Bill of
+  // Supply shows ITS frozen place of supply — unless that has no state code, in which case the
+  // server takes the client's current details on save, so the master's value is shown.
+  const posFromMaster = !!editInvoice && !editInvoice.placeOfSupply?.stateCode;
+  const shownPos = isTax
+    ? (taxDoc?.placeOfSupply || {})
+    : (editInvoice && !posFromMaster ? (editInvoice.placeOfSupply || {}) : derivedPlaceOfSupply);
 
   // Hydrate when editing
   useEffect(() => {
@@ -290,6 +302,8 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
             // Recomputed from the frozen snapshots, not refetched — an edit must be judged
             // against the owner recorded at issue time, exactly as the server does.
             crossClientOwner: crossClientOwnerOf(l, editInvoice),
+            // Saved line with no lot (and not a sample / combined line) = outside item.
+            isManual: !l.isSample && !merged && !l.lotId,
             isSample: !!l.isSample
           };
         })
@@ -532,7 +546,15 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
     setValue(`lines.${idx}.finalPcs`, null);
     setValue(`lines.${idx}.notFinished`, false);
     setValue(`lines.${idx}.crossClientOwner`, '');
+    setValue(`lines.${idx}.isManual`, false);
   }, [setValue]);
+
+  // Switch a line to an OUTSIDE ITEM (no lot) or back to a lot line. Clears any lot selection.
+  const setManual = useCallback((idx, on) => {
+    toggleMerge(idx, false);
+    setValue(`lines.${idx}.isManual`, on);
+    setValue(`lines.${idx}.internalNote`, '');
+  }, [toggleMerge, setValue]);
 
   // Pick/clear the lots that make up a merged line. remainingPcs caps the line's total; the
   // description auto-fills (once) to a combined "LOT A + B" label the user can still edit.
@@ -725,19 +747,45 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
             {cur.merged ? 'Use single lot' : 'Combine lots'}
           </Button>
         )}
+        {!damagedMode && !cur.merged && !cur.lotId && (
+          <Button size="small" color="info" sx={{ mt: 0.5, ml: canCombine ? 1 : 0, minWidth: 0, p: 0.25, fontSize: '0.7rem' }}
+            onClick={() => setManual(idx, true)}>
+            Outside item (no lot)
+          </Button>
+        )}
       </>
     );
   };
 
-  const renderLotOrSample = (idx, cur, options) => (
-    cur.isSample ? (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minHeight: 32 }}>
-        <Chip size="small" color="secondary" variant="outlined" label="SAMPLE"
-          sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.04em' } }} />
-        <Typography variant="caption" color="text.secondary">non-chargeable · no lot</Typography>
-      </Box>
-    ) : renderLotField(idx, cur, options)
-  );
+  const renderLotOrSample = (idx, cur, options) => {
+    if (cur.isSample) {
+      return (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minHeight: 32 }}>
+          <Chip size="small" color="secondary" variant="outlined" label="SAMPLE"
+            sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.04em' } }} />
+          <Typography variant="caption" color="text.secondary">non-chargeable · no lot</Typography>
+        </Box>
+      );
+    }
+    if (cur.isManual) {
+      return (
+        <Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minHeight: 32, flexWrap: 'wrap' }}>
+            <Chip size="small" color="info" variant="outlined" label="OUTSIDE ITEM"
+              sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.04em' } }} />
+            <Typography variant="caption" color="text.secondary">not from our lots · no stock effect</Typography>
+          </Box>
+          {!damagedMode && (
+            <Button size="small" sx={{ mt: 0.25, minWidth: 0, p: 0.25, fontSize: '0.7rem' }}
+              onClick={() => setManual(idx, false)}>
+              Pick a lot instead
+            </Button>
+          )}
+        </Box>
+      );
+    }
+    return renderLotField(idx, cur, options);
+  };
 
   const submitTax = (data) => {
     const built = buildTaxLines(data.lines);
@@ -775,6 +823,12 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
     if (!data.lines || data.lines.length === 0) return showSnackbar('Add at least one line item');
     if (isTax) return submitTax(data);
 
+    // Place of supply with a GST state code is mandatory — a Tax Invoice generated from this Bill
+    // of Supply copies it. (HSN and GSTIN stay optional here.)
+    if (!/^\d{2}$/.test(String(shownPos.stateCode || ''))) {
+      return showSnackbar(`${data.client?.name || 'The client'} has no GST state code — add it to the client's address in Masters → Clients, then save again`);
+    }
+
     // Build the line payload. Merged lines send a `sources[]` split (no top-level lotId); the
     // server re-validates each source against the lot's remaining pool.
     const outLines = [];
@@ -793,6 +847,25 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
           pcs,
           rate: 0,
           isSample: true
+        });
+        continue;
+      }
+      if (l.isManual) {
+        // OUTSIDE ITEM — no lot, no stock effect; billed like any other line.
+        const pcs = parseInt(l.pcs, 10);
+        const rate = Number(l.rate);
+        if (!l.description || !String(l.description).trim()) return showSnackbar(`Line ${i + 1}: description is required`);
+        if (!Number.isInteger(pcs) || pcs < 1) return showSnackbar(`Line ${i + 1}: enter the pcs`);
+        if (!Number.isFinite(rate) || rate < 0) return showSnackbar(`Line ${i + 1}: enter the rate`);
+        outLines.push({
+          description: l.description,
+          remark: l.remark,
+          internalNote: l.internalNote,
+          hsnSac: l.hsnSac,
+          unit: l.unit,
+          pcs,
+          rate,
+          isDamaged: false
         });
         continue;
       }
@@ -823,6 +896,11 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
           sources: split.map((s) => ({ lotId: s.lotId, pcs: s.pcs }))
         });
       } else {
+        if (!l.lotId) {
+          return showSnackbar(
+            `Line ${i + 1}: pick a lot — or tap "Outside item (no lot)" for goods not made in our system`
+          );
+        }
         if (l.crossClientOwner && !String(l.internalNote || '').trim()) {
           return showSnackbar(`Line ${i + 1}: add an internal note — this line uses ${l.crossClientOwner}'s lot`);
         }
@@ -867,6 +945,20 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
       });
   };
 
+  // react-hook-form blocks submit on an empty required field (client, description, pcs, rate)
+  // WITHOUT calling onSubmit — previously nothing happened and nothing said why. Say which line.
+  const onInvalid = (errors) => {
+    if (errors.client) return showSnackbar('Please select a client');
+    if (errors.date) return showSnackbar('Please pick a valid date');
+    const idx = (errors.lines || []).findIndex(Boolean);
+    if (idx >= 0) {
+      const e = errors.lines[idx] || {};
+      const field = e.description ? 'description' : e.pcs ? 'pcs (at least 1)' : e.rate ? 'rate' : 'missing details';
+      return showSnackbar(`Line ${idx + 1}: enter the ${field}`);
+    }
+    return showSnackbar('Please complete the required fields');
+  };
+
   return (
     <Modal open={open} onClose={onClose} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <Box sx={{
@@ -901,7 +993,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
         )}
 
         <form
-          onSubmit={handleSubmit(onSubmit)}
+          onSubmit={handleSubmit(onSubmit, onInvalid)}
           onKeyDown={(e) => {
             // Prevent Enter inside any non-textarea input from submitting the form.
             // Allows Enter in multiline TextField (rendered as textarea) to insert newlines.
@@ -998,12 +1090,15 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
                     : ''}
                   fullWidth variant="standard"
                   InputProps={{ readOnly: true }}
+                  error={!isTax && !!client && !shownPos.stateCode}
                   helperText={isTax
                     ? (!shownPos.stateCode
-                      ? 'No state code — a Tax Invoice needs it'
+                      ? 'No state code on the Bill of Supply — edit and save it once to pick it up'
                       : (taxPreview?.preview?.supplyType === 'INTRA' ? 'Same state → CGST + SGST'
                         : (taxPreview?.preview?.supplyType === 'INTER' ? 'Other state → IGST' : '')))
-                    : (!client ? 'Pick a client' : (!derivedPlaceOfSupply.stateName ? 'No state on client — edit to fix' : ''))}
+                    : (!client ? 'Pick a client'
+                      : (!shownPos.stateCode ? 'Required — add the GST state code in Masters → Clients'
+                        : (posFromMaster ? 'Taken from the client master on save' : '')))}
                 />
               </Grid>
               {isTax && (
@@ -1329,6 +1424,11 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
             <Button startIcon={<AddIcon />} color="secondary" onClick={() => append({ ...emptySample })}>
               Add Sample
             </Button>
+            {!damagedMode && (
+              <Button startIcon={<AddIcon />} color="info" onClick={() => append({ ...emptyManual })}>
+                Add Outside Item
+              </Button>
+            )}
           </Box>
 
           <Grid container spacing={2} sx={{ mt: 2 }}>

@@ -202,7 +202,9 @@ const createTaxInvoice = async (req, res) => {
     const builtLines = await buildTaxInvoiceLines(lines, session);
     const pos = requestedPos || source.placeOfSupply || {};
     if (!clean(pos.stateCode)) {
-      throw new HttpError(400, 'Place of supply state code is required on a Tax Invoice — set it on the client / billing firm address');
+      throw new HttpError(400,
+        `${source.invoiceNumber} has no place-of-supply state code. Add the GST state code in ` +
+        'Masters → Clients, then edit and save the Bill of Supply once — it picks the code up on save.');
     }
 
     const ti = new TaxInvoice({

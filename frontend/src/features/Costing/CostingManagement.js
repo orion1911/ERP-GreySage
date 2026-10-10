@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import {
   TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination,
   TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent,
-  DialogActions, Chip, Divider, InputAdornment, useTheme, Switch, FormControlLabel,
+  DialogActions, Chip, Divider, InputAdornment, useTheme, Switch, FormControlLabel, Tooltip,
 } from '@mui/material';
 import {
   Calculate as CalculateIcon, Search as SearchIcon, Edit as EditIcon, Save as SaveIcon,
@@ -18,10 +18,31 @@ import { motion, AnimatePresence } from 'motion/react';
 //   (per-pc uplifts on fabric/stitching/finishing, manual profit margin, expenses).
 //   The washing stage carries NO uplift — wash pricing is per creation, so the
 //   quantity-weighted average of the frozen row rates is already the true wash cost.
-//   CP = fabric + stitching + washing + finishing + accessories,
-//   SP = CP + per-pc uplifts + margin + expenses.
+//   CP = fabric + stitching + washing + finishing + accessories + per-pc uplifts + expenses,
+//   PF = the profit margin entered;  SP = CP + PF, rounded UP to the next rupee.
+//   "Full" = every stage > 0 + zippers at stitching + finishing accessories; else "Partial".
 
 const rs = (n) => (n === null || n === undefined ? '—' : Math.round(n * 100) / 100 === Math.round(n) ? Math.round(n).toLocaleString('en-IN') : (Math.round(n * 100) / 100).toLocaleString('en-IN'));
+
+// Full / Partial chip; hovering "Partial" lists what is still missing.
+const StatusChip = ({ complete, missing }) => (complete ? (
+  <Chip size="small" color="success" label="Full" />
+) : (
+  <Tooltip
+    arrow
+    enterTouchDelay={0}
+    title={(missing || []).length ? (
+      <Box>
+        <Typography variant="caption" fontWeight={700} sx={{ display: 'block' }}>Missing for Full</Typography>
+        <Box component="ul" sx={{ m: 0, pl: 2 }}>
+          {missing.map((m) => <li key={m}><Typography variant="caption">{m}</Typography></li>)}
+        </Box>
+      </Box>
+    ) : 'Incomplete'}
+  >
+    <Chip size="small" variant="outlined" color="warning" label="Partial" />
+  </Tooltip>
+));
 
 function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
   const { isMobile, drawerWidth, showSnackbar } = useOutletContext();
@@ -71,9 +92,14 @@ function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
       + (Number(form.fabricUpliftPerPc) || 0)
       + (Number(form.stitchingUpliftPerPc) || 0)
       + (Number(form.finishingUpliftPerPc) || 0)) * 100) / 100;
-    const marginPlusExpenses = (Number(form.profitMarginPerPc) || 0) + (Number(form.expensesPerPc) || 0);
-    // Mirror the server: Final SP is always rounded UP to the next whole rupee.
-    return { adjusted, finalSP: Math.ceil((adjusted + marginPlusExpenses) - 1e-9) };
+    const expenses = Number(form.expensesPerPc) || 0;
+    const margin = Number(form.profitMarginPerPc) || 0;
+    // Mirror the server: CP = stages + uplifts + expenses; SP = CP + profit margin, rounded UP to
+    // the next whole rupee. roundUp = what that rounding added (shown as a note, never as profit).
+    const cp = Math.round((adjusted + expenses) * 100) / 100;
+    const finalSP = Math.ceil((adjusted + expenses + margin) - 1e-9);
+    const roundUp = Math.round((finalSP - cp - margin) * 100) / 100;
+    return { adjusted, cp, margin, roundUp, finalSP };
   }, [data, form]);
 
   const handleSave = () => {
@@ -185,9 +211,14 @@ function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
                 </Box>
               ) : comp('Accessories', data.components.accessories)}
               {!data.complete && (
-                <Typography variant="caption" color="warning.main">
-                  Incomplete lot — missing stages count as 0 until their records exist.
-                </Typography>
+                <Box>
+                  <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
+                    Partial — missing items count as 0 until recorded:
+                  </Typography>
+                  <Box component="ul" sx={{ m: 0, pl: 2.5, color: 'warning.main' }}>
+                    {(data.missing || []).map((m) => <li key={m}><Typography variant="caption">{m}</Typography></li>)}
+                  </Box>
+                </Box>
               )}
             </Stack>
 
@@ -210,21 +241,24 @@ function CostingDetailDialog({ open, onClose, lotId, onSaved }) {
 
             <Divider sx={{ mb: 1 }} />
             <Stack direction="row" justifyContent="space-between">
-              <Typography>Adjusted CP</Typography>
-              <Typography fontWeight="bold">{rs(preview?.adjusted)}</Typography>
+              <Typography>Final CP (uplift + expenses)</Typography>
+              <Typography fontWeight="bold">{rs(preview?.cp)}</Typography>
             </Stack>
             <Stack direction="row" justifyContent="space-between">
-              <Typography>Profit margin + Expenses (+)</Typography>
-              <Typography>
-                {rs((Number(form.profitMarginPerPc) || 0) + (Number(form.expensesPerPc) || 0))}
-              </Typography>
+              <Typography>Profit margin</Typography>
+              <Typography fontWeight="bold" color="success.main">{rs(preview?.margin)}</Typography>
             </Stack>
-            <Stack direction="row" justifyContent="space-between">
-              <Typography>Final SP (client, per pc)</Typography>
+            <Stack direction="row" justifyContent="space-between" alignItems="baseline">
+              <Typography>Final SP</Typography>
               <Typography variant="h6" fontWeight="bold" color="primary">
                 {rs(preview?.finalSP)}
               </Typography>
             </Stack>
+            {/* {preview?.roundUp > 0.004 && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'right' }}>
+                includes +{rs(preview.roundUp)} rounding up to the next ₹
+              </Typography>
+            )} */}
           </>
         )}
       </DialogContent>
@@ -309,9 +343,10 @@ function CostingManagement() {
     { accessorKey: 'washingCP', header: 'Wash' },
     { accessorKey: 'finishingCP', header: 'Finish' },
     { accessorKey: 'accessoriesCP', header: 'Acc' },
-    { accessorKey: 'adjustedCP', header: 'CP' },
+    { accessorKey: 'costPrice', header: 'CP' },
+    { accessorKey: 'profitPerPc', header: 'PF' },
     { accessorKey: 'finalSP', header: 'SP' },
-    { accessorKey: 'complete', header: '' },
+    { accessorKey: 'complete', header: 'Status' },
     { accessorKey: '_x', header: 'Actions' },
   ];
 
@@ -338,7 +373,7 @@ function CostingManagement() {
           />
         </Stack>
         <Typography variant="caption" color="text.secondary">
-          CP = Fabric (rate × AVG) + Stitching + Washing (weighted avg) + Finishing + Accessories · SP = CP + uplifts + margin
+          CP = stages + uplifts + expenses · PF = profit margin · SP = CP + PF, rounded up to the next ₹ · order = Cutting Book
         </Typography>
       </Box>
 
@@ -355,7 +390,7 @@ function CostingManagement() {
                 <Box key={r.lotId} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.5, mb: 1 }} onClick={() => openDetail(r.lotId)}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography fontWeight="bold">{r.lotNumber}</Typography>
-                    {r.complete ? <Chip size="small" color="success" label="Full" /> : <Chip size="small" variant="outlined" color="warning" label="Partial" />}
+                    <Box onClick={(e) => e.stopPropagation()}><StatusChip complete={r.complete} missing={r.missing} /></Box>
                   </Stack>
                   <Typography variant="caption" color="text.secondary">
                     {r.fitStyleName || ''}{r.clientName ? ` · ${r.clientName}` : ''}
@@ -365,7 +400,8 @@ function CostingManagement() {
                     F {rs(r.fabricCP)} · S {rs(r.stitchingCP)} · W {rs(r.washingCP)} · Fin {rs(r.finishingCP)} · A {rs(r.accessoriesCP)}
                   </Typography>
                   <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
-                    <Typography variant="body2">CP <b>{rs(r.adjustedCP)}</b></Typography>
+                    <Typography variant="body2">CP <b>{rs(r.costPrice)}</b></Typography>
+                    <Typography variant="body2">PF <b>{rs(r.profitPerPc)}</b></Typography>
                     <Typography variant="body2">SP <b color="primary">{rs(r.finalSP)}</b></Typography>
                   </Stack>
                 </Box>
@@ -418,12 +454,11 @@ function CostingManagement() {
                         <TableCell style={{ textAlign: 'center' }}>{rs(r.washingCP)}</TableCell>
                         <TableCell style={{ textAlign: 'center' }}>{rs(r.finishingCP)}</TableCell>
                         <TableCell style={{ textAlign: 'center' }}>{rs(r.accessoriesCP)}</TableCell>
-                        <TableCell style={{ textAlign: 'center' }}><b>{rs(r.adjustedCP)}</b></TableCell>
+                        <TableCell style={{ textAlign: 'center' }}><b>{rs(r.costPrice)}</b></TableCell>
+                        <TableCell style={{ textAlign: 'center' }}>{rs(r.profitPerPc)}</TableCell>
                         <TableCell style={{ textAlign: 'center' }}><b>{rs(r.finalSP)}</b></TableCell>
-                        <TableCell style={{ textAlign: 'center' }}>
-                          {r.complete
-                            ? <Chip size="small" color="success" label="Full" />
-                            : <Chip size="small" variant="outlined" color="warning" label="Partial" />}
+                        <TableCell style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <StatusChip complete={r.complete} missing={r.missing} />
                         </TableCell>
                         <TableCell style={{ textAlign: 'center' }}>
                           <IconButton size="small" onClick={(e) => { e.stopPropagation(); openDetail(r.lotId); }}>

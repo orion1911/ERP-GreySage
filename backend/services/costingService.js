@@ -94,9 +94,33 @@ const accessoryRatioOf = (row) => (row?.accessoryItemId?.subType === 'rivet' ? R
 const accessoryUsedQtyOf = (row, finishingBasis) => {
   const sent = Number(row?.qty) || 0;
   if (!row || row.stage !== 'finishing') return sent;
-  const basis = Number.isFinite(Number(row.basisPcs)) ? Number(row.basisPcs) : (Number(finishingBasis) || 0);
+  const current = Number(finishingBasis) || 0; // the lot's CURRENT finishing qty
+  const ownRaw = Number(row.basisPcs);
+  const own = Number.isFinite(ownRaw) && ownRaw > 0 ? ownRaw : current;
+  // Never cost more pcs than the lot has in finishing NOW: accessories sent for more pcs
+  // (deliberate extras, or before a later shortage) stay with the vendor, not on this lot.
+  const basis = current > 0 ? Math.min(own, current) : own;
   const needed = basis * accessoryRatioOf(row);
   return needed > 0 ? Math.min(sent, needed) : sent;
+};
+
+// Which accessory stages a lot has recorded (qty > 0): zippers at stitching, the rest at finishing.
+const accessoryStagesOf = (rows) => ({
+  stitching: (rows || []).some((r) => r.stage === 'stitching' && Number(r.qty) > 0),
+  finishing: (rows || []).some((r) => r.stage === 'finishing' && Number(r.qty) > 0)
+});
+
+// "Full" costing = every stage recorded with a non-zero cost, zippers recorded at stitching and
+// finishing accessories recorded. Anything else is "Partial" — `missing` says what to complete.
+const completenessOf = ({ fabric, stitching, washing, finishing, acc }) => {
+  const missing = [];
+  if (!(Number(fabric) > 0)) missing.push('Fabric');
+  if (!(Number(stitching) > 0)) missing.push('Stitching');
+  if (!(Number(washing) > 0)) missing.push('Washing');
+  if (!(Number(finishing) > 0)) missing.push('Finishing');
+  if (!acc?.stitching) missing.push('Zippers (stitching accessories)');
+  if (!acc?.finishing) missing.push('Finishing accessories');
+  return { complete: missing.length === 0, missing };
 };
 
 const computeAccessoriesComponent = async (lotId, finishing) => {
@@ -105,16 +129,17 @@ const computeAccessoriesComponent = async (lotId, finishing) => {
     .populate('accessoryItemId', 'name rate subType')
     .lean();
 
+  const stagesPresent = accessoryStagesOf(rows);
   if (!rows || rows.length === 0) {
-    return { available: false, reason: 'No accessory consumption recorded for this lot' };
+    return { available: false, reason: 'No accessory consumption recorded for this lot', stagesPresent };
   }
 
-  // Denominator — the pcs the accessories were FOR: the finishing basis (the
-  // accessoryBasisPcs override, else the finishing quantity = the pcs actually
-  // present at the finishing stage).
-  const basisPcs = Number(finishing?.accessoryBasisPcs) || Number(finishing?.quantity) || 0;
+  // Denominator — the lot's CURRENT finishing qty (the pcs actually at the finishing stage);
+  // the accessoryBasisPcs override only when no quantity is recorded. Extras sent beyond the
+  // lot never raise the per-pc cost.
+  const basisPcs = Number(finishing?.quantity) || Number(finishing?.accessoryBasisPcs) || 0;
   if (basisPcs <= 0) {
-    return { available: false, reason: 'No finishing record to divide accessory cost over' };
+    return { available: false, reason: 'No finishing record to divide accessory cost over', stagesPresent };
   }
 
   const byType = new Map();
@@ -160,6 +185,7 @@ const computeAccessoriesComponent = async (lotId, finishing) => {
 
   return {
     available: true,
+    stagesPresent,
     totalMoney: round2(totalMoney),
     basisPcs,
     perPc: round2(totalMoney / basisPcs),
@@ -245,6 +271,18 @@ const computeLotCosting = async (lot) => {
   const adjustedCP = round2(baseCP + fabricUplift + stitchingUplift + finishingUplift);
   const finalSP = ceilRupee(adjustedCP + profitMargin + expenses);
 
+  // CP shown everywhere = everything the piece costs us: stages + uplifts + expenses.
+  // PF = the profit margin entered; SP = CP + PF, rounded UP to the next rupee.
+  const costPrice = round2(adjustedCP + expenses);
+  const profitPerPc = round2(profitMargin);
+  const status = completenessOf({
+    fabric: fabric.available ? fabric.perPc : 0,
+    stitching: stitch.available ? stitch.rate : 0,
+    washing: washingComponent.available ? washingComponent.perPc : 0,
+    finishing: finish.available ? finish.rate : 0,
+    acc: accessories.stagesPresent
+  });
+
   return {
     lot: {
       _id: lot._id,
@@ -264,7 +302,10 @@ const computeLotCosting = async (lot) => {
     baseCP,
     adjustedCP,
     finalSP,
-    complete: fabric.available && stitch.available && washingComponent.available && finish.available,
+    costPrice,
+    profitPerPc,
+    complete: status.complete,
+    missing: status.missing,
     notes: overlay?.notes || '',
     overlayUpdatedAt: overlay?.updatedAt || null,
   };
@@ -320,7 +361,8 @@ const computeBoardRows = (lots, docs) => {
     // e) Accessories — Σ(USED qty × frozen rate) over the finishing basis pcs.
     //    Used = needed (basis × ratio), capped at sent — the finishing buffer
     //    sitting at the vendor is not this lot's cost (accessoryUsedQtyOf).
-    const basisPcs = Number(finishing?.accessoryBasisPcs) || Number(finishing?.quantity) || 0;
+    //    Basis = the lot's CURRENT finishing qty (same rule as computeAccessoriesComponent).
+    const basisPcs = Number(finishing?.quantity) || Number(finishing?.accessoryBasisPcs) || 0;
     let accMoney = 0;
     for (const r of accRows) accMoney += accessoryUsedQtyOf(r, basisPcs) * accessoryRateOf(r);
     const accessoriesCP = basisPcs > 0 ? round2(accMoney / basisPcs) : null;
@@ -334,6 +376,16 @@ const computeBoardRows = (lots, docs) => {
       (Number(overlay?.stitchingUpliftPerPc) || 0) +
       (Number(overlay?.finishingUpliftPerPc) || 0));
     const finalSP = ceilRupee(adjustedCP + (Number(overlay?.profitMarginPerPc) || 0) + (Number(overlay?.expensesPerPc) || 0));
+
+    const expensesPerPc = Number(overlay?.expensesPerPc) || 0;
+    const costPrice = round2(adjustedCP + expensesPerPc); // stages + uplifts + expenses
+    const status = completenessOf({
+      fabric: fabricCP ?? 0,
+      stitching: stitchingCP ?? 0,
+      washing: washComp.available ? washComp.perPc : 0,
+      finishing: finishingCP ?? 0,
+      acc: accessoryStagesOf(accRows)
+    });
 
     return {
       lotId: lot._id,
@@ -350,14 +402,20 @@ const computeBoardRows = (lots, docs) => {
       accessoriesCP,
       adjustedCP,
       finalSP,
-      complete: fabricCP !== null && stitchingCP !== null && washComp.available && finishingCP !== null,
+      expensesPerPc,
+      profitMarginPerPc: Number(overlay?.profitMarginPerPc) || 0,
+      costPrice,
+      profitPerPc: Number(overlay?.profitMarginPerPc) || 0, // PF = profit margin entered
+      complete: status.complete,
+      missing: status.missing,
     };
   });
 };
 
-// GET board — filter=costed (default): only lots WITH a cutting sheet (fabric is the
-// costing anchor and the vast majority of the board); filter=all shows every active
-// lot. search narrows by lotNumber.
+// GET board — filter=costed (default): only lots WITH a cutting sheet (fabric is the costing
+// anchor and the vast majority of the board), in the SAME ORDER as the Cutting Book page —
+// sheet date newest first, then sheet creation. filter=all shows every active lot by lot date.
+// search narrows by lotNumber.
 const getCostingBoard = async ({ search = '', page = 1, limit = 25, filter = 'costed' }) => {
   const query = { status: { $gte: 2 } };
   if (search) query.lotNumber = { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
@@ -370,16 +428,40 @@ const getCostingBoard = async ({ search = '', page = 1, limit = 25, filter = 'co
 
   const lim = Math.min(parseInt(limit, 10) || 25, 100);
   const pg = Math.max(parseInt(page, 10) || 1, 1);
-  const [lots, total] = await Promise.all([
-    Lot.find(query)
-      .sort({ createdAt: -1 })
-      .skip((pg - 1) * lim)
-      .limit(lim)
+  let lots;
+  let total;
+  if (filter !== 'all') {
+    // Page through the SHEETS (Cutting Book order), then load their lots in that order.
+    const lotIds = await Lot.distinct('_id', query);
+    const sheetQuery = { lotId: { $in: lotIds } };
+    const [pageSheets, count] = await Promise.all([
+      CuttingSheet.find(sheetQuery)
+        .sort({ date: -1, createdAt: -1 })
+        .skip((pg - 1) * lim)
+        .limit(lim)
+        .select('lotId')
+        .lean(),
+      CuttingSheet.countDocuments(sheetQuery),
+    ]);
+    const found = await Lot.find({ _id: { $in: pageSheets.map((s) => s.lotId) } })
       .populate('clientId', 'name')
       .populate('fitStyleId', 'name')
-      .lean(),
-    Lot.countDocuments(query),
-  ]);
+      .lean();
+    const byId = new Map(found.map((l) => [String(l._id), l]));
+    lots = pageSheets.map((s) => byId.get(String(s.lotId))).filter(Boolean);
+    total = count;
+  } else {
+    [lots, total] = await Promise.all([
+      Lot.find(query)
+        .sort({ date: -1, createdAt: -1 })
+        .skip((pg - 1) * lim)
+        .limit(lim)
+        .populate('clientId', 'name')
+        .populate('fitStyleId', 'name')
+        .lean(),
+      Lot.countDocuments(query),
+    ]);
+  }
   const ids = lots.map(l => l._id);
 
   const [sheets, stitches, washes, finishes, overlays, accRows] = await Promise.all([

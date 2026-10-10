@@ -416,6 +416,80 @@ E-way Bill when entered. Counter page has a series selector. Pre-deploy:
 **Not verified against a live database.** Run one Bill of Supply → Tax Invoice → cancel /
 delete round-trip on the dev database before trusting it in production.
 
+### Invoice hotfixes (9–10 Oct 2026) — branch `hotfix/lot-reassign-charged-samples`
+
+Verified end to end by the Playwright suite in `e2e/` (9/9 passing on 10 Oct, see below).
+
+1. **Outside items** (goods bought in / not made or tracked in the ERP). A Bill of Supply line
+   with no lot is billed normally and never touches lots, dispatch or the cross-client report;
+   the client balance includes it. The SERVER always accepted lot-less lines
+   (`buildAndValidateLines` touches stock only `if (raw.lotId)`); the FORM now makes it explicit:
+   "Add Outside Item" / "Outside item (no lot)" → line flag `isManual` (form-only), and a normal
+   line saved without a lot is refused client-side ("pick a lot — or tap Outside item"). Saved
+   lot-less lines re-open as outside items. `onInvalid` now names the line + field when
+   react-hook-form blocks Save (it used to fail silently).
+2. **GST state code mandatory on a Bill of Supply** (`STATE_CODE_RE` = 2 digits). Place of supply
+   comes from `derivePlaceOfSupply(client, firm)` — prefers whichever of shipping / billing
+   address HAS a state code. Refused on create without one ("Add it in Masters → Clients").
+   A Bill of Supply saved before the rule (no code) takes the client's CURRENT details
+   (address snapshot + place of supply) on its next save; ones with a code stay frozen as issued.
+   **HSN and GSTIN stay optional on a Bill of Supply** (HSN is required only on the Tax Invoice).
+3. **Lot re-assigned in Stitching** (client A declined → sold to B; `updateStitching` with a new
+   `clientId`). The Cutting Book sheet mirrors the lot header and re-applies it to the lot on every
+   sheet save, so `updateStitching` now also updates `CuttingSheet.clientId / fitStyleId / fabric`
+   for sheet-backed lots — before this, editing the sheet later silently moved the lot back to A.
+   The change is audited: `logAction(..., 'reassign_lot_client', 'Lot', …)` "client A → B".
+4. **Charged samples.** A sample is free by default (`isSample`, rate 0). Entering a rate makes it
+   a CHARGED sample, saved as an ordinary priced line WITHOUT a lot (billed; taxed on the Tax
+   Invoice — HSN needed there; no stock effect). Server unchanged. On re-open a charged sample is
+   recognised by `isChargedSampleLine` (no lot, rate > 0, description starts with "SAMPLE") and
+   shown as a sample again — if staff delete the word SAMPLE it re-opens as an outside item.
+5. **Cross-client lots** (lot made for C, part or all billed to D).
+   - Payments / charges / balance belong to the BILLED client (D); C's ledger is untouched. The
+     production side (vendor cost, costing, MAKINGS) stays with the lot's client (C); each line
+     freezes `lotClientIdSnapshot` for the cross-client report.
+   - Pcs come off the lot whoever is billed (same lock + availability check; over-billing refused
+     "only has N pcs remaining"). A cross-client line needs an internal note (not printed).
+   - `getLotsAvailableForDispatch` used to sort own → in-house → others and cut the WHOLE list at
+     50, so own + GREYSAGE stock hid every other client's lot. Each band is now capped at `limit`
+     separately (`perBand`); cross-client overfetch widened to `limit × 20`.
+   - **Default list = own + in-house lots** (switch on or off). The "Other clients' lots" switch
+     now only widens the picker's SEARCH to every client (server `search` + `crossClient`), which
+     is cheaper than loading ~1,000 lots and finds lots of any age.
+6. **Lot picker = `features/Sales/LotSelect.js`** (replaces the Autocompletes for single and
+   combined lines): a plain Select whose first menu row is a search box.
+   - Typing filters the listed lots instantly (lot no. / maker bill no.); **Enter / 🔍** calls the
+     parent's `searchLots(term)` → Promise and then shows ONLY the matches; ✕ restores the list.
+   - Scope (parent `searchLots` in `InvoiceFormModal`): damaged sale → damaged pool; switch ON →
+     all clients; otherwise this client + in-house. The search box placeholder states the scope.
+   - Each picker keeps its own search; `resetKey` (open / client / switches) resets it. Lots
+     already on the line always stay visible under a "Selected" header.
+   - Menu opens under the field, left-aligned, max 360 px. Its background is set INLINE
+     (`theme.vars.palette.background.paper`): the theme's MuiMenu override paints menus near-black
+     via a `[data-mui-color-scheme="dark"] &` rule that out-ranks an `sx` background.
+   - Tax Invoice picker unchanged in behaviour (it still loads every lot, dispatched included).
+7. **Lot cell layout.** Warnings (not in finishing, other client's lot) collapse into one amber ⚠
+   whose tooltip lists them as bullets and NAMES the lot(s) ("Lot V/55 was produced for BLU WAVE —
+   billing to ADAM HILL"); the split / remaining caption sits beside it; the internal note is one
+   compact field. Desktop item table uses `tableLayout: 'fixed'` (# 32, Lot 360, HSN 84, Pcs 76,
+   Rate 88, GST 72, Amount 112, delete 44; Description takes the rest; `minWidth: 960` scrolls).
+   Switch order: "Other clients' lots" first, then "Combined damaged sale".
+
+**Gotchas found on the way**
+- MUI Select clones value-less children (ListSubheader) with `role="option"`; real lot rows are
+  the `li[data-value]` MenuItems. While text is typed in the search row its accessible name
+  becomes that text — tests must match lot rows by visible text, not by option name.
+- `getByLabel('Client')` is a substring match: it also hits the "Other clients' lots" switch and
+  the lot picker ("Pick a client first"). Use `getByRole('combobox', { name: 'Client', exact: true })`.
+- `git apply` run from a SUBFOLDER (e.g. `e2e/`) silently skips every file outside it and still
+  reports success — always apply patches from the repo root.
+
+**E2E suite — `e2e/`** (Playwright; see `e2e/README.md`). 9 tests: outside item (API + form),
+state-code rule, default list vs search scope, split + over-bill, lot picker behaviour, search
+with the switch + save, charged/free samples, and (opt-in) lot re-assignment vs sheet re-save.
+Run ONLY against a local backend on a DEV database: tests create Bills of Supply and delete them
+again (latest number only — don't create invoices while it runs).
+
 ### Costing hardening + Wash Creation costing (uncommitted at the time of writing)
 
 1. **Accessory rates are now frozen per consumption row.** `AccessoryConsumption.rateSnapshot`

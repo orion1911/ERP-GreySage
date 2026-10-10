@@ -5,7 +5,7 @@ import {
   Box, Modal, Typography, TextField, Button, IconButton, Grid,
   Autocomplete, MenuItem, Table, TableHead, TableRow, TableCell, TableBody,
   Stack, Divider, CircularProgress, Card, CardContent, useTheme,
-  FormControlLabel, Switch, Chip, Alert
+  FormControlLabel, Switch, Chip, Alert, Tooltip
 } from '@mui/material';
 import {
   Close as CloseIcon, Save as SaveIcon, Publish as PublishIcon,
@@ -16,6 +16,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs from 'dayjs';
 import apiService from '../../services/apiService';
+import LotSelect from './LotSelect';
 
 const fmtINR = (n) => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n) || 0);
 
@@ -111,6 +112,13 @@ const emptyLine = {
 const emptySample = { ...emptyLine, hsnSac: '', isSample: true, description: 'SAMPLE ', rate: 0 };
 const emptyManual = { ...emptyLine, isManual: true };
 
+// A CHARGED sample (rate > 0) is saved as an ordinary priced line without a lot — billed, taxed
+// on a Tax Invoice, no stock effect. On reload it is recognised by its "SAMPLE…" description and
+// shown as a sample again. Free samples keep isSample with rate 0.
+const isChargedSampleLine = (l) => !l.isSample && !l.lotId
+  && !(Array.isArray(l.sources) && l.sources.length > 0)
+  && Number(l.rate) > 0 && /^\s*SAMPLE\b/i.test(l.description || '');
+
 // Form rows from a saved document's lines — Bill of Supply → Tax Invoice prefill, or a Tax
 // Invoice being edited. Merged lines keep their frozen per-lot split (locked, like edit mode).
 const taxLinesFromDoc = (doc, isTaxDoc) => (doc?.lines || []).map((l) => {
@@ -131,8 +139,8 @@ const taxLinesFromDoc = (doc, isTaxDoc) => (doc?.lines || []).map((l) => {
     rate: l.rate,
     taxRateOverride: isTaxDoc && l.taxRate !== undefined && l.taxRate !== null ? String(l.taxRate) : '',
     taxRateTouched: isTaxDoc && l.taxRateSource === 'override',
-    isManual: !l.isSample && !merged && !l.lotId,
-    isSample: !!l.isSample
+    isManual: !l.isSample && !merged && !l.lotId && !isChargedSampleLine(l),
+    isSample: !!l.isSample || isChargedSampleLine(l)
   };
 });
 
@@ -179,8 +187,11 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
   const crossClient = watch('crossClient');
   const roundOff = Number(useWatch({ control, name: 'roundOff' })) || 0;
 
+  // Default good-lot list: the client's own + in-house lots. Each picker's search box finds more.
+  const pickerLots = lotsForClient;
+
   // Combined Damaged Sale draws from a cross-client pool; otherwise client-filtered good lots.
-  const lotOptions = damagedMode ? damagedLots : lotsForClient;
+  const lotOptions = damagedMode ? damagedLots : pickerLots;
 
   // Fetch clients on open
   useEffect(() => {
@@ -303,8 +314,8 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
             // against the owner recorded at issue time, exactly as the server does.
             crossClientOwner: crossClientOwnerOf(l, editInvoice),
             // Saved line with no lot (and not a sample / combined line) = outside item.
-            isManual: !l.isSample && !merged && !l.lotId,
-            isSample: !!l.isSample
+            isManual: !l.isSample && !merged && !l.lotId && !isChargedSampleLine(l),
+            isSample: !!l.isSample || isChargedSampleLine(l)
           };
         })
       });
@@ -356,22 +367,49 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
       return;
     }
     setLotsLoading(true);
-    // crossClient widens the pool to every client's lots. House-label lots (GREYSAGE) come
-    // back either way — they're common stock, not an exception needing a toggle.
+    // Default list: the client's own lots + house-label lots (GREYSAGE — common stock), whatever
+    // the "Other clients' lots" switch says; that switch only widens the picker's SEARCH box to
+    // every client. (Cheaper than loading ~1,000 lots, and the search finds lots of any age.)
     // A Tax Invoice only references lots (nothing is consumed), so its picker offers every lot,
     // fully-dispatched ones included.
     // Editing a Bill of Supply: excludeInvoiceId adds this invoice's own pcs back to each lot's
-    // remaining, so combined lines can be re-split and its fully-used lots still appear.
+    // remaining, so combined lines can be re-split and its fully-used lots still appear (the
+    // server also returns every lot the invoice holds, other clients' included).
     apiService.salesInvoices.getLotsAvailable({
       clientId: client._id,
-      crossClient: (crossClient || isTax) ? 'true' : undefined,
+      crossClient: isTax ? 'true' : undefined,
       includeDispatched: isTax ? 'true' : undefined,
       excludeInvoiceId: editInvoice ? editInvoice._id : undefined
     })
       .then((data) => setLotsForClient(data))
       .catch((e) => showSnackbar(e))
       .finally(() => setLotsLoading(false));
-  }, [open, client?._id, crossClient, isTax, editInvoice?._id]);
+  }, [open, client?._id, isTax, editInvoice?._id]);
+
+  // Picker search (🔍 / Enter) → Promise of matching lots; the picker then shows only those.
+  // Scope follows the form:
+  //   Combined damaged sale     → the damaged pool (any client)
+  //   "Other clients' lots" ON  → every client's lots (each flagged with its owner)
+  //   otherwise                 → this client + in-house, older lots included
+  const searchLots = useCallback((term) => {
+    if (!term || (!damagedMode && !client?._id)) return Promise.resolve([]);
+    const req = damagedMode
+      ? apiService.salesInvoices.getLotsDamagedAvailable({
+        search: term, ...(editInvoice ? { excludeInvoiceId: editInvoice._id } : {})
+      })
+      : apiService.salesInvoices.getLotsAvailable({
+        clientId: client._id,
+        search: term,
+        crossClient: (crossClient || isTax) ? 'true' : undefined,
+        includeDispatched: isTax ? 'true' : undefined,
+        excludeInvoiceId: editInvoice ? editInvoice._id : undefined
+      });
+    return req
+      .then((data) => data || [])
+      .catch((e) => { showSnackbar(e); return []; });
+  }, [damagedMode, client?._id, crossClient, isTax, editInvoice?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A new client / switch starts every picker's search afresh.
+  const lotSearchKey = `${open ? 1 : 0}|${client?._id || ''}|${crossClient ? 1 : 0}|${damagedMode ? 1 : 0}`;
 
   // Resolve the placeholder set by crossClientOwnerOf into real names, once the client list
   // is available. Also clears the flag where the owner turns out to be a house label — that
@@ -426,7 +464,9 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
       const l = rows[i] || {};
       const hsn = String(l.hsnSac || '').trim();
       const common = { description: l.description, remark: l.remark, hsnSac: hsn, unit: l.unit };
-      if (l.isSample) {
+      // Free sample: non-chargeable, no tax. A charged sample (rate > 0) falls through and is
+      // billed + taxed like any line without a lot (HSN required).
+      if (l.isSample && !(Number(l.rate) > 0)) {
         out.push({ ...common, pcs: parseInt(l.pcs, 10), rate: 0, isSample: true });
         continue;
       }
@@ -473,7 +513,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
     if (!isTax || !taxPreview?.ok) return;
     (taxPreview.preview.lines || []).forEach((pl, idx) => {
       const cur = getValues(`lines.${idx}`);
-      if (!cur || cur.isSample || cur.taxRateTouched) return;
+      if (!cur || (cur.isSample && !(Number(cur.rate) > 0)) || cur.taxRateTouched) return;
       const v = pl.taxRate === undefined || pl.taxRate === null ? '' : String(pl.taxRate);
       if (cur.taxRateOverride !== v) setValue(`lines.${idx}.taxRateOverride`, v);
     });
@@ -578,7 +618,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
 
   // Picker options carry each lot's live remaining (in edit mode including this invoice's own
   // pcs), so caps come from them rather than from a saved line's snapshot objects.
-  const liveLots = (lots) => (lots || []).map((l) => lotsForClient.find((o) => String(o._id) === String(l._id)) || l);
+  const liveLots = (lots) => (lots || []).map((l) => pickerLots.find((o) => String(o._id) === String(l._id)) || l);
 
   // The current per-lot split for a line.
   //   Tax Invoice      → record-only split (computeTaxSources).
@@ -604,141 +644,172 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
       sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
   ) : null));
 
+  // One lot row in the pickers: lot · maker bill, owner chip, not-finished flag, remaining pcs.
+  const renderLotOption = (option) => (
+    <Box>
+      <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
+        <Typography variant="body2">
+          <b>{option.lotNumber}</b>{option.invoiceNumber ? ` · Inv ${option.invoiceNumber}` : ''}
+        </Typography>
+        {!damagedMode && ownerChip(option)}
+        {!damagedMode && option.notFinished && (
+          <Chip size="small" color="warning" variant="outlined" icon={<WarningAmberIcon />}
+            label="Not finished" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' }, '& .MuiChip-icon': { fontSize: 14, ml: 0.5 } }} />
+        )}
+      </Stack>
+      {!option._fallback && (
+        <Typography variant="caption" color="text.secondary">
+          {damagedMode
+            ? `${option.clientName || ''} · ${option.fitStyleName} · ${option.damagedAvailable} damaged pcs`
+            : `${option.fitStyleName} · ${option.fabric} · Remaining ${option.remainingPcs} of ${option.finalPcs} pcs`}
+        </Typography>
+      )}
+    </Box>
+  );
+  const lotLabel = (o) => (o ? `${o.lotNumber || ''}${o.invoiceNumber ? ` (Inv ${o.invoiceNumber})` : ''}` : '');
+  // Where the picker's search box looks — shown as its placeholder so the scope is never a surprise.
+  const lotSearchPlaceholder = damagedMode
+    ? 'Search damaged lots — lot no. / bill no.'
+    : ((crossClient || isTax) ? 'Search ALL clients — lot no. / bill no.' : 'Search this client & in-house — lot no. / bill no.');
+
   // Lot picker cell shared by mobile + desktop. `options` is the single-lot list for that layout
-  // (mobile passes the good/damaged pool, desktop the good pool). The merged multi-select always
-  // uses the client's good lots (lotsForClient).
+  // (mobile passes the good/damaged pool, desktop the good pool). The merged multi-select uses the
+  // good lots (pickerLots — own + in-house + whatever the search box found).
   const renderLotField = (idx, cur, options) => {
     const canCombine = !damagedMode && !!client;
     const split = lineSources(cur);
     return (
       <>
         {cur.merged ? (
-          <Controller
-            name={`lines.${idx}.mergeLots`}
-            control={control}
-            render={() => (
-              <Autocomplete
-                multiple
-                size="small"
-                options={lotsForClient}
-                groupBy={lotGroup}
-                getOptionLabel={(o) => o ? `${o.lotNumber} (Inv ${o.invoiceNumber})` : ''}
-                isOptionEqualToValue={(o, v) => o?._id === v?._id}
-                loading={lotsLoading}
-                value={cur.mergeLots || []}
-                onChange={(_, v) => changeMergeLots(idx, v)}
-                disabled={!client}
-                renderOption={(props, option) => (
-                  <Box component="li" {...props}>
-                    <Box>
-                      <Stack direction="row" spacing={0.5} alignItems="center">
-                        <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
-                        {ownerChip(option)}
-                        {option.notFinished && (
-                          <Chip size="small" color="warning" variant="outlined" icon={<WarningAmberIcon />}
-                            label="Not finished" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' }, '& .MuiChip-icon': { fontSize: 14, ml: 0.5 } }} />
-                        )}
-                      </Stack>
-                      <Typography variant="caption" color="text.secondary">
-                        {option.fitStyleName} · {option.fabric} · Remaining {option.remainingPcs} of {option.finalPcs} pcs
-                      </Typography>
-                    </Box>
-                  </Box>
-                )}
-                renderInput={(params) => (
-                  <TextField {...params} variant="standard" placeholder="Pick lots to combine" />
-                )}
-              />
-            )}
+          <LotSelect
+            multiple
+            options={pickerLots}
+            value={(cur.mergeLots || []).map((l) => String(l._id))}
+            selectedLots={cur.mergeLots || []}
+            onChange={(lots) => changeMergeLots(idx, lots)}
+            disabled={!client}
+            loading={lotsLoading}
+            placeholder="Pick lots to combine"
+            searchPlaceholder={lotSearchPlaceholder}
+            searchLots={searchLots}
+            resetKey={lotSearchKey}
+            groupBy={lotGroup}
+            getLabel={lotLabel}
+            renderOption={renderLotOption}
           />
         ) : (
-          <Controller
-            name={`lines.${idx}.lotId`}
-            control={control}
-            render={() => (
-              <Autocomplete
-                size="small"
-                options={options}
-                groupBy={damagedMode ? undefined : lotGroup}
-                getOptionLabel={(o) => o ? `${o.lotNumber} (Inv ${o.invoiceNumber})` : ''}
-                isOptionEqualToValue={(o, v) => o?._id === v?._id}
-                loading={lotsLoading}
-                // Fall back to the line's own lot when it isn't in the option list, so a saved or
-                // prefilled lot still shows instead of a blank field.
-                value={options.find((l) => String(l._id) === String(cur.lotId))
-                  || (cur.lotId ? { _id: cur.lotId, lotNumber: cur.lotNumber, invoiceNumber: cur.lotInvoiceNumber } : null)}
-                onChange={(_, v) => handleLotChange(idx, v)}
-                disabled={!damagedMode && !client}
-                renderOption={(props, option) => (
-                  <Box component="li" {...props}>
-                    <Box>
-                      <Stack direction="row" spacing={0.5} alignItems="center">
-                        <Typography variant="body2"><b>{option.lotNumber}</b> · Inv {option.invoiceNumber}</Typography>
-                        {!damagedMode && ownerChip(option)}
-                        {!damagedMode && option.notFinished && (
-                          <Chip size="small" color="warning" variant="outlined" icon={<WarningAmberIcon />}
-                            label="Not finished" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' }, '& .MuiChip-icon': { fontSize: 14, ml: 0.5 } }} />
-                        )}
-                      </Stack>
-                      <Typography variant="caption" color="text.secondary">
-                        {damagedMode
-                          ? `${option.clientName || ''} · ${option.fitStyleName} · ${option.damagedAvailable} damaged pcs`
-                          : `${option.fitStyleName} · ${option.fabric} · Remaining ${option.remainingPcs} of ${option.finalPcs} pcs`}
-                      </Typography>
-                    </Box>
-                  </Box>
-                )}
-                renderInput={(params) => (
-                  <TextField {...params} variant="standard" placeholder={(damagedMode || client) ? 'Pick a lot' : 'Pick a client first'} />
-                )}
-              />
-            )}
+          <LotSelect
+            options={options}
+            value={cur.lotId}
+            // The line's own lot stays shown even when the list/search doesn't contain it.
+            selectedLots={cur.lotId ? [{ _id: cur.lotId, lotNumber: cur.lotNumber, invoiceNumber: cur.lotInvoiceNumber }] : []}
+            onChange={(lot) => handleLotChange(idx, lot)}
+            disabled={!damagedMode && !client}
+            loading={lotsLoading}
+            placeholder={(damagedMode || client) ? 'Pick a lot' : 'Pick a client first'}
+            searchPlaceholder={lotSearchPlaceholder}
+            searchLots={searchLots}
+            resetKey={lotSearchKey}
+            groupBy={damagedMode ? undefined : lotGroup}
+            getLabel={lotLabel}
+            renderOption={renderLotOption}
           />
         )}
 
-        {cur.merged ? (
-          (cur.mergeLots?.length > 0 || split.length > 0) && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              {split.length > 0
+        {(() => {
+          // One compact line under the picker: an amber ⚠ (only when there is something to check)
+          // whose tooltip lists every warning as bullets, then the split / remaining caption.
+          const caption = cur.merged
+            ? ((cur.mergeLots?.length > 0 || split.length > 0)
+              ? `${split.length > 0
                 ? `Split: ${split.map((s) => `${s.lotNumber || s.lotId}: ${s.pcs}`).join(' · ')}`
-                : 'Enter total pcs to split across the selected lots'}
-              {!isTax && cur.mergeLots?.length > 0 ? ` · ${sumRemaining(liveLots(cur.mergeLots))} available` : ''}
-            </Typography>
-          )
-        ) : (
-          cur.lotNumber && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              Lot {cur.lotNumber} · Inv {cur.lotInvoiceNumber}
-              {cur.remainingPcs !== null && cur.remainingPcs !== undefined ? ` · Remaining ${cur.remainingPcs}` : ''}
-            </Typography>
-          )
-        )}
-
-        {!damagedMode && !isTax && cur.notFinished && (
-          <Typography variant="caption" color="warning.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-            <WarningAmberIcon sx={{ fontSize: 14 }} />
-            {cur.merged ? 'One or more lots are not yet in finishing' : 'Lot not yet in finishing'} — dispatch allowed, verify pcs
-          </Typography>
-        )}
+                : 'Enter total pcs to split across the selected lots'}${!isTax && cur.mergeLots?.length > 0
+                ? ` · ${sumRemaining(liveLots(cur.mergeLots))} available` : ''}`
+              : '')
+            : (cur.lotNumber
+              ? `Lot ${cur.lotNumber} · Inv ${cur.lotInvoiceNumber}${cur.remainingPcs !== null && cur.remainingPcs !== undefined ? ` · Remaining ${cur.remainingPcs}` : ''}`
+              : '');
+          const billedTo = client?.name || 'this client';
+          const lotList = (nums) => (nums.length > 1 ? `Lots ${nums.join(', ')} are` : `Lot ${nums[0]} is`);
+          const warnings = [];
+          if (!damagedMode && !isTax && cur.notFinished) {
+            const unfinished = (cur.merged
+              ? (cur.mergeLots || []).filter((l) => l.notFinished).map((l) => l.lotNumber)
+              : [cur.lotNumber]).filter(Boolean);
+            warnings.push(`${unfinished.length ? lotList(unfinished) : 'A lot on this line is'} not yet in finishing — ` +
+              'dispatch is allowed, verify the pcs.');
+          }
+          if (!damagedMode && cur.crossClientOwner) {
+            // Name the lot(s): one bullet per other-client lot, with its own client.
+            const foreign = cur.merged
+              ? (cur.mergeLots || []).filter((l) => l.isCrossClient && !l.isHouseLot && l.lotNumber)
+              : (cur.lotNumber ? [{ lotNumber: cur.lotNumber, clientName: cur.crossClientOwner }] : []);
+            if (foreign.length) {
+              foreign.forEach((l) => warnings.push(
+                `Lot ${l.lotNumber} was produced for ${l.clientName || cur.crossClientOwner} — billing to ${billedTo}.`
+              ));
+            } else {
+              // Saved combined line reopened for editing: per-lot owners aren't loaded, name the line's lots.
+              const nums = (cur.mergeLots || []).map((l) => l.lotNumber).filter(Boolean);
+              warnings.push(`${nums.length ? `One of lots ${nums.join(', ')}` : 'A lot on this line'} was produced for ` +
+                `${cur.crossClientOwner} — billing to ${billedTo}.`);
+            }
+            warnings.push('Add an internal note below explaining why (not printed on the invoice).');
+          }
+          if (!caption && !warnings.length) return null;
+          return (
+            <Stack direction="row" alignItems="flex-start" spacing={0.5} sx={{ mt: 0.5 }}>
+              {warnings.length > 0 && (
+                <Tooltip
+                  arrow
+                  placement="right-start"
+                  enterTouchDelay={0}
+                  leaveTouchDelay={5000}
+                  slotProps={{ tooltip: { sx: { maxWidth: 320 } } }}
+                  title={(
+                    <Box>
+                      <Typography variant="caption" fontWeight={700} sx={{ display: 'block', mb: 0.25 }}>
+                        Check before saving
+                      </Typography>
+                      <Box component="ul" sx={{ m: 0, pl: 2 }}>
+                        {warnings.map((w) => (
+                          <li key={w}><Typography variant="caption">{w}</Typography></li>
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+                >
+                  <Box
+                    component="span"
+                    role="img"
+                    tabIndex={0}
+                    aria-label={`${warnings.length} warning${warnings.length > 1 ? 's' : ''}`}
+                    sx={{ display: 'inline-flex', color: 'warning.main', cursor: 'help', flexShrink: 0, mt: '1px' }}
+                  >
+                    <WarningAmberIcon sx={{ fontSize: 18 }} />
+                  </Box>
+                </Tooltip>
+              )}
+              {caption && (
+                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.45 }}>{caption}</Typography>
+              )}
+            </Stack>
+          );
+        })()}
 
         {!damagedMode && cur.crossClientOwner && (
-          <Box sx={{ mt: 0.75 }}>
-            <Typography variant="caption" color="warning.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <WarningAmberIcon sx={{ fontSize: 14 }} />
-              Produced for <b>{cur.crossClientOwner}</b> — billing to {client?.name || 'this client'}
-            </Typography>
-            <Controller
-              name={`lines.${idx}.internalNote`}
-              control={control}
-              render={({ field }) => (
-                <TextField {...field} variant="standard" size="small" fullWidth
-                  placeholder="Why? (internal — not printed on the invoice)"
-                  sx={{ mt: 0.25 }}
-                  slotProps={{ htmlInput: { style: { fontSize: '0.75rem' } } }}
-                />
-              )}
-            />
-          </Box>
+          // Required for a cross-client line — one compact field; the ⚠ tooltip explains why.
+          <Controller
+            name={`lines.${idx}.internalNote`}
+            control={control}
+            render={({ field }) => (
+              <TextField {...field} variant="standard" size="small" fullWidth
+                placeholder={`Internal note — why ${cur.crossClientOwner}'s lot? (not printed)`}
+                sx={{ mt: 0.25 }}
+                slotProps={{ htmlInput: { style: { fontSize: '0.75rem' } } }}
+              />
+            )}
+          />
         )}
 
         {canCombine && (
@@ -763,7 +834,9 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minHeight: 32 }}>
           <Chip size="small" color="secondary" variant="outlined" label="SAMPLE"
             sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.04em' } }} />
-          <Typography variant="caption" color="text.secondary">non-chargeable · no lot</Typography>
+          <Typography variant="caption" color="text.secondary">
+            {Number(cur.rate) > 0 ? 'charged · no lot · no stock effect' : 'free · no lot · enter a rate to charge'}
+          </Typography>
         </Box>
       );
     }
@@ -835,19 +908,24 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
     for (let i = 0; i < data.lines.length; i++) {
       const l = data.lines[i];
       if (l.isSample) {
-        // SAMPLE line — no lot, non-chargeable. Just needs a description + positive qty.
+        // SAMPLE line — no lot, no stock effect. Free by default; a rate makes it a CHARGED sample,
+        // saved as an ordinary priced line without a lot (billed, and taxed on a Tax Invoice).
         const pcs = parseInt(l.pcs, 10);
+        const rate = Number(l.rate) || 0;
         if (!l.description || !String(l.description).trim()) return showSnackbar(`Line ${i + 1}: description is required`);
         if (!Number.isInteger(pcs) || pcs < 1) return showSnackbar(`Line ${i + 1}: enter the sample pcs`);
-        outLines.push({
-          description: l.description,
-          remark: l.remark,
-          hsnSac: l.hsnSac,
-          unit: l.unit,
-          pcs,
-          rate: 0,
-          isSample: true
-        });
+        if (rate < 0) return showSnackbar(`Line ${i + 1}: rate can't be negative`);
+        outLines.push(rate > 0
+          ? { description: l.description, remark: l.remark, hsnSac: l.hsnSac, unit: l.unit, pcs, rate, isDamaged: false }
+          : {
+            description: l.description,
+            remark: l.remark,
+            hsnSac: l.hsnSac,
+            unit: l.unit,
+            pcs,
+            rate: 0,
+            isSample: true
+          });
         continue;
       }
       if (l.isManual) {
@@ -1122,6 +1200,40 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
                 // shown but locked — it decides which stock pool every line draws from.
                 <Grid size={{ xs: 12 }} sx={{ mt: -1 }}>
                   <Stack direction="row" flexWrap="wrap" columnGap={3} rowGap={0}>
+                    {!damagedMode && (
+                      <Controller
+                        name="crossClient"
+                        control={control}
+                        render={({ field }) => (
+                          <FormControlLabel
+                            sx={{ m: 0 }}
+                            control={(
+                              <Switch
+                                size="small"
+                                checked={!!field.value}
+                                onChange={(e) => {
+                                  // ON only widens the list, so selections stay. OFF while a line still
+                                  // uses another client's lot would orphan it — refuse instead of clearing.
+                                  if (!e.target.checked && (getValues('lines') || []).some((l) => l.crossClientOwner)) {
+                                    showSnackbar("Remove the lines that use other clients' lots first", 'warning');
+                                    return;
+                                  }
+                                  field.onChange(e.target.checked);
+                                }}
+                                color="warning"
+                              />
+                            )}
+                            label={(
+                              <Typography variant="caption">
+                                Other clients&apos; lots{' '}
+                                <Typography component="span" variant="caption" color="text.secondary">(search all clients · needs internal note)</Typography>
+                              </Typography>
+                            )}
+                          />
+                        )}
+                      />
+                    )}
+                    {/* Second from the left: rarely used, and it changes which pool every line draws from. */}
                     <Controller
                       name="damagedMode"
                       control={control}
@@ -1150,39 +1262,6 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
                         />
                       )}
                     />
-                    {!damagedMode && (
-                      <Controller
-                        name="crossClient"
-                        control={control}
-                        render={({ field }) => (
-                          <FormControlLabel
-                            sx={{ m: 0 }}
-                            control={(
-                              <Switch
-                                size="small"
-                                checked={!!field.value}
-                                onChange={(e) => {
-                                  // ON only widens the list, so selections stay. OFF while a line still
-                                  // uses another client's lot would orphan it — refuse instead of clearing.
-                                  if (!e.target.checked && (getValues('lines') || []).some((l) => l.crossClientOwner)) {
-                                    showSnackbar("Remove the lines that use other clients' lots first", 'warning');
-                                    return;
-                                  }
-                                  field.onChange(e.target.checked);
-                                }}
-                                color="warning"
-                              />
-                            )}
-                            label={(
-                              <Typography variant="caption">
-                                Other clients&apos; lots{' '}
-                                <Typography component="span" variant="caption" color="text.secondary">(needs internal note)</Typography>
-                              </Typography>
-                            )}
-                          />
-                        )}
-                      />
-                    )}
                   </Stack>
                 </Grid>
               )}
@@ -1278,15 +1357,14 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
                                 variant="standard"
                                 size="small"
                                 fullWidth
-                                disabled={cur.isSample}
-                                helperText={cur.isSample ? 'Sample — free' : ''}
+                                helperText={cur.isSample ? (Number(cur.rate) > 0 ? 'Charged sample' : 'Free — enter a rate to charge') : ''}
                                 inputProps={{ min: 0, step: 0.01, style: { textAlign: 'right' } }}
                               />
                             )}
                           />
                         </Grid>
                       </Grid>
-                      {isTax && !cur.isSample && (
+                      {isTax && !(cur.isSample && !(Number(cur.rate) > 0)) && (
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
                           <Typography variant="body2">GST %</Typography>
                           {renderTaxRate(idx)}
@@ -1305,18 +1383,20 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
           ) : (
             // ── Desktop: table ───────────────────────────────────────────
             <Box sx={{ overflowX: 'auto' }}>
-              <Table size="small">
+              {/* Fixed layout: the widths below are respected; Description takes the rest. The lot
+                  column is wide enough for two selected lots side by side. */}
+              <Table size="small" sx={{ tableLayout: 'fixed', minWidth: 960 }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell width={36}>#</TableCell>
-                    <TableCell width={240}>Lot # / Invoice #</TableCell>
+                    <TableCell width={32}>#</TableCell>
+                    <TableCell width={360}>Lot # / Invoice #</TableCell>
                     <TableCell>Description</TableCell>
-                    <TableCell width={70}>HSN/SAC</TableCell>
-                    <TableCell width={90} align="right">Pcs</TableCell>
-                    <TableCell width={100} align="right">Rate</TableCell>
-                    {isTax && <TableCell width={80} align="right">GST %</TableCell>}
-                    <TableCell width={130} align="right">Amount</TableCell>
-                    <TableCell width={50} />
+                    <TableCell width={84}>HSN/SAC</TableCell>
+                    <TableCell width={76} align="right">Pcs</TableCell>
+                    <TableCell width={88} align="right">Rate</TableCell>
+                    {isTax && <TableCell width={72} align="right">GST %</TableCell>}
+                    <TableCell width={112} align="right">Amount</TableCell>
+                    <TableCell width={44} />
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1329,7 +1409,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
                       <TableRow key={row.id}>
                         <TableCell>{idx + 1}</TableCell>
                         <TableCell>
-                          {renderLotOrSample(idx, cur, lotsForClient)}
+                          {renderLotOrSample(idx, cur, pickerLots)}
                         </TableCell>
                         <TableCell>
                           <Controller
@@ -1360,7 +1440,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
                             name={`lines.${idx}.hsnSac`}
                             control={control}
                             render={({ field }) => (
-                              <TextField {...field} variant="standard" size="small" />
+                              <TextField {...field} variant="standard" size="small" fullWidth />
                             )}
                           />
                         </TableCell>
@@ -1375,6 +1455,7 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
                                 type="number"
                                 variant="standard"
                                 size="small"
+                                fullWidth
                                 onChange={(e) => { field.onChange(e); if (cur.merged) setValue(`lines.${idx}.splitDirty`, true); }}
                                 inputProps={{ min: 1, style: { textAlign: 'right' } }}
                                 error={overshoot}
@@ -1394,14 +1475,15 @@ function InvoiceFormModal({ open, onClose, onSaved, editInvoice, preset, taxSour
                                 type="number"
                                 variant="standard"
                                 size="small"
-                                disabled={cur.isSample}
+                                fullWidth
+                                placeholder={cur.isSample ? '0 = free' : ''}
                                 inputProps={{ min: 0, step: 0.01, style: { textAlign: 'right' } }}
                               />
                             )}
                           />
                         </TableCell>
                         {isTax && (
-                          <TableCell align="right">{cur.isSample ? '—' : renderTaxRate(idx)}</TableCell>
+                          <TableCell align="right">{cur.isSample && !(Number(cur.rate) > 0) ? '—' : renderTaxRate(idx)}</TableCell>
                         )}
                         <TableCell align="right">{fmtINR(amount)}</TableCell>
                         <TableCell>

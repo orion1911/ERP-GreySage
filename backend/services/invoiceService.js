@@ -393,9 +393,9 @@ const getLotsAvailableForDispatch = async ({ clientId, search, crossClient = fal
 
   // Overfetch, because `remainingPcs > 0` can only be evaluated after the production
   // rollup below. In cross-client mode the candidate set is every client's lots, so a
-  // 3× cushion would let fully-dispatched recent lots crowd the target client's older
-  // open ones off the list entirely — widen it to 10×.
-  const overfetch = (crossClient && !query.clientId) ? limit * 10 : limit * 3;
+  // 3× cushion would let fully-dispatched recent lots crowd older open ones off the list
+  // entirely — widen it to 20× (the most recent ~1,000 lots of all clients).
+  const overfetch = (crossClient && !query.clientId) ? limit * 20 : limit * 3;
   // Editing an invoice: its own pcs count as available again, and every lot it holds is offered
   // even if it falls outside the overfetch window or belongs to another client.
   const held = (await getInvoiceHeldPcs(excludeInvoiceId)).good;
@@ -462,19 +462,28 @@ const getLotsAvailableForDispatch = async ({ clientId, search, crossClient = fal
     });
   }
 
-  // Rank before truncating, so the target client's own lots are never pushed off the end
-  // of the list by another client's newer stock. Own → house → foreign, newest first
-  // within each band. Mongo can't express this ordering (it depends on the requesting
-  // client), hence the in-memory pass.
+  // Order own → house → other clients, newest first within each band. Mongo can't express
+  // this ordering (it depends on the requesting client), hence the in-memory pass.
   const OWNER_RANK = (r) => (r.isOwnLot ? 0 : (r.isHouseLot ? 1 : 2));
   results.sort((a, b) => {
     const rank = OWNER_RANK(a) - OWNER_RANK(b);
     if (rank !== 0) return rank;
     return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
   });
-  // Keep every lot the edited invoice holds, even past the limit — dropping one would blank its line.
-  const top = results.slice(0, limit);
-  results.slice(limit).forEach((r) => { if (r.heldPcs > 0) top.push(r); });
+  // Cap EACH band at `limit` instead of truncating the whole list. A single cut at `limit`
+  // let the client's own lots + house-label stock (GREYSAGE) fill every slot, so with
+  // "Other clients' lots" switched on, no other client's lot ever reached the picker —
+  // a lot made for C could not be part-billed to D. Every lot the edited invoice holds is
+  // kept regardless (dropping one would blank its line).
+  const perBand = [0, 0, 0];
+  const top = [];
+  for (const r of results) {
+    const band = OWNER_RANK(r);
+    if (perBand[band] < limit || r.heldPcs > 0) {
+      top.push(r);
+      perBand[band] += 1;
+    }
+  }
   return top;
 };
 

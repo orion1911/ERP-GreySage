@@ -19,6 +19,7 @@ keyfile.txt
 bkp
 
 docs
+e2e/
 
 frontend/bkp
 frontend/node_modules

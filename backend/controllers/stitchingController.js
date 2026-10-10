@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { Stitching, Lot, Finishing, Washing, Counter, Client, FitStyle, AccessoryType, AccessoryItem, AccessoryConsumption } = require('../mongodb_schema');
+const { Stitching, Lot, Finishing, Washing, Counter, Client, FitStyle, AccessoryType, AccessoryItem, AccessoryConsumption, CuttingSheet } = require('../mongodb_schema');
 const { updateVendorBalance, bumpVendorLedgers } = require('../services/vendorBalanceService');
 const { invalidateDashboard } = require('../services/dashboardCache');
 const accessoryService = require('../services/accessoryService');
@@ -362,6 +362,28 @@ const updateStitching = async (req, res) => {
 
   if (Object.keys(lotUpdate).length > 0) {
     await Lot.findByIdAndUpdate(stitching.lotId._id, lotUpdate);
+
+    // A Cutting Book sheet mirrors the lot header (client / fit style / fabric) and re-applies
+    // it to the lot every time the sheet is saved. Keep the sheet in step — otherwise a later
+    // sheet edit (e.g. fixing meters) silently moves a lot re-assigned here (A → B) back to A.
+    if (stitching.lotId.cuttingSheetId) {
+      const sheetUpdate = {};
+      if (clientId) sheetUpdate.clientId = clientId;
+      if (fitStyleId) sheetUpdate.fitStyleId = fitStyleId;
+      if (fabric) sheetUpdate.fabric = String(fabric).toUpperCase().trim();
+      if (Object.keys(sheetUpdate).length > 0) {
+        await CuttingSheet.updateOne({ _id: stitching.lotId.cuttingSheetId }, sheetUpdate);
+      }
+    }
+
+    // A lot handed to another client (declined by the original one) is a business event — audit it.
+    const previousClientId = stitching.lotId.clientId;
+    if (clientId && String(clientId) !== String(previousClientId || '')) {
+      const names = await Client.find({ _id: { $in: [previousClientId, clientId].filter(Boolean) } }).select('name').lean();
+      const nameOf = (cid) => names.find((n) => String(n._id) === String(cid))?.name || 'none';
+      await logAction(req.user?.userId, 'reassign_lot_client', 'Lot', stitching.lotId._id,
+        `Lot ${stitching.lotId.lotNumber}: client ${nameOf(previousClientId)} → ${nameOf(clientId)}`);
+    }
   }
 
   const updatedStitching = await stitching.save();

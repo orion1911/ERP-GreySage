@@ -326,6 +326,16 @@ const apiService = {
     },
   },
 
+  // Reports (read-only). Totals are computed in the browser from the rows.
+  reports: {
+    getStitchingReport: async (params) => {
+      try {
+        const response = await axiosInstance.get('api/reports/stitching', { params });
+        return response.data; // { client, rows }
+      } catch (error) { throw error; }
+    },
+  },
+
   // Finishing-related API calls
   finishing: {
     createFinishing: async (finishingData) => {

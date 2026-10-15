@@ -20,6 +20,7 @@
         "@tanstack/react-table": "^8.21.3",
         "axios": "^1.4.0",
         "dayjs": "^1.11.13",
+        "exceljs": "^4.4.0",
         "jspdf": "^2.5.2",
         "jspdf-autotable": "^3.8.4",
         "motion": "^12.23.5",

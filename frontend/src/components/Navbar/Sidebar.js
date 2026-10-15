@@ -14,6 +14,7 @@ import {
   AccountBalance as ClientPayIcon, Business as CompanyIcon,
   Warehouse as WarehouseIcon, Category as CategoryIcon,
   Straighten as StraightenIcon, Engineering as EngineeringIcon,
+  Description as DescriptionIcon,
   Calculate as CalculateIcon, Percent as PercentIcon,
   ExpandLess as ExpandLessIcon, ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
@@ -69,6 +70,7 @@ function Sidebar({ variant, setVariant, collapsed, setCollapsed, handleDrawerTog
         { label: 'Waist Sizes', path: '/waist-sizes', icon: <StraightenIcon /> },
       ]
     },
+    { label: 'Stitching Report', path: '/reports/stitching', icon: <DescriptionIcon /> },
     { label: 'Reports', path: '/reports', icon: <AssessmentIcon /> },
     ...(user?.role === 'admin' ? [
       { label: 'Company Settings', path: '/admin/company-settings', icon: <CompanyIcon /> },

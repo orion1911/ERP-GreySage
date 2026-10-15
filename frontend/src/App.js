@@ -30,6 +30,7 @@ import CuttingBookManagement from './features/CuttingBook/CuttingBookManagement'
 import CuttingMasterCatalog from './features/Catalogs/CuttingMasterCatalog';
 import WaistSizeCatalog from './features/Catalogs/WaistSizeCatalog';
 import CostingManagement from './features/Costing/CostingManagement';
+import StitchingReport from './features/Reports/StitchingReport';
 import { VendorPaymentManagement } from './features/VendorPayments';
 import { InvoiceManagement, DispatchManagement } from './features/Sales';
 import { ClientPaymentManagement } from './features/ClientPayments';
@@ -226,6 +227,7 @@ function App() {
               <Route path="/sales/dispatch" element={<DispatchManagement />} />
               <Route path="/sales/client-payments" element={<ClientPaymentManagement />} />
               <Route path="/reports" element={<Reports />} />
+              <Route path="/reports/stitching" element={<StitchingReport />} />
               <Route path="/clients" element={<ClientCatalog />} />
               <Route path="/products" element={<ProductCatalog />} />
               <Route path="/fabric-vendors" element={<FabricVendorCatalog />} />

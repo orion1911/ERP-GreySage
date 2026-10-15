@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, flexRender } from '@tanstack/react-table';
-import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Switch, useTheme } from '@mui/material';
+import { TableContainer, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, TextField, Button, IconButton, Typography, Box, Stack, Dialog, DialogTitle, DialogContent, DialogActions, FormControlLabel, Switch, Alert, CircularProgress, useTheme } from '@mui/material';
 import { Style as StyleIcon, Edit as EditIcon, Delete as DeleteIcon, Check as CheckIcon, SwapVert } from '@mui/icons-material';
 import { TableRowsLoader } from '../../components/Skeleton/SkeletonLoader';
 import apiService from '../../services/apiService';
 import ProductCatalogSx from './ProductCatalogSx';
 import ProductCatalogAdd from './ProductCatalogAdd';
 import CatalogReorderList from './CatalogReorderList';
+
+const LOT_STATUS = { 1: 'Cut', 2: 'Stitching', 3: 'Washing', 4: 'Finishing', 5: 'Ready', 6: 'Part Dispatched', 7: 'Dispatched' };
 
 function ProductCatalog() {
   const { showSnackbar, isMobile } = useOutletContext();
@@ -19,6 +21,9 @@ function ProductCatalog() {
   const [editProduct, setEditProduct] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [productToToggle, setProductToToggle] = useState(null);
+  // { id, lots } for the style in the confirm dialog. Keyed by id so a slow response
+  // for a previously clicked style can't show up against the current one.
+  const [toggleUsage, setToggleUsage] = useState(null);
   const [reorderMode, setReorderMode] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
@@ -48,7 +53,17 @@ function ProductCatalog() {
 
   const handleToggleActive = (id) => {
     setProductToToggle(id);
+    setToggleUsage(null);
     setConfirmOpen(true);
+    // Only disabling needs the check; re-enabling is always allowed.
+    if (products.find((p) => p._id === id)?.isActive) {
+      apiService.fitStyles.getFitstyleUsage(id)
+        .then((res) => setToggleUsage({ id, lots: res.lots, items: res.items || [], truncated: !!res.truncated }))
+        .catch((err) => {
+          showSnackbar(err);
+          setConfirmOpen(false);
+        });
+    }
   };
 
   const handleConfirmToggle = () => {
@@ -71,6 +86,23 @@ function ProductCatalog() {
   const handleCancelToggle = () => {
     setConfirmOpen(false);
     setProductToToggle(null);
+    setToggleUsage(null);
+  };
+
+  const toggleTarget = products.find((p) => p._id === productToToggle);
+  const disabling = !!toggleTarget?.isActive;
+  const usage = toggleUsage?.id === productToToggle ? toggleUsage.lots : null;
+  const checkingUsage = disabling && usage === null;
+  const blockedByLots = disabling && usage > 0;
+  const usageList = toggleUsage?.id === productToToggle ? toggleUsage : null;
+  const usageItems = usageList?.items || [];
+  const hasCutLots = usageItems.some((l) => l.status === 1);
+
+  const copyInvoiceNumbers = () => {
+    const nums = usageItems.map((l) => l.invoiceNumber).filter((n) => n != null);
+    navigator.clipboard.writeText(nums.join(', '))
+      .then(() => showSnackbar(`${nums.length} invoice numbers copied`, 'success'))
+      .catch(() => showSnackbar('Could not copy to the clipboard'));
   };
 
   const handleEditProduct = (product) => {
@@ -275,22 +307,75 @@ function ProductCatalog() {
       <Dialog
         open={confirmOpen}
         onClose={handleCancelToggle}
+        fullWidth
+        maxWidth={blockedByLots ? 'sm' : 'xs'}
         aria-labelledby="confirm-toggle-title"
         aria-describedby="confirm-toggle-description"
       >
         <DialogTitle id="confirm-toggle-title">
-          Confirm Action
+          {blockedByLots ? 'Fit style in use' : 'Confirm Action'}
         </DialogTitle>
         <DialogContent id="confirm-toggle-description">
-          Are you sure you want to {products.find(p => p._id === productToToggle)?.isActive ? 'disable' : 'enable'} this fit style?
+          {checkingUsage ? (
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <CircularProgress size={18} />
+              <span>Checking whether any lots use this fit style...</span>
+            </Stack>
+          ) : blockedByLots ? (
+            <>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                <b>{toggleTarget?.name}</b> is used by {usage} lot{usage === 1 ? '' : 's'}, so it cannot be deleted.
+                Move these lots to another fit style first.
+              </Alert>
+              <Box sx={{ maxHeight: 280, overflowY: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Invoice #</TableCell>
+                      <TableCell>Lot No</TableCell>
+                      <TableCell>Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {usageItems.map((l) => (
+                      <TableRow key={l.lotNumber}>
+                        <TableCell>{l.invoiceNumber ?? '-'}</TableCell>
+                        <TableCell>{l.lotNumber}</TableCell>
+                        <TableCell>{LOT_STATUS[l.status] || l.status}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+              {usageList?.truncated && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                  Showing {usageItems.length} of {usage} lots.
+                </Typography>
+              )}
+              {hasCutLots && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                  Lots at Cut have no invoice yet. Change those in the Cutting Book.
+                </Typography>
+              )}
+            </>
+          ) : (
+            <>Are you sure you want to {disabling ? 'disable' : 'enable'} this fit style?</>
+          )}
         </DialogContent>
         <DialogActions>
+          {blockedByLots && (
+            <Button variant='outlined' onClick={copyInvoiceNumbers}>
+              Copy invoice numbers
+            </Button>
+          )}
           <Button variant='contained' onClick={handleCancelToggle} color="primary">
-            Cancel
+            {blockedByLots ? 'Close' : 'Cancel'}
           </Button>
-          <Button variant='contained' onClick={handleConfirmToggle} color="error" autoFocus>
-            Confirm
-          </Button>
+          {!blockedByLots && (
+            <Button variant='contained' onClick={handleConfirmToggle} color="error" autoFocus disabled={checkingUsage || loading}>
+              Confirm
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </>

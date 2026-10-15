@@ -1081,6 +1081,15 @@ const apiService = {
         throw error;
       }
     },
+
+    getFitstyleUsage: async (id) => {
+      try {
+        const response = await axiosInstance.get(`api/fitstyles/${id}/usage`);
+        return response.data; // { lots }
+      } catch (error) {
+        throw error;
+      }
+    },
   },
 
   // Stock Management / Accessories

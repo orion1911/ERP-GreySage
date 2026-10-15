@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { HttpError } = require('./utils/httpError');
 
 // Counter Schema: For generating sequential IDs
 const CounterSchema = new mongoose.Schema({
@@ -109,6 +110,25 @@ const FitStyleSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 FitStyleSchema.index({ name: 1 }, { unique: true }); // Unique index on name
+
+// Guard: a fit style that lots still point to can never be deleted, whichever code path
+// tries (an API route, a migration, a one-off script). Lot is looked up lazily because it
+// is defined further down this file. Deactivation is guarded in fitStyleController.
+async function blockFitStyleDeleteIfUsed(ids) {
+  if (!ids.length) return;
+  const n = await mongoose.model('Lot').countDocuments({ fitStyleId: { $in: ids } });
+  if (n > 0) {
+    throw new HttpError(400,
+      `This fit style is used by ${n} lot${n === 1 ? '' : 's'} and can't be deleted. Move those lots to another fit style first.`);
+  }
+}
+FitStyleSchema.pre(['deleteOne', 'deleteMany', 'findOneAndDelete'], { document: false, query: true }, async function () {
+  const ids = await this.model.distinct('_id', this.getFilter());
+  await blockFitStyleDeleteIfUsed(ids);
+});
+FitStyleSchema.pre('deleteOne', { document: true, query: false }, async function () {
+  await blockFitStyleDeleteIfUsed([this._id]);
+});
 
 // FabricVendor Schema: Lookup for fabric vendors
 const FabricVendorSchema = new mongoose.Schema({
